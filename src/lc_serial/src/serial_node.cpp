@@ -27,6 +27,7 @@ SerialDriver::SerialDriver(const rclcpp::NodeOptions& options)
   gimbal_delay_ = declare_parameter("gimbal_delay", 0.1);
   max_move_yaw_ = declare_parameter("max_move_yaw", 0.0);
   fire_angle_threshold_ = declare_parameter("fire_angle_threshold", 10.0);
+  timestamp_offset_ = this->declare_parameter("timestamp_offset", 0.0);
 
 
   z_gain = declare_parameter("z_gain", 0.0);
@@ -300,14 +301,14 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::Target::SharedPtr msg)
       send_pitch += send_pitch_gain;
     }
 
-    double distance = sqrt(x * x + y * y + z * z);
-    double x_offset = distance * cos(gimbal_pitch_) * cos(gimbal_yaw_); // 目标点在x轴上的偏移量
-    double y_offset = distance * cos(gimbal_pitch_) * sin(gimbal_yaw_); // 目标点在y轴上的偏移量
-    double z_offset = distance * sin(gimbal_pitch_); // 目标点在z轴上的偏移量
+    // double distance = sqrt(x * x + y * y + z * z);
+    // double x_offset = distance * cos(gimbal_pitch_) * cos(gimbal_yaw_); // 目标点在x轴上的偏移量
+    // double y_offset = distance * cos(gimbal_pitch_) * sin(gimbal_yaw_); // 目标点在y轴上的偏移量
+    // double z_offset = distance * sin(gimbal_pitch_); // 目标点在z轴上的偏移量
 
-    RCLCPP_INFO(rclcpp::get_logger("lc_serial"), "x_offset:%lf, y_offset:%lf, z_offset:%lf", x_offset, y_offset, z_offset);
-    RCLCPP_INFO(rclcpp::get_logger("lc_serial"), "x:%lf, y:%lf, z:%lf", x, y, z);
-    RCLCPP_INFO(rclcpp::get_logger("lc_serial"), " ");
+    // RCLCPP_INFO(rclcpp::get_logger("lc_serial"), "x_offset:%lf, y_offset:%lf, z_offset:%lf", x_offset, y_offset, z_offset);
+    // RCLCPP_INFO(rclcpp::get_logger("lc_serial"), "x:%lf, y:%lf, z:%lf", x, y, z);
+    // RCLCPP_INFO(rclcpp::get_logger("lc_serial"), " ");
 
 
     // //如果云台yaw、pitch与当前目标yaw、pitch的差值小于阈值，则认为云台已经对准目标，可以进行射击
@@ -432,7 +433,9 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::Target::SharedPtr msg)
           gimbal_yaw_ = imu_yaw;
           gimbal_pitch_ = imu_pitch;
           sensor_msgs::msg::JointState joint_state;
-          joint_state.header.stamp = this->now();
+          timestamp_offset_ = this->get_parameter("timestamp_offset").as_double();
+          joint_state.header.stamp =
+            this->now() + rclcpp::Duration::from_seconds(timestamp_offset_);
           joint_state.name.push_back("pitch_joint");
           joint_state.name.push_back("yaw_joint");
           joint_state.position.push_back(imu_pitch);

@@ -92,6 +92,9 @@ private:
   // pitch 动态补偿系数
   double pitch_gain_factor_;
 
+  // 时间戳偏移量
+  double timestamp_offset_ = 0;
+
   bool is_track;
   bool is_pitch_gain;
 

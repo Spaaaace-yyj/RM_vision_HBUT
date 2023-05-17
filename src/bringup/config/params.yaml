@@ -87,6 +87,7 @@
     gimbal_delay: 0.1
     max_move_yaw: 70.0
     fire_angle_threshold: 10.0
+    timestamp_offset: 0.0
     shoot_speed: 14.4
 
     x_gain: 0.0
@@ -107,3 +108,4 @@
     fps: 100
     # video_path: red_1_5m.avi
     video_path: armor.avi
+    # video_path: blue3.mp4
