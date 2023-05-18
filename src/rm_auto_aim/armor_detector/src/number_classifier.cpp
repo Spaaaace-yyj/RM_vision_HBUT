@@ -72,9 +72,6 @@ void NumberClassifier::extractNumbers(const cv::Mat & src, std::vector<Armor> & 
     number_image =
       number_image(cv::Rect(cv::Point((warp_width - roi_size.width) / 2, 0), roi_size));
 
-    // number_image 下半部分设置为0
-    number_image(cv::Rect(cv::Point(0, 26), cv::Point(roi_size))) = 0;
-
     // Binarize
     cv::cvtColor(number_image, number_image, cv::COLOR_RGB2GRAY);
     cv::threshold(number_image, number_image, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);
@@ -138,9 +135,9 @@ void NumberClassifier::classify(std::vector<Armor> & armors)
         bool mismatch_armor_type = false;
         if (armor.type == ArmorType::LARGE) {
           mismatch_armor_type =
-            armor.number == "Outpost" || armor.number == "2" || armor.number == "Guard";
+            armor.number == "outpost" || armor.number == "2" || armor.number == "guard";
         } else if (armor.type == ArmorType::SMALL) {
-          mismatch_armor_type = armor.number == "1" || armor.number == "Base";
+          mismatch_armor_type = armor.number == "1" || armor.number == "base";
         }
         return mismatch_armor_type;
       }),

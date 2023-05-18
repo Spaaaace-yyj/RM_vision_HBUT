@@ -17,12 +17,13 @@
 
 namespace rm_auto_aim
 {
-Tracker::Tracker(double max_match_distance)
+Tracker::Tracker(double max_match_distance, double max_match_yaw_diff)
 : tracker_state(LOST),
   tracked_id(std::string("")),
   measurement(Eigen::VectorXd::Zero(4)),
   target_state(Eigen::VectorXd::Zero(9)),
-  max_match_distance_(max_match_distance)
+  max_match_distance_(max_match_distance),
+  max_match_yaw_diff_(max_match_yaw_diff)
 {
 }
 
@@ -48,15 +49,7 @@ void Tracker::init(const Armors::SharedPtr & armors_msg)
   tracked_id = tracked_armor.number;
   tracker_state = DETECTING;
 
-  if (
-    tracked_armor.type == "large" &&
-    (tracked_id == "3" || tracked_id == "4" || tracked_id == "5")) {
-    tracked_armors_num = ArmorsNum::BALANCE_2;
-  } else if (tracked_id == "outpost") {
-    tracked_armors_num = ArmorsNum::OUTPOST_3;
-  } else {
-    tracked_armors_num = ArmorsNum::NORMAL_4;
-  }
+  updateArmorsNum(tracked_armor);
 }
 
 void Tracker::update(const Armors::SharedPtr & armors_msg)
@@ -70,28 +63,37 @@ void Tracker::update(const Armors::SharedPtr & armors_msg)
   target_state = ekf_prediction;
 
   if (!armors_msg->armors.empty()) {
-    double min_position_diff = DBL_MAX;
+    // Find the closest armor with the same id
+    Armor same_id_armor;
+    int same_id_armors_count = 0;
     auto predicted_position = getArmorPositionFromState(ekf_prediction);
+    double min_position_diff = DBL_MAX;
+    double yaw_diff = DBL_MAX;
     for (const auto & armor : armors_msg->armors) {
-      // Skip different id armors
-      if (armor.number != tracked_id) {
-        continue;
-      }
-
-      // Calculate the difference between the predicted position and the current armor position
-      auto p = armor.pose.position;
-      Eigen::Vector3d position_vec(p.x, p.y, p.z);
-      double position_diff = (predicted_position - position_vec).norm();
-      if (position_diff < min_position_diff) {
-        // Find the closest armor
-        min_position_diff = position_diff;
-        tracked_armor = armor;
+      // Only consider armors with the same id
+      if (armor.number == tracked_id) {
+        same_id_armor = armor;
+        same_id_armors_count++;
+        // Calculate the difference between the predicted position and the current armor position
+        auto p = armor.pose.position;
+        Eigen::Vector3d position_vec(p.x, p.y, p.z);
+        double position_diff = (predicted_position - position_vec).norm();
+        if (position_diff < min_position_diff) {
+          // Find the closest armor
+          min_position_diff = position_diff;
+          yaw_diff = abs(orientationToYaw(armor.pose.orientation) - ekf_prediction(6));
+          tracked_armor = armor;
+        }
       }
     }
 
-    // Check if the closest armor is close enough
-    if (min_position_diff < max_match_distance_) {
-      // Matching armor found
+    // Store tracker info
+    info_position_diff = min_position_diff;
+    info_yaw_diff = yaw_diff;
+
+    // Check if the distance and yaw difference of closest armor are within the threshold
+    if (min_position_diff < max_match_distance_ && yaw_diff < max_match_yaw_diff_) {
+      // Matched armor found
       matched = true;
       auto p = tracked_armor.pose.position;
       // Update EKF
@@ -99,17 +101,13 @@ void Tracker::update(const Armors::SharedPtr & armors_msg)
       measurement = Eigen::Vector4d(p.x, p.y, p.z, measured_yaw);
       target_state = ekf.update(measurement);
       RCLCPP_DEBUG(rclcpp::get_logger("armor_tracker"), "EKF update");
+    } else if (same_id_armors_count == 1 && yaw_diff > max_match_yaw_diff_) {
+      // Matched armor not found, but there is only one armor with the same id
+      // and yaw has jumped, take this case as the target is spinning and armor jumped
+      handleArmorJump(same_id_armor);
     } else {
-      // Check if there is same id armor in current frame
-      for (const auto & armor : armors_msg->armors) {
-        if (armor.number == tracked_id) {
-          // Armor jump happens
-          matched = true;
-          tracked_armor = armor;
-          handleArmorJump(tracked_armor);
-          break;
-        }
-      }
+      // No matched armor found
+      RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "No matched armor found!");
     }
   }
 
@@ -172,37 +170,44 @@ void Tracker::initEKF(const Armor & a)
   ekf.setState(target_state);
 }
 
+void Tracker::updateArmorsNum(const Armor & armor)
+{
+  if (armor.type == "large" && (tracked_id == "3" || tracked_id == "4" || tracked_id == "5")) {
+    tracked_armors_num = ArmorsNum::BALANCE_2;
+  } else if (tracked_id == "outpost") {
+    tracked_armors_num = ArmorsNum::OUTPOST_3;
+  } else {
+    tracked_armors_num = ArmorsNum::NORMAL_4;
+  }
+}
+
 void Tracker::handleArmorJump(const Armor & current_armor)
 {
-  double last_yaw = target_state(6);
   double yaw = orientationToYaw(current_armor.pose.orientation);
-
-  if (abs(yaw - last_yaw) > 0.4) {
-    // Armor angle also jumped, take this case as target spinning
-    target_state(6) = yaw;
-    // Only 4 armors has 2 radius and height
-    if (tracked_armors_num == ArmorsNum::NORMAL_4) {
-      dz = target_state(4) - current_armor.pose.position.z;
-      target_state(4) = current_armor.pose.position.z;
-      std::swap(target_state(8), another_r);
-    }
-    RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "Armor jump!");
+  target_state(6) = yaw;
+  updateArmorsNum(current_armor);
+  // Only 4 armors has 2 radius and height
+  if (tracked_armors_num == ArmorsNum::NORMAL_4) {
+    dz = target_state(4) - current_armor.pose.position.z;
+    target_state(4) = current_armor.pose.position.z;
+    std::swap(target_state(8), another_r);
   }
+  RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "Armor jump!");
 
+  // If position difference is larger than max_match_distance_,
+  // take this case as the ekf diverged, reset the state
   auto p = current_armor.pose.position;
   Eigen::Vector3d current_p(p.x, p.y, p.z);
   Eigen::Vector3d infer_p = getArmorPositionFromState(target_state);
-
   if ((current_p - infer_p).norm() > max_match_distance_) {
-    // If the distance between the current armor and the inferred armor is too large,
-    // the state is wrong, reset center position and velocity in the state
     double r = target_state(8);
     target_state(0) = p.x + r * cos(yaw);  // xc
     target_state(1) = 0;                   // vxc
     target_state(2) = p.y + r * sin(yaw);  // yc
     target_state(3) = 0;                   // vyc
+    target_state(4) = p.z;                 // za
     target_state(5) = 0;                   // vza
-    RCLCPP_ERROR(rclcpp::get_logger("armor_tracker"), "State wrong!");
+    RCLCPP_ERROR(rclcpp::get_logger("armor_tracker"), "Reset State!");
   }
 
   ekf.setState(target_state);

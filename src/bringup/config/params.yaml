@@ -38,28 +38,31 @@
     #   max_angle: 35.0
     #   max_center_ratio: 1.6
     #   min_center_ratio: 0.4
-    #   min_light_ratio: 0.6
+    #   min_light_ratio: 0.7
     #   max_large_center_distance: 5.0
-    #   min_large_center_distance: 2.8
-    #   max_small_center_distance: 2.8
+    #   min_large_center_distance: 3.2
+    #   max_small_center_distance: 3.2
     #   min_small_center_distance: 0.8
-
+    
 /armor_tracker:
   ros__parameters:
     target_frame: shooter_link
+    max_armor_distance: 10.0
 
     ekf:
-      sigma2_q_xyz: 5e-2
-      sigma2_q_yaw: 1e1
+      sigma2_q_xyz: 0.05
+      sigma2_q_yaw: 5.0
       sigma2_q_r: 80.0
 
-      r_xyz_factor: 2e-4
+      r_xyz_factor: 4e-4
       r_yaw: 5e-3
 
     tracker:
-      max_match_distance: 0.15
-      tracking_thres: 3
-      lost_time_thres: 0.6
+      max_match_distance: 0.25
+      max_match_yaw_diff: 0.85
+
+      tracking_thres: 5
+      lost_time_thres: 1.0
 
 /trt_armor_detector:
   ros__parameters:
