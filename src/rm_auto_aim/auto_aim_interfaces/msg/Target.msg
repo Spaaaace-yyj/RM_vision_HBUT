@@ -2,6 +2,7 @@ std_msgs/Header header
 bool tracking
 string id
 int32 armors_num
+string type
 geometry_msgs/Point position
 geometry_msgs/Vector3 velocity
 float64 yaw

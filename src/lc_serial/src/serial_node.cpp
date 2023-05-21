@@ -45,6 +45,9 @@ SerialDriver::SerialDriver(const rclcpp::NodeOptions& options)
   joint_state_pub_ =
       this->create_publisher<sensor_msgs::msg::JointState>("/joint_states", rclcpp::QoS(rclcpp::KeepLast(1)));
 
+  // Detect parameter client
+  detector_param_client_ = std::make_shared<rclcpp::AsyncParametersClient>(this, "/armor_detector");
+
   try
   {
     serial_driver_->init_port(device_name_, *device_config_);
@@ -75,9 +78,6 @@ SerialDriver::SerialDriver(const rclcpp::NodeOptions& options)
   // Create Subscription
   target_sub_ = this->create_subscription<auto_aim_interfaces::msg::Target>(
       "/tracker/target", rclcpp::SensorDataQoS(), std::bind(&SerialDriver::sendData, this, std::placeholders::_1));
-
-  // Detect parameter client
-  detector_param_client_ = std::make_shared<rclcpp::AsyncParametersClient>(this, "armor_detector");
 
 }
 
@@ -139,6 +139,7 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::Target::SharedPtr msg)
     double vx = msg->velocity.x, vy = msg->velocity.y, vz = msg->velocity.z;
     double dz = msg->dz;
     double v_yaw = msg->v_yaw;
+    double armor_witch = msg->type == "large" ? 0.225 : 0.135 ;
     size_t a_n = msg->armors_num;
 
     z_gain = get_parameter("z_gain").as_double();
@@ -225,14 +226,14 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::Target::SharedPtr msg)
         r = r1;
         p_a.z = za;
       }
-      p_a.x = xc - r * cos(tmp_yaw);
-      p_a.y = yc - r * sin(tmp_yaw);
+      p_a.x = point_c_pre.x - r * cos(tmp_yaw);
+      p_a.y = point_c_pre.y - r * sin(tmp_yaw);
       points_a_pre.push_back(p_a);
     }
 
-    // 匹配最优装甲板
-    // 按照v_yaw，优先选择最接近面朝摄像头的装甲板，面朝摄像头的装甲板的yaw为0，但需要考虑一定的阈值
-    // 如果最接近0的yaw大于另一个阈值，则认为没有最优装甲板，不进行射击
+    // // 匹配最优装甲板
+    // // 按照v_yaw，优先选择最接近面朝摄像头的装甲板，面朝摄像头的装甲板的yaw为0，但需要考虑一定的阈值
+    // // 如果最接近0的yaw大于另一个阈值，则认为没有最优装甲板，不进行射击
     double target_yaw = yaw;
     if(is_track){
       // 由于云台转动的延迟，进行最优装甲板筛选时，多预测一点，这里的delay应该比上面的delay大
@@ -248,9 +249,6 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::Target::SharedPtr msg)
       double delta_to_0 = std::fabs(tmp_yaw - 0);
       double delta_to_2pi = std::fabs(tmp_yaw - 2 * M_PI);
       double delta_to_zero = std::min(delta_to_0, delta_to_2pi);
-
-      RCLCPP_DEBUG(rclcpp::get_logger("lc_serial"), "%ld -- delta_to_0:%f, delta_to_2pi:%f, delta_to_zero: %f", i, delta_to_0, delta_to_2pi, delta_to_zero);
-
       if (delta_to_zero < min_yaw)
       {
         min_yaw = delta_to_zero;
@@ -263,6 +261,26 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::Target::SharedPtr msg)
       RCLCPP_WARN(rclcpp::get_logger("lc_serial"), "No optimal armor, now min yaw: %f", min_yaw * 180 / M_PI);
       return ;
     }
+
+    // 按照距离最近确定最优装甲板，已废弃
+    // int index = 0;
+    // double min = 1000;
+    // for (size_t i = 0; i < a_n; i++)
+    // {
+    //   double x_p = points_a[i].x;
+    //   double y_p = points_a[i].y;
+    //   if(is_track){
+    //     x_p = points_a_pre[i].x;
+    //     y_p = points_a_pre[i].y;
+    //   }
+    //   double tmp_dis = sqrt(x_p*x_p + y_p*y_p);
+    //   double tmp = fabs(tmp_dis);
+    //   if (tmp < min)
+    //   {
+    //     min = tmp;
+    //     index = i;
+    //   }
+    // }
 
     // 对最优装甲板进行位姿解算
     double x, y, z;
@@ -290,36 +308,25 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::Target::SharedPtr msg)
       // RCLCPP_DEBUG(rclcpp::get_logger("lc_serial"), "send_pitch_gain 111:%lf", send_pitch_gain);
       send_pitch_gain = send_pitch_gain * M_PI / 180.0;
       // RCLCPP_DEBUG(rclcpp::get_logger("lc_serial"), "send_pitch_gain 222:%lf", send_pitch_gain);
-      send_pitch_gain *= xyz.norm() * pitch_gain_factor_;
-      // RCLCPP_DEBUG(rclcpp::get_logger("lc_serial"), "send_pitch:%lf", send_pitch);
-      // RCLCPP_DEBUG(rclcpp::get_logger("lc_serial"), "pitch_gain_factor_:%lf", pitch_gain_factor_);
-      // RCLCPP_DEBUG(rclcpp::get_logger("lc_serial"), "xyz.norm():%lf", xyz.norm());
-      // RCLCPP_DEBUG(rclcpp::get_logger("lc_serial"), "send_pitch_gain:%lf", send_pitch_gain);
-      // RCLCPP_DEBUG(rclcpp::get_logger(), "x:%lf", x);
-      // RCLCPP_DEBUG(rclcpp::get_logger(), "y:%lf", y);
-      // RCLCPP_DEBUG(rclcpp::get_logger(), "z:%lf", z);
+      if(pitch_gain_factor_ > 10.0)
+        send_pitch_gain *= xyz.norm() * (pitch_gain_factor_ - 10.0);
+      else
+        send_pitch_gain *= pitch_gain_factor_;
       send_pitch += send_pitch_gain;
     }
 
-    // double distance = sqrt(x * x + y * y + z * z);
-    // double x_offset = distance * cos(gimbal_pitch_) * cos(gimbal_yaw_); // 目标点在x轴上的偏移量
-    // double y_offset = distance * cos(gimbal_pitch_) * sin(gimbal_yaw_); // 目标点在y轴上的偏移量
-    // double z_offset = distance * sin(gimbal_pitch_); // 目标点在z轴上的偏移量
-
-    // RCLCPP_INFO(rclcpp::get_logger("lc_serial"), "x_offset:%lf, y_offset:%lf, z_offset:%lf", x_offset, y_offset, z_offset);
-    // RCLCPP_INFO(rclcpp::get_logger("lc_serial"), "x:%lf, y:%lf, z:%lf", x, y, z);
-    // RCLCPP_INFO(rclcpp::get_logger("lc_serial"), " ");
-
-
-    // //如果云台yaw、pitch与当前目标yaw、pitch的差值小于阈值，则认为云台已经对准目标，可以进行射击
-    // if( std::fabs(send_yaw - gimbal_yaw_) < fire_angle_threshold_ * M_PI / 180 && 
-    //     std::fabs(send_pitch - gimbal_pitch_) < fire_angle_threshold_ * M_PI / 180)
-    // {
-    //   send_is_fire = 1;
-    // }else 
-    // {
-    //   send_is_fire = 0;
-    // }
+    Eigen::Vector3d xyz(x, y, z);
+    double shoot_diff = atan((armor_witch/2) / xyz.norm());
+    RCLCPP_DEBUG(rclcpp::get_logger("lc_serial"), "SerialDriver shoot_diff: %f", shoot_diff);
+    //如果云台yaw、pitch与当前目标yaw、pitch的差值小于阈值，则认为云台已经对准目标，可以进行射击
+    if( std::fabs(send_yaw - gimbal_yaw_) < fire_angle_threshold_ * shoot_diff && 
+        std::fabs(send_pitch - gimbal_pitch_) < fire_angle_threshold_ * shoot_diff )
+    {
+      send_is_fire = 1.0;
+    }else 
+    {
+      send_is_fire = 0.0;
+    }
     // 发布marker
     position_marker_.action = visualization_msgs::msg::Marker::ADD;
     position_marker_.pose.position.x = x;
@@ -386,7 +393,7 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::Target::SharedPtr msg)
         data.resize(200);
         int rec_len = serial_driver_->port()->receive(data);
 
-        if (rec_len >= 150)
+        if (rec_len >= 150 || rec_len <= 10)
           continue;
 
         data[rec_len - 1] = '\0';
@@ -430,8 +437,8 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::Target::SharedPtr msg)
         try
         {
           // 保存云台角度
-          gimbal_yaw_ = imu_yaw;
-          gimbal_pitch_ = imu_pitch;
+          gimbal_yaw_ = -imu_yaw;
+          gimbal_pitch_ = -imu_pitch;
           sensor_msgs::msg::JointState joint_state;
           timestamp_offset_ = this->get_parameter("timestamp_offset").as_double();
           joint_state.header.stamp =
@@ -599,22 +606,30 @@ void SerialDriver::getParams()
 
 void SerialDriver::setParam(const rclcpp::Parameter & param)
 {
-  if (detector_param_client_->service_is_ready()) {
-    detector_param_client_->set_parameters(
-      {param},
-      [this, param](
-        const std::shared_future<std::vector<rcl_interfaces::msg::SetParametersResult>> & results) {
-        for (const auto & result : results.get()) {
-          if (!result.successful) {
-            RCLCPP_ERROR(get_logger(), "Failed to set parameter: %s", result.reason.c_str());
-            return;
+  try
+  {
+    if (detector_param_client_->service_is_ready()) {
+      detector_param_client_->set_parameters(
+        {param},
+        [this, param](
+          const std::shared_future<std::vector<rcl_interfaces::msg::SetParametersResult>> & results) {
+          for (const auto & result : results.get()) {
+            if (!result.successful) {
+              RCLCPP_ERROR(get_logger(), "Failed to set parameter: %s", result.reason.c_str());
+              return;
+            }
           }
-        }
-        RCLCPP_INFO(get_logger(), "Successfully set detect_color to %ld!", param.as_int());
-        initial_set_param_ = true;
-      });
-  } else {
-    RCLCPP_WARN(get_logger(), "Service not ready, skipping parameter set");
+          RCLCPP_INFO(get_logger(), "Successfully set detect_color to %ld!", param.as_int());
+          initial_set_param_ = true;
+        });
+    } else {
+      RCLCPP_WARN(get_logger(), "Service not ready, skipping parameter set");
+    }
+  }
+  catch (rclcpp::ParameterTypeException& ex)
+  {
+    RCLCPP_ERROR(rclcpp::get_logger("lc_serial"), "setParam Error");
+    throw ex;
   }
 }
 
