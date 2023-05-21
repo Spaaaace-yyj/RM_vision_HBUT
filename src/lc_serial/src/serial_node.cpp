@@ -246,8 +246,9 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::Target::SharedPtr msg)
     {
       double tmp_yaw = target_yaw + i * (2 * M_PI / a_n);
       tmp_yaw = std::fmod(tmp_yaw + 2 * M_PI, 2 * M_PI);
-      double delta_to_0 = std::fabs(tmp_yaw - 0);
-      double delta_to_2pi = std::fabs(tmp_yaw - 2 * M_PI);
+      double delta_to_0 = std::fabs(tmp_yaw - (-gimbal_yaw_));
+      double delta_to_2pi = std::fabs(tmp_yaw - ((-gimbal_yaw_) + 2 * M_PI));
+      delta_to_2pi = std::fmod(delta_to_2pi + 2 * M_PI, 2 * M_PI);
       double delta_to_zero = std::min(delta_to_0, delta_to_2pi);
       if (delta_to_zero < min_yaw)
       {
