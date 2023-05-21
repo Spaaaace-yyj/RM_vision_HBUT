@@ -3,106 +3,33 @@
 <robot name="gimbal_b3"
   xmlns:xacro="http://ros.org/wiki/xacro">
 
-  <link name="base_link"/>
+  <xacro:arg name="xyz" default="0.00453 0 0.11593" />
+  <xacro:arg name="rpy" default="0 0 0" />
 
-  <link name="yaw_link">
-    <inertial>
-      <origin xyz="4.9495E-05 -0.036761 0.08872" rpy="0 0 0" />
-      <mass value="0.95681" />
-      <inertia ixx="0.00078388" ixy="-3.16E-06" ixz="1.0358E-07" iyy="0.00060194" iyz="1.0262E-06" izz="0.0010962" />
-    </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://rm_description/meshes/yaw_link.STL" />
-      </geometry>
-      <material name="">
-        <color rgba="0.75294 0.75294 0.75294 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://rm_description/meshes/yaw_link.STL" />
-      </geometry>
-    </collision>
-  </link>
+  <link name="odom" />
+
+  <link name="yaw_link" />
 
   <joint name="yaw_joint" type="continuous">
-    <origin xyz="0 0 0" rpy="0 0 0" />
-    <parent link="base_link" />
+    <parent link="odom" />
     <child link="yaw_link" />
     <axis xyz="0 0 1" />
   </joint>
 
-  <link name="pitch_link">
-    <inertial>
-      <origin xyz="0.17934 0.00065681 0.085255" rpy="0 0 0" />
-      <mass value="5.2591" />
-      <inertia ixx="0.022381" ixy="1.1737E-05" ixz="8.3773E-06" iyy="0.016702" iyz="2.0931E-06" izz="0.020886" />
-    </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://rm_description/meshes/pitch_link.STL" />
-      </geometry>
-      <material name="">
-        <color rgba="0.75294 0.75294 0.75294 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://rm_description/meshes/pitch_link.STL" />
-      </geometry>
-    </collision>
-  </link>
+  <link name="pitch_link" />
 
-  <joint name="pitch_joint" type="revolute">
-    <origin xyz="0.0032818 0 0.1735" rpy="0 0 0" />
-    <!-- <origin xyz="0.0032818 0 0.097945" rpy="0 0 0" /> -->
+  <joint name="pitch_joint" type="continuous">
     <parent link="yaw_link" />
     <child link="pitch_link" />
     <axis xyz="0 1 0" />
-    <limit lower="-0.6" upper="0.5" effort="1.2" velocity="31"/>
   </joint>
 
-  <link name="shooter_link" />
+  <link name="camera_link" />
 
-  <joint name="shooter_joint" type="fixed">
-    <origin xyz="0.0032818 0 0.097945" rpy="0 0 0" />
-    <parent link="base_link" />
-    <child link="shooter_link" />
-  </joint>
-
-  <link name="camera_base_link">
-    <inertial>
-      <origin xyz="-0.015408 1.3878E-17 -2.7756E-17" rpy="0 0 0" />
-      <mass value="0.082876" />
-      <inertia ixx="1.7456E-05" ixy="1.0384E-21" ixz="-4.9613E-21" iyy="4.0132E-05" iyz="4.8698E-22" izz="4.0162E-05" />
-    </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://rm_description/meshes/camera_base_link.STL" />
-      </geometry>
-      <material name="">
-        <color rgba="0.79216 0.81961 0.93333 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://rm_description/meshes/camera_base_link.STL" />
-      </geometry>
-    </collision>
-  </link>
-
-  <joint name="camera_base_joint" type="fixed">
-    <origin xyz="0.06203 -0.05 0.17085" rpy="0 0 0" />
-    <!-- <origin xyz="0.088 0.0 0.0585" rpy="0 0 0" /> -->
+  <joint name="camera_joint" type="fixed">
+    <origin xyz="$(arg xyz)" rpy="$(arg rpy)" />
     <parent link="pitch_link" />
-    <child link="camera_base_link" />
+    <child link="camera_link" />
     <axis xyz="0 0 0" />
   </joint>
 
@@ -110,7 +37,7 @@
 
   <joint name="camera_optical_joint" type="fixed">
     <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}" />
-    <parent link="camera_base_link" />
+    <parent link="camera_link" />
     <child link="camera_optical_frame" />
   </joint>
 
