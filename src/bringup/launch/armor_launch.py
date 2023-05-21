@@ -101,7 +101,7 @@ def generate_launch_description():
         output='screen',
         emulate_tty=True,
         parameters=[serial_params],
-        # condition=IfCondition(use_serial),
+        condition=IfCondition(use_serial),
         arguments=['--ros-args', '--log-level', 'lc_serial:=DEBUG'],
     )
     
@@ -116,16 +116,16 @@ def generate_launch_description():
         package='joint_state_publisher',
         executable='joint_state_publisher',
         parameters=[{'rate': 600}],
-        # condition=IfCondition(PythonExpression(["not ", use_serial]))
+        condition=IfCondition(PythonExpression(["not ", use_serial]))
     )
 
     delay_serial_node = TimerAction(
-        period=1.0,
+        period=10.0,
         actions=[serial_node],
     )
 
     delay_tracker_node = TimerAction(
-        period=1.5,
+        period=15.0,
         actions=[tracker_node],
     )
 
@@ -133,11 +133,12 @@ def generate_launch_description():
     return LaunchDescription([
         declare_use_serial_cmd,
         
-        # mv_camera_detector_container,
-        video_detector_container,
+        mv_camera_detector_container,
+        # video_detector_container,
         robot_state_publisher,
         joint_state_publisher,
 
+        # serial_node,
         delay_serial_node,
         delay_tracker_node,
     ])
