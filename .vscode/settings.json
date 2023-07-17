@@ -145,6 +145,6 @@
         ".vscode-insiders",
         ".devcontainer/devcontainer.json"
     ],
-    "cmake.sourceDirectory": "${workspaceFolder}/build/armor_interfaces/armor_interfaces__py",
+    "cmake.sourceDirectory": "/home/nuc/lihua/git/hbut_-rm_-vision_2023/build/auto_aim_interfaces/auto_aim_interfaces__py",
     "C_Cpp.errorSquiggles": "disabled"
 }

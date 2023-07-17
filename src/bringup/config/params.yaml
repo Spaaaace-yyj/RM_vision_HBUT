@@ -1,18 +1,17 @@
 /mv_camera:
   ros__parameters:
-    # analog_gain: 10
+    # analog_gain: 60
     camera_info_url: package://mindvision_camera/config/camera_info.yaml
     camera_name: mv_camera
     frame_id: "camera_optical_frame"
-    # exposure_time: 7000  # 晚上
-    exposure_time: 2000    # 白天
+    # exposure_time: 4000
+    exposure_time: 5000
     flip_image: false
     gamma: 80
     rgb_gain:
       b: 100
-      g: 125
-      r: 160
-    saturation: 100
+      g: 120
+      r: 155
 
 /armor_detector:
   ros__parameters:
@@ -50,13 +49,13 @@
     target_frame: odom
     max_armor_distance: 10.0
 
-    ekf:
-      sigma2_q_xyz: 0.05
-      sigma2_q_yaw: 5.0
-      sigma2_q_r: 80.0
+    # ekf:
+    #   sigma2_q_xyz: 0.05
+    #   sigma2_q_yaw: 5.0
+    #   sigma2_q_r: 80.0
 
-      r_xyz_factor: 4e-4
-      r_yaw: 5e-3
+    #   r_xyz_factor: 5e-3
+    #   r_yaw: 5e-3
 
     # ekf:
     #   sigma2_q_xyz: 0.01
@@ -65,6 +64,15 @@
 
     #   r_xyz_factor: 1e-4
     #   r_yaw: 5e-3
+
+
+    ekf:
+      sigma2_q_xyz: 2.0
+      sigma2_q_yaw: 5.0
+      sigma2_q_r: 80.0
+
+      r_xyz_factor: 5e-3
+      r_yaw: 5e-3
 
     tracker:
       max_match_distance: 0.25
@@ -97,15 +105,16 @@
     shoot_delay: 0.2
     shoot_delay_spin_: 0.2
     gimbal_delay: 0.05
-    max_move_yaw: 70.0
+    max_move_yaw: 35.0
     fire_angle_threshold: 1.5
-    timestamp_offset: 0.0165
-    shoot_speed: 15.9
+    timestamp_offset: 0.005
+    # shoot_speed: 14.4
+    shoot_speed: 14.1
 
     x_gain: 0.0
     y_gain: 0.0
     z_gain: 0.0
-    pitch_gain_factor: 1.2
+    pitch_gain_factor: 1.1
     
     
     # 龙格库塔法求解落点的迭代次数
@@ -119,5 +128,5 @@
   ros__parameters:
     fps: 100
     # video_path: red_1_5m.avi
-    video_path: armor.avi
-    # video_path: blue3.mp4
+    # video_path: armor.avi
+    video_path: blue3.avi

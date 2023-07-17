@@ -17,7 +17,7 @@ def generate_launch_description():
     
     declare_use_serial_cmd = DeclareLaunchArgument(
         'use_serial',
-        default_value='False',
+        default_value='True',
         description='Whether use serial port')
 
     # params file path
@@ -59,7 +59,7 @@ def generate_launch_description():
                 package='mindvision_camera',
                 plugin='mindvision_camera::MVCameraNode',
                 name='camera_node',
-                parameters=[camera_params, {'use_sensor_data_qos': True}],
+                parameters=[camera_params, {'use_sensor_data_qos': False}],
                 extra_arguments=[{'use_intra_process_comms': True}]
             ),
             detector_node
@@ -91,7 +91,7 @@ def generate_launch_description():
         output='screen',
         emulate_tty=True,
         parameters=[processor_params],
-        arguments=['--ros-args', '--log-level', 'armor_tracker:=INFO'],
+        # arguments=['--ros-args', '--log-level', 'armor_tracker:=INFO'],
     )
     
     serial_node = Node(
@@ -102,7 +102,7 @@ def generate_launch_description():
         emulate_tty=True,
         parameters=[serial_params],
         condition=IfCondition(use_serial),
-        arguments=['--ros-args', '--log-level', 'lc_serial:=DEBUG'],
+        # arguments=['--ros-args', '--log-level', 'lc_serial:=INFO'],
     )
     
     robot_state_publisher = Node(
@@ -120,12 +120,12 @@ def generate_launch_description():
     )
 
     delay_serial_node = TimerAction(
-        period=10.0,
+        period=1.0,
         actions=[serial_node],
     )
 
     delay_tracker_node = TimerAction(
-        period=15.0,
+        period=1.5,
         actions=[tracker_node],
     )
 

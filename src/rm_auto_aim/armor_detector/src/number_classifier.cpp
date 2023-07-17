@@ -72,6 +72,9 @@ void NumberClassifier::extractNumbers(const cv::Mat & src, std::vector<Armor> & 
     number_image =
       number_image(cv::Rect(cv::Point((warp_width - roi_size.width) / 2, 0), roi_size));
 
+    // number_image 下半部分设置为0
+    number_image(cv::Rect(cv::Point(0, roi_size.height-4), cv::Point(roi_size))) = 0;
+
     // Binarize
     cv::cvtColor(number_image, number_image, cv::COLOR_RGB2GRAY);
     cv::threshold(number_image, number_image, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);

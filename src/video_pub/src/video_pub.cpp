@@ -48,7 +48,7 @@ public:
 			RCLCPP_WARN(this->get_logger(), "Invalid camera info URL: %s", camera_info_url.c_str());
 		}
 
-		video_path_ = this->declare_parameter("video_path", "red_1_5m.avi");
+		video_path_ = this->declare_parameter("video_path", "blue3.avi");
 		auto pkg_path = ament_index_cpp::get_package_share_directory("video_pub");
 		cap_ = cv::VideoCapture(pkg_path + "/video/" + video_path_);
 		int fps = this->declare_parameter("fps", 20);

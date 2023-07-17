@@ -1,14 +1,14 @@
 /mv_camera:
   ros__parameters:
-    analog_gain: 10
+    # analog_gain: 60
     camera_info_url: package://mindvision_camera/config/camera_info.yaml
     camera_name: mv_camera
     frame_id: "camera_optical_frame"
-    exposure_time: 7000
+    # exposure_time: 4000
+    exposure_time: 10000
     flip_image: false
     gamma: 80
     rgb_gain:
       b: 100
-      g: 125
-      r: 160
-    saturation: 100
+      g: 120
+      r: 155

@@ -47,6 +47,8 @@ SerialDriver::SerialDriver(const rclcpp::NodeOptions& options)
 
   // Detect parameter client
   detector_param_client_ = std::make_shared<rclcpp::AsyncParametersClient>(this, "/armor_detector");
+  // serial_param_client_ = std::make_shared<rclcpp::AsyncParametersClient>(this, "/lc_serial_driver");
+
 
   try
   {
@@ -242,19 +244,27 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::Target::SharedPtr msg)
 
     int index = 0;
     double min_yaw = 2 * M_PI;
+    double c_yaw = atan2(point_c.y, point_c.x);
+    // RCLCPP_WARN(rclcpp::get_logger("lc_serial"), "c_yaw: %f", c_ycaw * 180 / M_PI);
     for (size_t i = 0; i < a_n; i++)
     {
       double tmp_yaw = target_yaw + i * (2 * M_PI / a_n);
+      // if(i==0)
+        // RCLCPP_WARN(rclcpp::get_logger("lc_serial"), "%ld : yaw: %f", i, tmp_yaw * 180 / M_PI);
       tmp_yaw = std::fmod(tmp_yaw + 2 * M_PI, 2 * M_PI);
-      double delta_to_0 = std::fabs(tmp_yaw - 0);
-      double delta_to_2pi = std::fabs(tmp_yaw - 2 * M_PI);
+      double delta_to_0 = std::fabs(tmp_yaw - c_yaw);
+      double delta_to_2pi = std::fabs(tmp_yaw - (c_yaw + 2 * M_PI));
       double delta_to_zero = std::min(delta_to_0, delta_to_2pi);
+      // RCLCPP_WARN(rclcpp::get_logger("lc_serial"), "%ld : delta_to_zero: %f", i, delta_to_zero * 180 / M_PI);
       if (delta_to_zero < min_yaw)
       {
         min_yaw = delta_to_zero;
         index = i;
       }
     }
+    
+    // RCLCPP_WARN(rclcpp::get_logger("lc_serial"), "now min yaw: %f", min_yaw * 180 / M_PI);
+    // RCLCPP_WARN(rclcpp::get_logger("lc_serial"), "now min gimbal_yaw_: %f", (-gimbal_yaw_) * 180 / M_PI);
 
     // 如果最优装甲板的yaw大于阈值，则认为没有最优装甲板，不进行射击
     if(min_yaw > max_move_yaw_ * M_PI / 180){
@@ -283,6 +293,7 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::Target::SharedPtr msg)
     // }
 
     // 对最优装甲板进行位姿解算
+    // index = 0;
     double x, y, z;
     if(is_track){
       x = points_a_pre[index].x;
@@ -318,14 +329,20 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::Target::SharedPtr msg)
     Eigen::Vector3d xyz(x, y, z);
     double shoot_diff = atan((armor_witch/2) / xyz.norm());
     RCLCPP_DEBUG(rclcpp::get_logger("lc_serial"), "SerialDriver shoot_diff: %f", shoot_diff);
+    static int loss_cnt = 0;
     //如果云台yaw、pitch与当前目标yaw、pitch的差值小于阈值，则认为云台已经对准目标，可以进行射击
     if( std::fabs(send_yaw - gimbal_yaw_) < fire_angle_threshold_ * shoot_diff && 
         std::fabs(send_pitch - gimbal_pitch_) < fire_angle_threshold_ * shoot_diff )
     {
       send_is_fire = 1.0;
+      loss_cnt = 0;
     }else 
     {
-      send_is_fire = 0.0;
+      loss_cnt ++;
+      if(loss_cnt >= 4)
+        send_is_fire = 0.0;
+      else 
+        send_is_fire = 1.0;
     }
     // 发布marker
     position_marker_.action = visualization_msgs::msg::Marker::ADD;
@@ -368,8 +385,8 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::Target::SharedPtr msg)
     // data.push_back('\0');
 
     serial_driver_->port()->send(data);
-    RCLCPP_DEBUG(rclcpp::get_logger("lc_serial"), "SerialDriver sending data: %s", data.data());
-    RCLCPP_DEBUG(rclcpp::get_logger("lc_serial"), "SerialDriver sending data: %d", str_len);
+    // RCLCPP_DEBUG(rclcpp::get_logger("lc_serial"), "SerialDriver sending data: %s", data.data());
+    // RCLCPP_DEBUG(rclcpp::get_logger("lc_serial"), "SerialDriver sending data: %d", str_len);
   }
   catch (const std::exception& ex)
   {
@@ -384,25 +401,27 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::Target::SharedPtr msg)
   void SerialDriver::receiveData()
   {
     std::vector<uint8_t> data;
-
     while (rclcpp::ok())
     {
+      // std::cout<<"111"<<std::endl;
       try
       {
         data.clear();
         data.resize(200);
         int rec_len = serial_driver_->port()->receive(data);
-
         if (rec_len >= 150 || rec_len <= 10)
           continue;
 
         data[rec_len - 1] = '\0';
-
         double imu_yaw = 0, imu_pitch = 0;
-        int robot_color = -1;
+        // int robot_color = -1;
+        // int robot_level = -1;//0:13.6
+        //1:16.7
+        //2:28.0
 
         // 解析json
         cJSON* root = cJSON_Parse((char*)data.data());
+        // std::cout<<"222"<<std::endl;
         if (!root)
         {
           RCLCPP_ERROR(rclcpp::get_logger("lc_serial"), "receiveData Error before: [%s]", cJSON_GetErrorPtr());
@@ -418,17 +437,37 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::Target::SharedPtr msg)
           }
           else
           {
+            // RCLCPP_DEBUG(rclcpp::get_logger("lc_serial"), "SerialDriver receiving data: %s", data.data());
             imu_yaw = cJSON_GetObjectItem(dat, "imu_yaw")->valuedouble;
+            // std::cout<<"222"<<std::endl;
             imu_pitch = cJSON_GetObjectItem(dat, "imu_pitch")->valuedouble;
-            robot_color = (int)(cJSON_GetObjectItem(dat, "robot_color")->valuedouble);
+            // std::cout<<"222"<<std::endl;
+            // robot_color = (int)(cJSON_GetObjectItem(dat, "robot_color")->valuedouble);
+            // robot_level = (int)(cJSON_GetObjectItem(dat, "speed_level")->valuedouble);
           }
         }
-        
-        if (!initial_set_param_ || robot_color != previous_receive_color_) {
-          RCLCPP_INFO(get_logger(), "Setting detect_color to %d...", robot_color);
-          setParam(rclcpp::Parameter("detect_color", robot_color));
-          previous_receive_color_ = robot_color;
-        }
+        // if (!initial_set_param_ || robot_color != previous_receive_color_) {
+        //   RCLCPP_INFO(get_logger(), "Setting detect_color to %d...", robot_color);
+        //   setParam(rclcpp::Parameter("detect_color", robot_color));
+        //   previous_receive_color_ = robot_color;
+        // }
+        // if(!initial_set_param_) {
+        //   double speed=0.0;
+        //   if(robot_level==0)
+        //     speed=13.6;
+        //   else if(robot_level==1)
+        //     speed=16.7;
+        //   else if(robot_level==2)
+        //     speed=28.0;
+        //   else
+        //     speed=13.6;
+        //   RCLCPP_INFO(get_logger(), "Setting detect_speed to %d...", robot_level);
+
+        //   setParam(rclcpp::Parameter("shoot_speed", speed));
+        //   previous_receive_speed_ = robot_level;
+        // }
+
+
 
         // 收到电控数据
         RCLCPP_DEBUG(rclcpp::get_logger("lc_serial"), "SerialDriver receiving data: %s", data.data());
@@ -457,7 +496,7 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::Target::SharedPtr msg)
       catch (const std::exception& ex)
       {
         RCLCPP_ERROR(rclcpp::get_logger("lc_serial"), "Error while receiving data: %s", ex.what());
-        reopenPort();
+        reopenPort();      
       }
     }
   }
