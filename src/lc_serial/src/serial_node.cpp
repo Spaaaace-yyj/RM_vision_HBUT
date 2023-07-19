@@ -267,10 +267,7 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::Target::SharedPtr msg)
     // RCLCPP_WARN(rclcpp::get_logger("lc_serial"), "now min gimbal_yaw_: %f", (-gimbal_yaw_) * 180 / M_PI);
 
     // 如果最优装甲板的yaw大于阈值，则认为没有最优装甲板，不进行射击
-    if(min_yaw > max_move_yaw_ * M_PI / 180){
-      RCLCPP_WARN(rclcpp::get_logger("lc_serial"), "No optimal armor, now min yaw: %f", min_yaw * 180 / M_PI);
-      return ;
-    }
+    
 
     // 按照距离最近确定最优装甲板，已废弃
     // int index = 0;
@@ -339,10 +336,14 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::Target::SharedPtr msg)
     }else 
     {
       loss_cnt ++;
-      if(loss_cnt >= 4)
+      if(loss_cnt >= 0)
         send_is_fire = 0.0;
       else 
         send_is_fire = 1.0;
+    }
+    if(min_yaw > max_move_yaw_ * M_PI / 180){
+      RCLCPP_WARN(rclcpp::get_logger("lc_serial"), "No optimal armor, now min yaw: %f", min_yaw * 180 / M_PI);
+      send_is_fire = 0.0;
     }
     // 发布marker
     position_marker_.action = visualization_msgs::msg::Marker::ADD;

@@ -102,19 +102,19 @@
     
     is_pitch_gain: true
     is_track: true
-    shoot_delay: 0.2
-    shoot_delay_spin_: 0.2
+    shoot_delay: 0.15
+    shoot_delay_spin_: 0.15
     gimbal_delay: 0.05
     max_move_yaw: 35.0
-    fire_angle_threshold: 1.5
+    fire_angle_threshold: 2.0
     timestamp_offset: 0.005
     # shoot_speed: 14.4
-    shoot_speed: 14.1
+    shoot_speed: 14.3
 
     x_gain: 0.0
-    y_gain: 0.0
+    y_gain: -0.03
     z_gain: 0.0
-    pitch_gain_factor: 1.1
+    pitch_gain_factor: 1.05
     
     
     # 龙格库塔法求解落点的迭代次数
