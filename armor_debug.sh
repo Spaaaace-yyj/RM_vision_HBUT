@@ -1,4 +1,5 @@
-source /opt/ros/galactic/setup.bash
+# Ros2
+source /opt/ros/humble/setup.bash
 source install/setup.bash
 # export ROS_LOCALHOST_ONLY=1
 ros2 launch bringup armor_launch.py use_serial:=True

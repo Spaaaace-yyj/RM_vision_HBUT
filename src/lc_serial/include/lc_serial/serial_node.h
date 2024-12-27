@@ -62,8 +62,8 @@ private:
   void setParam(const rclcpp::Parameter & param);
   bool initial_set_param_ = false;
   bool initial_set_param_2 = false;
-  uint8_t previous_receive_color_ = 0;
-  uint8_t previous_receive_speed_ = 0;
+  uint8_tc previous_receive_color_ = 0;
+  uint8_tc previous_receive_speed_ = 0;
   rclcpp::AsyncParametersClient::SharedPtr detector_param_client_;
   rclcpp::AsyncParametersClient::SharedPtr serial_param_client_;
   

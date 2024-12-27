@@ -10,7 +10,7 @@
     is_track: true 
     shoot_delay: 0.4
     shoot_delay_spin_: 0.2
-    shoot_speed: 14.4
+    shoot_speed: 28.5
 
     x_gain: 0.0
     y_gain: 0.0

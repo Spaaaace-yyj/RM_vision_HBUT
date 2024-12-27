@@ -4,12 +4,16 @@
 
 ```shell
 rosdep install --from-paths src --ignore-src -r -y
+sudo apt-get install ros-humble-asio-cmake-module
 ./build.sh
 ros2 launch bringup armor_launch.py
 ros2 launch rosbridge_server rosbridge_websocket_launch.xml
 ros2 param load /armor_detector src/bringup/config/params.yaml
 ```
+### 启动相机节点
 
+  ros2 launch mindvision_camera mv_launch.py
+	ros2 run camera_calibration cameracalibrator --size 7x10 --square 0.02000  image:=/image_raw
 
 
 ## 编码规范：

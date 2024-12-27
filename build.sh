@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-source /opt/ros/galactic/setup.bash
+source /opt/ros/humble/setup.bash
 # Set the default build type
 BUILD_TYPE=RelWithDebInfo
 colcon build \
@@ -8,3 +8,4 @@ colcon build \
         --symlink-install \
         --cmake-args "-DCMAKE_BUILD_TYPE=$BUILD_TYPE" "-DCMAKE_EXPORT_COMPILE_COMMANDS=On" \
         -Wall -Wextra -Wpedantic
+        

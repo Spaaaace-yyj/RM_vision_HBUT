@@ -1,3 +1,4 @@
+
 #include "lc_serial/malloc.h"	   
 
 // 来自根总的代码，这里只是做了一些修改
@@ -5,16 +6,16 @@
 #define uint8_t unsigned char
 //内存池(64字节对齐)
 // uint8_t mem1base[MEM_MAX_SIZE] __attribute__((at(0x20010000)));
-uint8_t mem1base[MEM_MAX_SIZE];
+uint8_tc mem1base[MEM_MAX_SIZE];
 
 //内存管理表
-// uint32_t mem1mapbase[MEM_ALLOC_TABLE_SIZE] __attribute__((at(0x20010000 + MEM_MAX_SIZE)));
-uint32_t mem1mapbase[MEM_ALLOC_TABLE_SIZE];
+// unsigned int mem1mapbase[MEM_ALLOC_TABLE_SIZE] __attribute__((at(0x20010000 + MEM_MAX_SIZE)));
+unsigned int mem1mapbase[MEM_ALLOC_TABLE_SIZE];
 
 //内存管理参数
-const uint32_t memtblsize   = MEM_ALLOC_TABLE_SIZE;	    //内存表大小
-const uint32_t memblksize   = MEM_BLOCK_SIZE;           //内存分块大小
-const uint32_t memsize      = MEM_MAX_SIZE;             //内存总大小
+const unsigned int memtblsize   = MEM_ALLOC_TABLE_SIZE;	    //内存表大小
+const unsigned int memblksize   = MEM_BLOCK_SIZE;           //内存分块大小
+const unsigned int memsize      = MEM_MAX_SIZE;             //内存总大小
 
 //内存管理控制器
 struct _m_mallco_dev mallco_dev=
@@ -30,10 +31,10 @@ struct _m_mallco_dev mallco_dev=
 //*des:目的地址
 //*src:源地址
 //n:需要复制的内存长度(字节为单位)
-void mymemcpy(void *des, void *src, uint32_t n)  
+void mymemcpy(void *des, void *src, unsigned int n)  
 {  
-    uint8_t *xdes= (uint8_t *)des;
-	uint8_t *xsrc= (uint8_t *)src; 
+    uint8_tc *xdes= (uint8_tc *)des;
+	uint8_tc *xsrc= (uint8_tc *)src; 
     while(n--)*xdes++=*xsrc++;  
 } 
 
@@ -41,9 +42,9 @@ void mymemcpy(void *des, void *src, uint32_t n)
 //*s:内存首地址
 //c :要设置的值
 //count:需要设置的内存大小(字节为单位)
-void mymemset(void *s, uint8_t c, uint32_t count)  
+void mymemset(void *s, uint8_tc c, unsigned int count)  
 {  
-    uint8_t *xs = (uint8_t *)s;  
+    uint8_tc *xs = (uint8_tc *)s;  
     while(count--)*xs++=c;  
 }
 
@@ -56,10 +57,10 @@ void my_mem_init()
 
 //获取内存使用率
 //返回值:使用率(扩大了10倍,0~1000,代表0.0%~100.0%)
-uint16_t my_mem_perused()  
+uint16_tc my_mem_perused()  
 {  
-    uint32_t used=0;  
-    uint32_t i;  
+    unsigned int used=0;  
+    unsigned int i;  
     for(i=0; i<memtblsize; i++) {  
         if(mallco_dev.memmap[i])used++; 
     } 
@@ -69,12 +70,12 @@ uint16_t my_mem_perused()
 //内存分配(内部调用)
 //size:要分配的内存大小(字节)
 //返回值:0XFFFFFFFF,代表错误;其他,内存偏移地址 
-uint32_t my_mem_malloc(uint32_t size)  
+unsigned int my_mem_malloc(unsigned int size)  
 {
     signed long offset=0;
-    uint32_t nmemb;	//需要的内存块数
-	uint32_t cmemb=0;//连续空内存块数
-    uint32_t i;
+    unsigned int nmemb;	//需要的内存块数
+	unsigned int cmemb=0;//连续空内存块数
+    unsigned int i;
     if(!mallco_dev.memrdy)mallco_dev.init();//未初始化,先执行初始化 
     if(size==0)return 0XFFFFFFFF;//不需要分配
     nmemb=size/memblksize;  	//获取需要分配的连续内存块数
@@ -98,7 +99,7 @@ uint32_t my_mem_malloc(uint32_t size)
 //释放内存(内部调用)
 //offset:内存地址偏移
 //返回值:0,释放成功;1,释放失败;
-uint8_t my_mem_free(uint32_t offset)  
+uint8_tc my_mem_free(unsigned int offset)  
 {  
     int i;  
     if(!mallco_dev.memrdy)//未初始化,先执行初始化
@@ -122,37 +123,37 @@ uint8_t my_mem_free(uint32_t offset)
 //ptr:内存首地址 
 void myfree(void *ptr)  
 {  
-	uint32_t offset;   
+	unsigned int offset;   
 	if(ptr==NULL)return;//地址为0.  
- 	offset=(uint32_t*)ptr-(uint32_t*)mallco_dev.membase;     
+ 	offset=(unsigned int*)ptr-(unsigned int*)mallco_dev.membase;     
     my_mem_free(offset);	//释放内存      
 } 
 
 //分配内存(外部调用)
 //size:内存大小(字节)
 //返回值:分配到的内存首地址.
-void *mymalloc(uint32_t size)  
+void *mymalloc(unsigned int size)  
 {  
-    uint32_t offset;   
+    unsigned int offset;   
 	offset=my_mem_malloc(size);  	   	 	   
     if(offset==0XFFFFFFFF)return NULL;  
-    else return (void*)((uint32_t*)mallco_dev.membase+offset);  
+    else return (void*)((unsigned int*)mallco_dev.membase+offset);  
 }
 
 //重新分配内存(外部调用)
 //*ptr:旧内存首地址
 //size:要分配的内存大小(字节)
 //返回值:新分配到的内存首地址.
-void *myrealloc(void *ptr,uint32_t size)  
+void *myrealloc(void *ptr,unsigned int size)  
 {  
-    uint32_t offset;    
+    unsigned int offset;    
     offset=my_mem_malloc(size);   	
     if(offset==0XFFFFFFFF)return NULL;     
     else  
     {  									   
-	    mymemcpy((void*)((uint32_t*)mallco_dev.membase+offset),ptr,size);	//拷贝旧内存内容到新内存   
+	    mymemcpy((void*)((unsigned int*)mallco_dev.membase+offset),ptr,size);	//拷贝旧内存内容到新内存   
         myfree(ptr);  											  		//释放旧内存
-        return (void*)((uint32_t*)mallco_dev.membase+offset);  				//返回新内存首地址
+        return (void*)((unsigned int*)mallco_dev.membase+offset);  				//返回新内存首地址
     }  
 }
 

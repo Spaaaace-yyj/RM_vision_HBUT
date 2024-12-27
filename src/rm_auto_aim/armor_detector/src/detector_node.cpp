@@ -12,7 +12,7 @@
 #include <opencv2/imgproc.hpp>
 #include <rclcpp/duration.hpp>
 #include <rclcpp/qos.hpp>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 // STD
 #include <algorithm>

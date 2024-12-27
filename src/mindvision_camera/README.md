@@ -36,8 +36,7 @@ To build from source, clone the latest version from this repository into your co
 ### 启动相机节点
 
     ros2 launch mindvision_camera mv_launch.py
-	ros2 run camera_calibration cameracalibrator --size 6x10 --square 0.0195  image:=/image_raw -p camera:=/mv_camera
-
+	ros2 run camera_calibration cameracalibrator --size 7x10 --square 0.02000  image:=/image_raw
 支持的参数：
 
 1. params_file： 相机参数文件的路径 

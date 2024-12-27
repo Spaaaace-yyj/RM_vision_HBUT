@@ -102,7 +102,7 @@ def generate_launch_description():
         emulate_tty=True,
         parameters=[serial_params],
         condition=IfCondition(use_serial),
-        # arguments=['--ros-args', '--log-level', 'lc_serial:=INFO'],
+        arguments=['--ros-args', '--log-level', 'lc_serial:=INFO'],
     )
     
     robot_state_publisher = Node(

@@ -1,13 +1,13 @@
 /mv_camera:
   ros__parameters:
     # analog_gain: 60
-    camera_info_url: package://mindvision_camera/config/camera_info.yaml
+    camera_info_url: package://bringup/config/camera_info.yaml
     camera_name: mv_camera
     frame_id: "camera_optical_frame"
     # exposure_time: 4000
-    exposure_time: 5000
+    exposure_time: 5500
     flip_image: false
-    gamma: 80
+    gamma: 100
     rgb_gain:
       b: 100
       g: 120
@@ -17,7 +17,7 @@
   ros__parameters:
     debug: true
 
-    detect_color: 0
+    detect_color: 1
     binary_thres: 140
 
     classifier_threshold: 0.6
@@ -88,7 +88,7 @@
     debug: true
     model_path: 20230415.trt
     # 0 for blue, 1 for red
-    detect_color: 0
+    detect_color: 1
     prob_threshold: 0.25 
     nms_threshold: 0.45
 
@@ -102,19 +102,19 @@
     
     is_pitch_gain: true
     is_track: true
-    shoot_delay: 0.15
+    shoot_delay: 0.15 
     shoot_delay_spin_: 0.15
     gimbal_delay: 0.05
     max_move_yaw: 35.0
     fire_angle_threshold: 2.0
     timestamp_offset: 0.005
     # shoot_speed: 14.4
-    shoot_speed: 14.3
+    shoot_speed: 28.5
 
     x_gain: 0.0
-    y_gain: -0.03
-    z_gain: 0.0
-    pitch_gain_factor: 1.05
+    y_gain: 0.0
+    z_gain: 2.7
+    pitch_gain_factor: 1.1
     
     
     # 龙格库塔法求解落点的迭代次数

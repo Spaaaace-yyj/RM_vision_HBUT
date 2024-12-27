@@ -381,7 +381,7 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::Target::SharedPtr msg)
     cJSON_Delete(cjson_send);
     int str_len = std::strlen(str);
     
-    std::vector<uint8_t> data(str, str + str_len);
+    std::vector<uint8_tc> data(str, str + str_len);
     data.push_back('\n');
     // data.push_back('\0');
 
@@ -401,7 +401,7 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::Target::SharedPtr msg)
    */
   void SerialDriver::receiveData()
   {
-    std::vector<uint8_t> data;
+    std::vector<uint8_tc> data;
     while (rclcpp::ok())
     {
       // std::cout<<"111"<<std::endl;
@@ -534,7 +534,7 @@ void SerialDriver::getParams()
   using Parity = drivers::serial_driver::Parity;
   using StopBits = drivers::serial_driver::StopBits;
 
-  uint32_t baud_rate{};
+  unsigned int baud_rate{};
   auto fc = FlowControl::NONE;
   auto pt = Parity::NONE;
   auto sb = StopBits::ONE;
