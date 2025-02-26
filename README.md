@@ -1,4 +1,4 @@
-# HBUT2023视觉代码
+# HBUT2025视觉代码
 
 ## 编译命令
 
@@ -11,8 +11,9 @@ ros2 launch rosbridge_server rosbridge_websocket_launch.xml
 ros2 param load /armor_detector src/bringup/config/params.yaml
 ```
 ### 启动相机节点
-
+  //相机节点
   ros2 launch mindvision_camera mv_launch.py
+  //相机标定
 	ros2 run camera_calibration cameracalibrator --size 7x10 --square 0.02000  image:=/image_raw
 
 

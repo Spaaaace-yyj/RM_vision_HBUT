@@ -9,6 +9,7 @@
 
 #include "lc_serial/serial_node.h"
 
+
 SerialDriver::SerialDriver(const rclcpp::NodeOptions& options)
   : Node("lc_serial_driver", options)
   , owned_ctx_{ new IoContext(2) }
@@ -35,6 +36,10 @@ SerialDriver::SerialDriver(const rclcpp::NodeOptions& options)
   x_gain = declare_parameter("x_gain", 0.0);
   pitch_gain_factor_ = declare_parameter("pitch_gain_factor", 1.0);
 
+  rune_x_gain = declare_parameter("rune_x_gain", 0.0);
+  rune_y_gain = declare_parameter("rune_y_gain", 0.0);
+  rune_z_gain = declare_parameter("rune_z_gain", 0.0);  
+
   // 构造位姿解算器, 定义参数
   int max_iter = declare_parameter("max_iter", 10);
   float stop_error = declare_parameter("stop_error", 0.001);
@@ -52,9 +57,12 @@ SerialDriver::SerialDriver(const rclcpp::NodeOptions& options)
 
   try
   {
+    //初始化串口
     serial_driver_->init_port(device_name_, *device_config_);
+    //检测串口是否打开
     if (!serial_driver_->port()->is_open())
     {
+      // 串口未打开，重新打开
       serial_driver_->port()->open();
       receive_thread_ = std::thread(&SerialDriver::receiveData, this);
     }
@@ -79,7 +87,9 @@ SerialDriver::SerialDriver(const rclcpp::NodeOptions& options)
 
   // Create Subscription
   target_sub_ = this->create_subscription<auto_aim_interfaces::msg::Target>(
-      "/tracker/target", rclcpp::SensorDataQoS(), std::bind(&SerialDriver::sendData, this, std::placeholders::_1));
+      "/tracker/target", rclcpp::SensorDataQoS(), std::bind(&SerialDriver::getArmorInfo, this, std::placeholders::_1));
+  Rune_target_sub_ = this->create_subscription<buff_interfaces::msg::Rune>(
+      "/tracker/rune", rclcpp::SensorDataQoS(), std::bind(&SerialDriver::getRuneInfo, this, std::placeholders::_1));
 
 }
 
@@ -105,7 +115,82 @@ SerialDriver::~SerialDriver()
  * @brief 发送数据
  * @param msg
  */
-void SerialDriver::sendData(auto_aim_interfaces::msg::Target::SharedPtr msg)
+
+void SerialDriver::sendData(const double send_pitch, const double send_yaw, const int send_is_fire){
+  RCLCPP_WARN(this->get_logger(), "SerialDriver sending data: {%f, %f, %d}", send_pitch, send_yaw, send_is_fire);
+      /* 创建一个JSON数据对象(链表头结点) */
+  try{
+    char* str = NULL;
+    //"date":[x,y];
+    cJSON* cjson_date = cJSON_CreateArray();
+    cJSON_AddItemToArray(cjson_date, cJSON_CreateNumber(send_yaw));
+    cJSON_AddItemToArray(cjson_date, cJSON_CreateNumber(send_pitch));
+    cJSON_AddItemToArray(cjson_date, cJSON_CreateNumber(send_is_fire));
+
+    // dat
+    cJSON* cjson_dat = cJSON_CreateObject();
+    cJSON_AddItemToObject(cjson_dat, "date", cjson_date);
+    cJSON_AddStringToObject(cjson_dat, "mode", "visual");
+
+    // send
+    cJSON* cjson_send = cJSON_CreateObject();
+    cJSON_AddStringToObject(cjson_send, "cmd", "ctr_mode");
+
+    cJSON_AddItemToObject(cjson_send, "dat", cjson_dat);
+
+    // 转化为待发送数据结构
+    str = cJSON_PrintUnformatted(cjson_send);
+    cJSON_Delete(cjson_send);
+    int str_len = std::strlen(str);
+    
+    std::vector<uint8_tc> data(str, str + str_len);
+    data.push_back('\n');
+    // data.push_back('\0');
+
+    serial_driver_->port()->send(data);
+    // RCLCPP_DEBUG(rclcpp::get_logger("lc_serial"), "SerialDriver sending data: %s", data.data());
+    // RCLCPP_DEBUG(rclcpp::get_logger("lc_serial"), "SerialDriver sending data: %d", str_len);
+  }catch(const std::exception& ex){
+    RCLCPP_ERROR(rclcpp::get_logger("lc_serial"), "Error while sending data: %s", ex.what());
+    reopenPort();
+  }
+    
+}
+
+/**
+ * @brief ；处理能量机关信息
+ */
+
+void SerialDriver::getRuneInfo(buff_interfaces::msg::Rune msg){
+  RCLCPP_WARN(rclcpp::get_logger("lc_serial"), "sendRuneData_function_received:{x = %f, y = %f, z = %f, tracking = %d}", msg.position.x, msg.position.y, msg.position.z, msg.tracking);
+  
+  if(msg.tracking == false){
+    //sendData(send_pitch, send_yaw, send_is_fire);
+    RCLCPP_WARN(rclcpp::get_logger("lc_serial"), "sendRuneData_function_received:x = %f, y = %f, z = %f", msg.position.x, msg.position.y, msg.position.z);
+  }
+
+  double xa = msg.position.x;
+  double ya = msg.position.y;
+  double za = msg.position.z;
+
+  rune_x_gain = get_parameter("rune_x_gain").as_double();
+  rune_y_gain = get_parameter("rune_y_gain").as_double();
+  rune_z_gain = get_parameter("rune_z_gain").as_double();
+
+  double x = xa + rune_x_gain;
+  double y = ya + rune_y_gain;
+  double z = za + rune_z_gain;
+
+  double send_pitch = atan2(z, sqrt(x * x + y * y));
+  double send_yaw = -atan2(y, x);
+  double send_is_fire = 0;
+};
+
+/**
+ * @brief 处理装甲板预测消息
+ */
+
+void SerialDriver::getArmorInfo(auto_aim_interfaces::msg::Target::SharedPtr msg)
 {
   try
   {
@@ -135,6 +220,7 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::Target::SharedPtr msg)
       return;
     }
 
+
     double yaw = msg->yaw, r1 = msg->radius_1, r2 = msg->radius_2;
     double xc = msg->position.x, yc = msg->position.y, za = msg->position.z;
     double zc = za + za / 2;
@@ -143,7 +229,7 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::Target::SharedPtr msg)
     double v_yaw = msg->v_yaw;
     double armor_witch = msg->type == "large" ? 0.225 : 0.135 ;
     size_t a_n = msg->armors_num;
-
+    
     z_gain = get_parameter("z_gain").as_double();
     y_gain = get_parameter("y_gain").as_double();
     x_gain = get_parameter("x_gain").as_double();
@@ -337,7 +423,8 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::Target::SharedPtr msg)
     {
       loss_cnt ++;
       if(loss_cnt >= 0)
-        send_is_fire = 0.0;
+        //send_is_fire = 0.0;
+        send_is_fire = 1.0;
       else 
         send_is_fire = 1.0;
     }
@@ -354,9 +441,10 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::Target::SharedPtr msg)
     visualization_msgs::msg::MarkerArray marker_array;
     marker_array.markers.emplace_back(position_marker_);
     marker_pub_->publish(marker_array);
-
+    
+    //cJSON 串口发送数据 已单独封装
     /* 创建一个JSON数据对象(链表头结点) */
-
+    /*
     char* str = NULL;
 
     //"date":[x,y];
@@ -388,11 +476,27 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::Target::SharedPtr msg)
     serial_driver_->port()->send(data);
     // RCLCPP_DEBUG(rclcpp::get_logger("lc_serial"), "SerialDriver sending data: %s", data.data());
     // RCLCPP_DEBUG(rclcpp::get_logger("lc_serial"), "SerialDriver sending data: %d", str_len);
+    */
+    sendData(send_pitch, send_yaw, send_is_fire);
   }
   catch (const std::exception& ex)
   {
     RCLCPP_ERROR(rclcpp::get_logger("lc_serial"), "Error while sending data: %s", ex.what());
-    reopenPort();
+    //sreopenPort();
+  }
+}
+
+/**
+ * @brief 自瞄任务处理
+ */
+
+void SerialDriver::taskSelection(std::string task_mode){
+  if(task_mode == "armor"){
+
+  }else if(task_mode == "large_buff"){
+    
+  }else if(task_mode == "small_buff"){
+    
   }
 }
 

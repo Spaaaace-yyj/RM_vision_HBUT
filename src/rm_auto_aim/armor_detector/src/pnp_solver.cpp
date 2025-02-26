@@ -36,6 +36,7 @@ bool PnPSolver::solvePnP(const Armor & armor, cv::Mat & rvec, cv::Mat & tvec)
   std::vector<cv::Point2f> image_armor_points;
 
   // Fill in image points
+  //装甲板四个灯条的角点
   image_armor_points.emplace_back(armor.left_light.bottom);
   image_armor_points.emplace_back(armor.left_light.top);
   image_armor_points.emplace_back(armor.right_light.top);
@@ -43,9 +44,7 @@ bool PnPSolver::solvePnP(const Armor & armor, cv::Mat & rvec, cv::Mat & tvec)
 
   // Solve pnp
   auto object_points = armor.type == ArmorType::SMALL ? small_armor_points_ : large_armor_points_;
-  return cv::solvePnP(
-    object_points, image_armor_points, camera_matrix_, dist_coeffs_, rvec, tvec, false,
-    cv::SOLVEPNP_IPPE);
+  return cv::solvePnP(object_points, image_armor_points, camera_matrix_, dist_coeffs_, rvec, tvec, false, cv::SOLVEPNP_IPPE);
 }
 
 float PnPSolver::calculateDistanceToCenter(const cv::Point2f & image_point)

@@ -170,6 +170,7 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions & options)
 void ArmorTrackerNode::armorsCallback(const auto_aim_interfaces::msg::Armors::SharedPtr armors_msg)
 {
   // Tranform armor position from image frame to world coordinate
+  //std::cout << "armersCallback===========================" << std::endl;
   for (auto & armor : armors_msg->armors) {
     geometry_msgs::msg::PoseStamped ps;
     ps.header = armors_msg->header;

@@ -80,7 +80,21 @@
         "core": "cpp",
         "specialfunctions": "cpp",
         "cjson.c": "cpp",
-        "*.ipp": "cpp"
+        "*.ipp": "cpp",
+        "any": "cpp",
+        "compare": "cpp",
+        "concepts": "cpp",
+        "coroutine": "cpp",
+        "regex": "cpp",
+        "source_location": "cpp",
+        "numbers": "cpp",
+        "semaphore": "cpp",
+        "stop_token": "cpp",
+        "svd": "cpp",
+        "dense": "cpp",
+        "eigen": "cpp",
+        "cfloat": "cpp",
+        "qr": "cpp"
     },
     "python.analysis.extraPaths": [
         "/opt/ros/humble/lib/python3.10/site-packages/"
