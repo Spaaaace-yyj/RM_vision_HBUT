@@ -10,6 +10,7 @@ namespace rm_buff
 Detector::Detector(const std::string model_path) : model_path_(model_path)
 {
   //加载模型
+  //openvino推理
   core_ = ov::Core();
   model_ = core_.read_model(model_path_);
   //交换模型的输入和输出
@@ -18,9 +19,11 @@ Detector::Detector(const std::string model_path) : model_path_(model_path)
   // convert layout from [1, 18, 8400] to [1, 8400, 18]
   ppp.output().postprocess().convert_layout({0, 2, 1});
   model_ = ppp.build();
-
+  //编译模型
   compiled_model_ = core_.compile_model(model_, "CPU");
+  //创建推理请求
   infer_request_ = compiled_model_.create_infer_request();
+
   input_tensor_ = infer_request_.get_input_tensor(0);
 
   blade_template_ = {
@@ -299,7 +302,7 @@ bool Detector::calibrate_kpts(Blade & blade, cv::Mat & img)
     roi_points_diff[i] = cv::norm(roi_points[i] - dstCorner[i]);
   }
 
-  double kpt_width =
+double kpt_width =
     (cv::norm(dstCorner[0] - dstCorner[3]) + cv::norm(dstCorner[1] - dstCorner[2])) / 2;
   double kpt_height =
     (cv::norm(dstCorner[0] - dstCorner[1]) + cv::norm(dstCorner[2] - dstCorner[3])) / 2;
@@ -323,6 +326,7 @@ bool Detector::calibrate_kpts(Blade & blade, cv::Mat & img)
   return true;
 }
 
+//图像预处理尺寸，保持长宽比例，
 cv::Mat Detector::letterbox(cv::Mat & src, int h, int w)
 {
   int in_w = src.cols;  // width

@@ -181,9 +181,9 @@ void SerialDriver::getRuneInfo(buff_interfaces::msg::Rune msg){
   double y = ya + rune_y_gain;
   double z = za + rune_z_gain;
 
-  double send_pitch = atan2(z, sqrt(x * x + y * y));
-  double send_yaw = -atan2(y, x);
-  double send_is_fire = 0;
+  [[maybe_unused]] double send_pitch = atan2(z, sqrt(x * x + y * y));
+  [[maybe_unused]] double send_yaw = -atan2(y, x);
+  [[maybe_unused]] double send_is_fire = 0;
 };
 
 /**
@@ -227,7 +227,7 @@ void SerialDriver::getArmorInfo(auto_aim_interfaces::msg::Target::SharedPtr msg)
     double vx = msg->velocity.x, vy = msg->velocity.y, vz = msg->velocity.z;
     double dz = msg->dz;
     double v_yaw = msg->v_yaw;
-    double armor_witch = msg->type == "large" ? 0.225 : 0.135 ;
+    double armor_witch = msg->type == "large" ? 0.225 : 0.135;
     size_t a_n = msg->armors_num;
     
     z_gain = get_parameter("z_gain").as_double();

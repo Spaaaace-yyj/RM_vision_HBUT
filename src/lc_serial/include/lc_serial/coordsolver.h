@@ -24,25 +24,32 @@
 class CoordSolver
 {
 public:
-    CoordSolver(int max_iter, float stop_error, int R_K_iter);
+    CoordSolver(int max_iter, float stop_error, int rk_iterations);
     // ~CoordSolver();
     
-    double dynamicCalcPitchOffset(Eigen::Vector3d xyz);
+    double dynamicCalcPitchOffset(const Eigen::Vector3d& xyz) const;
     
-    double calcYaw(Eigen::Vector3d &xyz);
-    double calcPitch(Eigen::Vector3d &xyz);
-    Eigen::Vector2d calcYawPitch(Eigen::Vector3d &xyz);
+    double calcYaw(const Eigen::Vector3d& xyz) const;
+    double calcPitch(const Eigen::Vector3d& xyz) const;
+    Eigen::Vector2d calcYawPitch(const Eigen::Vector3d& xyz) const;
+
+    double simulateTrajectory(double pitch_rad, double delta_x) const;
+
+    std::pair<double, double> rungeKuttaStep(double u, double v, double dx, double k) const;
 
     double bullet_speed = 15;            //TODO:弹速可变
     // double k = 0.0389;                //25°C,1atm,小弹丸
     double k = 0.000000001;                //25°C,1atm,小弹丸
     // double k = 0.0111;                //25°C,1atm,大弹丸
 private:
-    int max_iter;
+    int max_iterations;
     float stop_error;
-    int R_K_iter;
+    int runge_kutta_iterations;
     // const int bullet_speed = 16;            //TODO:弹速可变
     const double g = 7.001;
+    double air_resistance_coeff;
+    const double RAD2DEG = 180.0 / M_PI;
+    const double DEG2RAD = M_PI / 180.0;
 };
 
 #endif  // SERIAL__COORDSOLVER_H_

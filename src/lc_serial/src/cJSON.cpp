@@ -33,6 +33,7 @@
 #include "lc_serial/cJSON.h"
 #include "lc_serial/malloc.h"
 
+
 static const char *ep;
 
 const char *cJSON_GetErrorPtr(void) {return ep;}

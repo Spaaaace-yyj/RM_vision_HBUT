@@ -69,6 +69,7 @@ void BuffDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedP
 {
 
   if (pnp_solver_ != nullptr && is_buff_task_) {
+    //pnp初始化正常，且能检测到buff
     auto blades = DetectBlades(msg);
 
     buff_interfaces::msg::BladeArray blade_array;
@@ -151,6 +152,7 @@ std::vector<Blade> BuffDetectorNode::DetectBlades(
   // publish
   auto time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
   std_msgs::msg::String latency_msg;
+  //计算延迟
   latency_msg.data = std::to_string(time.count());
   latency_publisher_->publish(latency_msg);
   if (result.size() == 0) {
