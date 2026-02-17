@@ -215,8 +215,11 @@ void ArmorTrackerNode::armorsCallback(const auto_aim_interfaces::msg::Armors::Sh
   } else {
     dt_ = (time - last_time_).seconds();
     tracker_->lost_thres = static_cast<int>(lost_time_thres_ / dt_);
-    tracker_->update(armors_msg);
 
+    //自适应半径过程噪声协方差
+    s2qr_ = computeQr(tracker_->target_state(7));
+
+    tracker_->update(armors_msg);
     // Publish Info
     info_msg.position_diff = tracker_->info_position_diff;
     info_msg.yaw_diff = (tracker_->info_yaw_diff) * (180 / M_PI);
@@ -334,6 +337,24 @@ void ArmorTrackerNode::publishMarkers(const auto_aim_interfaces::msg::Target & t
   marker_array.markers.emplace_back(angular_v_marker_);
   marker_pub_->publish(marker_array);
 }
+
+double ArmorTrackerNode::computeQr(double vyaw)
+{
+  double w = std::abs(vyaw);
+
+  const double w1 = 0.5;
+  const double w2 = 3.0;
+
+  const double Qmin = 0.1;
+  const double Qmax = 100.0;
+
+  if (w <= w1) return Qmin;
+  if (w >= w2) return Qmax;
+
+  double t = (w - w1) / (w2 - w1);
+  return Qmin + t * (Qmax - Qmin);
+}
+
 
 }  // namespace rm_auto_aim
 

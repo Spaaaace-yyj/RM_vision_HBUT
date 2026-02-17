@@ -39,6 +39,8 @@ private:
 
   void publishMarkers(const auto_aim_interfaces::msg::Target & target_msg);
 
+  double computeQr(double vyaw);
+
   // Maximum allowable armor distance in the XOY plane
   double max_armor_distance_;
 
@@ -48,7 +50,7 @@ private:
 
   // Armor tracker
   double s2qxyz_, s2qyaw_, s2qr_;
-  double r_xyz_factor, r_yaw;
+  double r_xyz_factor, r_yaw, r_v_yaw;
   double lost_time_thres_;
   std::unique_ptr<Tracker> tracker_;
 
