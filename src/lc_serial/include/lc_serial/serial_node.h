@@ -26,10 +26,8 @@
 
 // user
 #include "auto_aim_interfaces/msg/target.hpp"
+#include "auto_aim_interfaces/msg/debug_serial.hpp"
 #include <lc_serial/cJSON.h>
-//buff
-#include <buff_interfaces/msg/rune.hpp>
-#include <buff_interfaces/msg/rune_info.hpp>
 // #include <lc_serial/../../src/cJSON.c>
 #include <lc_serial/malloc.h>
 #include <lc_serial/coordsolver.h>
@@ -47,13 +45,7 @@ private:
 
   void receiveData();
   
-  void getArmorInfo(auto_aim_interfaces::msg::Target::SharedPtr msg);
-
-  void getRuneInfo(buff_interfaces::msg::Rune msg);
-
-  void sendData(const double send_pitch, const double send_yaw, const int send_is_fire);
-  
-  void taskSelection(std::string task_mode);
+  void sendData(auto_aim_interfaces::msg::Target::SharedPtr msg);
 
   void reopenPort();
 
@@ -67,13 +59,17 @@ private:
   std::unique_ptr<drivers::serial_driver::SerialDriver> serial_driver_;
 
   rclcpp::Subscription<auto_aim_interfaces::msg::Target>::SharedPtr target_sub_;
-  rclcpp::Subscription<buff_interfaces::msg::Rune>::SharedPtr Rune_target_sub_;
+
+  //debug_publisher
+  rclcpp::Publisher<auto_aim_interfaces::msg::DebugSerial>::SharedPtr debug_serial_pub_;
+  
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_array_pub_;
 
   void setParam(const rclcpp::Parameter & param);
   bool initial_set_param_ = false;
   bool initial_set_param_2 = false;
-  uint8_tc previous_receive_color_ = 0;
-  uint8_tc previous_receive_speed_ = 0;
+  uint8_t previous_receive_color_ = 0;
+  uint8_t previous_receive_speed_ = 0;
   rclcpp::AsyncParametersClient::SharedPtr detector_param_client_;
   rclcpp::AsyncParametersClient::SharedPtr serial_param_client_;
   
@@ -101,10 +97,6 @@ private:
   double z_gain;
   double y_gain;
   double x_gain;
-  //目标能量机关的x、y、z的静态补偿
-  double rune_z_gain;
-  double rune_y_gain;
-  double rune_x_gain;
 
   // pitch 动态补偿系数
   double pitch_gain_factor_;

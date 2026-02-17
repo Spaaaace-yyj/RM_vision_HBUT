@@ -41,9 +41,11 @@ std::vector<Armor> Detector::detect(const cv::Mat & input)
 
 cv::Mat Detector::preprocessImage(const cv::Mat & rgb_img)
 {
+  //转换灰度图
   cv::Mat gray_img;
   cv::cvtColor(rgb_img, gray_img, cv::COLOR_RGB2GRAY);
 
+  //二值化
   cv::Mat binary_img;
   cv::threshold(gray_img, binary_img, binary_thres, 255, cv::THRESH_BINARY);
 
@@ -55,14 +57,17 @@ std::vector<Light> Detector::findLights(const cv::Mat & rbg_img, const cv::Mat &
   using std::vector;
   vector<vector<cv::Point>> contours;
   vector<cv::Vec4i> hierarchy;
+  //根据二值化后图像找边框
   cv::findContours(binary_img, contours, hierarchy, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
 
   vector<Light> lights;
   this->debug_lights.data.clear();
 
   for (const auto & contour : contours) {
+    //过滤过小的边框（降噪）
     if (contour.size() < 5) continue;
 
+    //寻找边框的最小外接矩形
     auto r_rect = cv::minAreaRect(contour);
     auto light = Light(r_rect);
 
@@ -124,6 +129,7 @@ std::vector<Armor> Detector::matchLights(const std::vector<Light> & lights)
     for (auto light_2 = light_1 + 1; light_2 != lights.end(); light_2++) {
       if (light_1->color != detect_color || light_2->color != detect_color) continue;
 
+      //确认两个灯条之间不再存在可能是灯条的结构
       if (containLight(*light_1, *light_2, lights)) {
         continue;
       }
@@ -163,6 +169,7 @@ bool Detector::containLight(
 ArmorType Detector::isArmor(const Light & light_1, const Light & light_2)
 {
   // Ratio of the length of 2 lights (short side / long side)
+  //两个灯条的长度比值
   float light_length_ratio = light_1.length < light_2.length ? light_1.length / light_2.length
                                                              : light_2.length / light_1.length;
   bool light_ratio_ok = light_length_ratio > a.min_light_ratio;

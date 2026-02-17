@@ -49,23 +49,24 @@ def generate_launch_description():
         # arguments=['--ros-args', '--log-level', 'armor_detector:=DEBUG'],
     )
 
-    mv_camera_detector_container = ComposableNodeContainer(
-        name='camera_detector_container',
-        namespace='',
-        package='rclcpp_components',
-        executable='component_container',
-        composable_node_descriptions=[
-            ComposableNode(
-                package='mindvision_camera',
-                plugin='mindvision_camera::MVCameraNode',
-                name='camera_node',
-                parameters=[camera_params, {'use_sensor_data_qos': False}],
-                extra_arguments=[{'use_intra_process_comms': True}]
-            ),
-            detector_node
-        ],
-        output='screen',
-    )
+    # 相机和观测节点注册
+    # mv_camera_detector_container = ComposableNodeContainer(
+    #     name='camera_detector_container',
+    #     namespace='',
+    #     package='rclcpp_components',
+    #     executable='component_container',
+    #     composable_node_descriptions=[
+    #         ComposableNode(
+    #             package='mindvision_camera',
+    #             plugin='mindvision_camera::MVCameraNode',
+    #             name='camera_node',
+    #             parameters=[camera_params, {'use_sensor_data_qos': False}],
+    #             extra_arguments=[{'use_intra_process_comms': True}]
+    #         ),
+    #         detector_node
+    #     ],
+    #     output='screen',
+    # )
 
     video_detector_container = ComposableNodeContainer(
         name='video_detector_container',
@@ -104,6 +105,15 @@ def generate_launch_description():
         condition=IfCondition(use_serial),
         arguments=['--ros-args', '--log-level', 'lc_serial:=INFO'],
     )
+
+    debug_aruco_detector = Node(
+        package='aruco_detector',
+        executable='aruco_detector',
+        namespace='',
+        output='screen',
+        parameters=[serial_params],
+        arguments=['--ros-args', '--log-level', 'aruco_detector:=INFO'],
+    )
     
     robot_state_publisher = Node(
         package='robot_state_publisher',
@@ -132,8 +142,10 @@ def generate_launch_description():
 
     return LaunchDescription([
         declare_use_serial_cmd,
-        
-        mv_camera_detector_container,
+        # 启动相机和观测节点
+        # mv_camera_detector_container,
+        debug_aruco_detector,
+
         # video_detector_container,
         robot_state_publisher,
         joint_state_publisher,

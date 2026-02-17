@@ -137,6 +137,9 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions & options)
   target_pub_ = this->create_publisher<auto_aim_interfaces::msg::Target>(
     "/tracker/target", rclcpp::SensorDataQoS());
 
+  debug_tracker_pub_ = this->create_publisher<auto_aim_interfaces::msg::DebugTracker>(
+    "/debug/tracker", rclcpp::QoS(rclcpp::KeepLast(10)).reliable().durability_volatile());
+
   // Visualization Marker Publisher
   // See http://wiki.ros.org/rviz/DisplayTypes/Marker
   position_marker_.ns = "position";
@@ -160,8 +163,8 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions & options)
   angular_v_marker_.color.g = 1.0;
   armor_marker_.ns = "armors";
   armor_marker_.type = visualization_msgs::msg::Marker::CUBE;
-  armor_marker_.scale.x = 0.03;
-  armor_marker_.scale.z = 0.125;
+  armor_marker_.scale.x = 0.01;
+  armor_marker_.scale.z = 0.03;  //0.125
   armor_marker_.color.a = 1.0;
   armor_marker_.color.r = 1.0;
   marker_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("/tracker/marker", 10);
@@ -170,7 +173,10 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions & options)
 void ArmorTrackerNode::armorsCallback(const auto_aim_interfaces::msg::Armors::SharedPtr armors_msg)
 {
   // Tranform armor position from image frame to world coordinate
-  //std::cout << "armersCallback===========================" << std::endl;
+  
+  //debug
+  auto_aim_interfaces::msg::DebugTracker debug_msg;
+
   for (auto & armor : armors_msg->armors) {
     geometry_msgs::msg::PoseStamped ps;
     ps.header = armors_msg->header;
@@ -184,6 +190,7 @@ void ArmorTrackerNode::armorsCallback(const auto_aim_interfaces::msg::Armors::Sh
   }
 
   // Filter abnormal armors
+  //排除Z轴过高的装甲板
   armors_msg->armors.erase(
     std::remove_if(
       armors_msg->armors.begin(), armors_msg->armors.end(),
@@ -212,11 +219,11 @@ void ArmorTrackerNode::armorsCallback(const auto_aim_interfaces::msg::Armors::Sh
 
     // Publish Info
     info_msg.position_diff = tracker_->info_position_diff;
-    info_msg.yaw_diff = tracker_->info_yaw_diff;
+    info_msg.yaw_diff = (tracker_->info_yaw_diff) * (180 / M_PI);
     info_msg.position.x = tracker_->measurement(0);
     info_msg.position.y = tracker_->measurement(1);
     info_msg.position.z = tracker_->measurement(2);
-    info_msg.yaw = tracker_->measurement(3);
+    info_msg.yaw = (tracker_->measurement(3)) * (180 / M_PI);
     info_pub_->publish(info_msg);
 
     if (tracker_->tracker_state == Tracker::DETECTING) {
@@ -287,7 +294,7 @@ void ArmorTrackerNode::publishMarkers(const auto_aim_interfaces::msg::Target & t
     angular_v_marker_.points.emplace_back(arrow_end);
 
     armor_marker_.action = visualization_msgs::msg::Marker::ADD;
-    armor_marker_.scale.y = tracker_->tracked_armor.type == "small" ? 0.135 : 0.23;
+    armor_marker_.scale.y = tracker_->tracked_armor.type == "small" ? 0.03 : 0.23; //0.135
     bool is_current_pair = true;
     size_t a_n = target_msg.armors_num;
     geometry_msgs::msg::Point p_a;

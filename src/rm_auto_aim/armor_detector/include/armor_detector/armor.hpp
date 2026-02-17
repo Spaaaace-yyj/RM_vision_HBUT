@@ -48,11 +48,13 @@ struct Armor
   Armor() = default;
   Armor(const Light & l1, const Light & l2)
   {
+    //区分左右灯条
     if (l1.center.x < l2.center.x) {
       left_light = l1, right_light = l2;
     } else {
       left_light = l2, right_light = l1;
     }
+    //装甲板中心
     center = (left_light.center + right_light.center) / 2;
   }
 

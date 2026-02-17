@@ -123,6 +123,7 @@ void ArmorDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstShared
   }
   auto armors = detectArmors(img_msg);
 
+
   if (pnp_solver_ != nullptr) {
     armors_msg_.header = armor_marker_.header = text_marker_.header = img_msg->header;
     armors_msg_.armors.clear();
@@ -283,6 +284,7 @@ std::vector<Armor> ArmorDetectorNode::detectArmors(
     cv::putText(
       img, latency_s, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 255, 0), 2);
     result_img_pub_.publish(cv_bridge::CvImage(img_msg->header, "rgb8", img).toImageMsg());
+    
   }
 
   return armors;

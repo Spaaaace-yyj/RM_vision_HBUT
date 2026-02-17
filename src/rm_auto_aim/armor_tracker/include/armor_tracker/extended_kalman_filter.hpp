@@ -33,12 +33,12 @@ public:
 
 private:
   // Process nonlinear vector function
-  VecVecFunc f;
+  VecVecFunc f;   //状态转移函数
   // Observation nonlinear vector function
-  VecVecFunc h;
+  VecVecFunc h;   //观测函数
   // Jacobian of f()
   VecMatFunc jacobian_f;
-  Eigen::MatrixXd F;
+  Eigen::MatrixXd F;    //状态函数雅可比矩阵
   // Jacobian of h()
   VecMatFunc jacobian_h;
   Eigen::MatrixXd H;

@@ -23,6 +23,8 @@
 #include "auto_aim_interfaces/msg/armors.hpp"
 #include "auto_aim_interfaces/msg/target.hpp"
 #include "auto_aim_interfaces/msg/tracker_info.hpp"
+#include "auto_aim_interfaces/msg/debug_tracker.hpp"
+
 
 namespace rm_auto_aim
 {
@@ -69,6 +71,10 @@ private:
   visualization_msgs::msg::Marker angular_v_marker_;
   visualization_msgs::msg::Marker armor_marker_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
+  
+  //debug
+  rclcpp::Publisher<auto_aim_interfaces::msg::DebugTracker>::SharedPtr debug_tracker_pub_;
+
 };
 
 }  // namespace rm_auto_aim

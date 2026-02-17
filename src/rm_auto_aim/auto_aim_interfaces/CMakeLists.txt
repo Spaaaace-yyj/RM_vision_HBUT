@@ -21,7 +21,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/DebugArmors.msg"
   "msg/Measurement.msg"
   "msg/TrackerInfo.msg"
-
+  "msg/DebugSerial.msg"
+  "msg/DebugTracker.msg"
   DEPENDENCIES
     std_msgs
     geometry_msgs

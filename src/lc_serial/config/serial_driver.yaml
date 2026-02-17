@@ -1,6 +1,6 @@
 /lc_serial_driver:
   ros__parameters:
-    device_name: /dev/ttyACM0
+    device_name: /dev/ttyACM3
     baud_rate: 115200
     flow_control: none
     parity: none

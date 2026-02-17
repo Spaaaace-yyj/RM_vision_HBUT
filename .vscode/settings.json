@@ -94,7 +94,36 @@
         "dense": "cpp",
         "eigen": "cpp",
         "cfloat": "cpp",
-        "qr": "cpp"
+        "qr": "cpp",
+        "span": "cpp",
+        "valarray": "cpp",
+        "cassert": "cpp",
+        "ccomplex": "cpp",
+        "cerrno": "cpp",
+        "ciso646": "cpp",
+        "climits": "cpp",
+        "filesystem": "cpp",
+        "ios": "cpp",
+        "locale": "cpp",
+        "queue": "cpp",
+        "stack": "cpp",
+        "cstdbool": "cpp",
+        "version": "cpp",
+        "*.inc": "cpp",
+        "cholesky": "cpp",
+        "eigenvalues": "cpp",
+        "geometry": "cpp",
+        "householder": "cpp",
+        "iterativelinearsolvers": "cpp",
+        "jacobi": "cpp",
+        "lu": "cpp",
+        "orderingmethods": "cpp",
+        "sparse": "cpp",
+        "sparsecholesky": "cpp",
+        "sparsecore": "cpp",
+        "sparselu": "cpp",
+        "sparseqr": "cpp",
+        "stdvector": "cpp"
     },
     "python.analysis.extraPaths": [
         "/opt/ros/humble/lib/python3.10/site-packages/"
@@ -159,6 +188,6 @@
         ".vscode-insiders",
         ".devcontainer/devcontainer.json"
     ],
-    "cmake.sourceDirectory": "/home/nuc/hbut_-rm_-vision_2023/src/bringup",
+    "cmake.sourceDirectory": "/home/spaaaaace/Code/HBUT2025_rm_vision/lc_auto_aim/hbut_rm_vision_navigation_ubuntu22.04/src/rm_auto_aim/auto_aim_bringup",
     "C_Cpp.errorSquiggles": "disabled"
 }

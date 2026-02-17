@@ -5,7 +5,7 @@
     camera_name: mv_camera
     frame_id: "camera_optical_frame"
     # exposure_time: 4000
-    exposure_time: 5500
+    exposure_time: 8000
     flip_image: false
     gamma: 100
     rgb_gain:
@@ -17,7 +17,7 @@
   ros__parameters:
     debug: true
 
-    detect_color: 1
+    detect_color: 0
     binary_thres: 140
 
     classifier_threshold: 0.6
@@ -57,29 +57,46 @@
     #   r_xyz_factor: 5e-3
     #   r_yaw: 5e-3
 
-    # ekf:
-    #   sigma2_q_xyz: 0.01
-    #   sigma2_q_yaw: 1.0
-    #   sigma2_q_r: 80.0
-
-    #   r_xyz_factor: 1e-4
-    #   r_yaw: 5e-3
-
-
     ekf:
-      sigma2_q_xyz: 2.0
-      sigma2_q_yaw: 5.0
-      sigma2_q_r: 80.0
+      sigma2_q_xyz: 0.01
+      sigma2_q_yaw: 1.0
+      sigma2_q_r: 1000.0
 
-      r_xyz_factor: 5e-3
+      r_xyz_factor: 1e-4
       r_yaw: 5e-3
 
+
+    # ekf:
+    #   sigma2_q_xyz: 2.0
+    #   sigma2_q_yaw: 5.0
+    #   sigma2_q_r: 80.0
+
+    #   r_xyz_factor: 5e-3
+    #   r_yaw: 5e-3
+
     tracker:
-      max_match_distance: 0.25
-      max_match_yaw_diff: 0.85
+      # max_match_distance: 0.25
+      max_match_distance: 0.35
+      # max_match_yaw_diff: 0.85
+      max_match_yaw_diff: 0.3
 
       tracking_thres: 5
       lost_time_thres: 1.0
+
+    # ekf:
+    #   sigma2_q_xyz: 0.001
+    #   sigma2_q_yaw: 100.0
+    #   sigma2_q_r: 800.0
+
+    #   r_xyz_factor: 10.0
+    #   r_yaw: 0.02
+
+    # tracker:
+    #   max_match_distance: 0.15
+    #   max_match_yaw_diff: 1.0
+
+    #   tracking_thres: 1
+    #   lost_time_thres: 10.0
 
 /trt_armor_detector:
   ros__parameters:
@@ -102,19 +119,19 @@
     
     is_pitch_gain: true
     is_track: true
-    shoot_delay: 0.15 
-    shoot_delay_spin_: 0.15
+    shoot_delay: 0.0
+    shoot_delay_spin_: 0.0
     gimbal_delay: 0.05
-    max_move_yaw: 35.0
+    max_move_yaw: 90.0
     fire_angle_threshold: 2.0
     timestamp_offset: 0.005
     # shoot_speed: 14.4
     shoot_speed: 28.5
 
     x_gain: 0.0
-    y_gain: 0.0
-    z_gain: 2.7
-    pitch_gain_factor: 1.1
+    y_gain: 0.1
+    z_gain: 0.25
+    pitch_gain_factor: 0.0
     
     
     # 龙格库塔法求解落点的迭代次数

@@ -9,7 +9,6 @@
 
 #include "lc_serial/serial_node.h"
 
-
 SerialDriver::SerialDriver(const rclcpp::NodeOptions& options)
   : Node("lc_serial_driver", options)
   , owned_ctx_{ new IoContext(2) }
@@ -27,7 +26,7 @@ SerialDriver::SerialDriver(const rclcpp::NodeOptions& options)
   shoot_delay_spin_ = declare_parameter("shoot_delay_spin_", 0.2);
   gimbal_delay_ = declare_parameter("gimbal_delay", 0.1);
   max_move_yaw_ = declare_parameter("max_move_yaw", 0.0);
-  fire_angle_threshold_ = declare_parameter("fire_angle_threshold", 10.0);
+  fire_angle_threshold_ = declare_parameter("fire_angle_threshold", 1.0);
   timestamp_offset_ = this->declare_parameter("timestamp_offset", 0.0);
 
 
@@ -36,10 +35,6 @@ SerialDriver::SerialDriver(const rclcpp::NodeOptions& options)
   x_gain = declare_parameter("x_gain", 0.0);
   pitch_gain_factor_ = declare_parameter("pitch_gain_factor", 1.0);
 
-  rune_x_gain = declare_parameter("rune_x_gain", 0.0);
-  rune_y_gain = declare_parameter("rune_y_gain", 0.0);
-  rune_z_gain = declare_parameter("rune_z_gain", 0.0);  
-
   // 构造位姿解算器, 定义参数
   int max_iter = declare_parameter("max_iter", 10);
   float stop_error = declare_parameter("stop_error", 0.001);
@@ -47,9 +42,11 @@ SerialDriver::SerialDriver(const rclcpp::NodeOptions& options)
   coord_solver_ = std::make_unique<CoordSolver>(max_iter, stop_error, R_K_iter);
 
   // Create Publisher
+  debug_serial_pub_ = this->create_publisher<auto_aim_interfaces::msg::DebugSerial>(
+    "/debug/auto_aim_debug_data", rclcpp::QoS(rclcpp::KeepLast(10)).reliable().durability_volatile());
+  marker_array_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("/armor_debug_serial/marker_array", 10);
   joint_state_pub_ =
       this->create_publisher<sensor_msgs::msg::JointState>("/joint_states", rclcpp::QoS(rclcpp::KeepLast(1)));
-
   // Detect parameter client
   detector_param_client_ = std::make_shared<rclcpp::AsyncParametersClient>(this, "/armor_detector");
   // serial_param_client_ = std::make_shared<rclcpp::AsyncParametersClient>(this, "/lc_serial_driver");
@@ -57,12 +54,9 @@ SerialDriver::SerialDriver(const rclcpp::NodeOptions& options)
 
   try
   {
-    //初始化串口
     serial_driver_->init_port(device_name_, *device_config_);
-    //检测串口是否打开
     if (!serial_driver_->port()->is_open())
     {
-      // 串口未打开，重新打开
       serial_driver_->port()->open();
       receive_thread_ = std::thread(&SerialDriver::receiveData, this);
     }
@@ -87,9 +81,7 @@ SerialDriver::SerialDriver(const rclcpp::NodeOptions& options)
 
   // Create Subscription
   target_sub_ = this->create_subscription<auto_aim_interfaces::msg::Target>(
-      "/tracker/target", rclcpp::SensorDataQoS(), std::bind(&SerialDriver::getArmorInfo, this, std::placeholders::_1));
-  Rune_target_sub_ = this->create_subscription<buff_interfaces::msg::Rune>(
-      "/tracker/rune", rclcpp::SensorDataQoS(), std::bind(&SerialDriver::getRuneInfo, this, std::placeholders::_1));
+      "/tracker/target", rclcpp::SensorDataQoS(), std::bind(&SerialDriver::sendData, this, std::placeholders::_1));
 
 }
 
@@ -115,82 +107,7 @@ SerialDriver::~SerialDriver()
  * @brief 发送数据
  * @param msg
  */
-
-void SerialDriver::sendData(const double send_pitch, const double send_yaw, const int send_is_fire){
-  RCLCPP_WARN(this->get_logger(), "SerialDriver sending data: {%f, %f, %d}", send_pitch, send_yaw, send_is_fire);
-      /* 创建一个JSON数据对象(链表头结点) */
-  try{
-    char* str = NULL;
-    //"date":[x,y];
-    cJSON* cjson_date = cJSON_CreateArray();
-    cJSON_AddItemToArray(cjson_date, cJSON_CreateNumber(send_yaw));
-    cJSON_AddItemToArray(cjson_date, cJSON_CreateNumber(send_pitch));
-    cJSON_AddItemToArray(cjson_date, cJSON_CreateNumber(send_is_fire));
-
-    // dat
-    cJSON* cjson_dat = cJSON_CreateObject();
-    cJSON_AddItemToObject(cjson_dat, "date", cjson_date);
-    cJSON_AddStringToObject(cjson_dat, "mode", "visual");
-
-    // send
-    cJSON* cjson_send = cJSON_CreateObject();
-    cJSON_AddStringToObject(cjson_send, "cmd", "ctr_mode");
-
-    cJSON_AddItemToObject(cjson_send, "dat", cjson_dat);
-
-    // 转化为待发送数据结构
-    str = cJSON_PrintUnformatted(cjson_send);
-    cJSON_Delete(cjson_send);
-    int str_len = std::strlen(str);
-    
-    std::vector<uint8_tc> data(str, str + str_len);
-    data.push_back('\n');
-    // data.push_back('\0');
-
-    serial_driver_->port()->send(data);
-    // RCLCPP_DEBUG(rclcpp::get_logger("lc_serial"), "SerialDriver sending data: %s", data.data());
-    // RCLCPP_DEBUG(rclcpp::get_logger("lc_serial"), "SerialDriver sending data: %d", str_len);
-  }catch(const std::exception& ex){
-    RCLCPP_ERROR(rclcpp::get_logger("lc_serial"), "Error while sending data: %s", ex.what());
-    reopenPort();
-  }
-    
-}
-
-/**
- * @brief ；处理能量机关信息
- */
-
-void SerialDriver::getRuneInfo(buff_interfaces::msg::Rune msg){
-  RCLCPP_WARN(rclcpp::get_logger("lc_serial"), "sendRuneData_function_received:{x = %f, y = %f, z = %f, tracking = %d}", msg.position.x, msg.position.y, msg.position.z, msg.tracking);
-  
-  if(msg.tracking == false){
-    //sendData(send_pitch, send_yaw, send_is_fire);
-    RCLCPP_WARN(rclcpp::get_logger("lc_serial"), "sendRuneData_function_received:x = %f, y = %f, z = %f", msg.position.x, msg.position.y, msg.position.z);
-  }
-
-  double xa = msg.position.x;
-  double ya = msg.position.y;
-  double za = msg.position.z;
-
-  rune_x_gain = get_parameter("rune_x_gain").as_double();
-  rune_y_gain = get_parameter("rune_y_gain").as_double();
-  rune_z_gain = get_parameter("rune_z_gain").as_double();
-
-  double x = xa + rune_x_gain;
-  double y = ya + rune_y_gain;
-  double z = za + rune_z_gain;
-
-  [[maybe_unused]] double send_pitch = atan2(z, sqrt(x * x + y * y));
-  [[maybe_unused]] double send_yaw = -atan2(y, x);
-  [[maybe_unused]] double send_is_fire = 0;
-};
-
-/**
- * @brief 处理装甲板预测消息
- */
-
-void SerialDriver::getArmorInfo(auto_aim_interfaces::msg::Target::SharedPtr msg)
+void SerialDriver::sendData(auto_aim_interfaces::msg::Target::SharedPtr msg)
 {
   try
   {
@@ -220,16 +137,15 @@ void SerialDriver::getArmorInfo(auto_aim_interfaces::msg::Target::SharedPtr msg)
       return;
     }
 
-
     double yaw = msg->yaw, r1 = msg->radius_1, r2 = msg->radius_2;
     double xc = msg->position.x, yc = msg->position.y, za = msg->position.z;
     double zc = za + za / 2;
     double vx = msg->velocity.x, vy = msg->velocity.y, vz = msg->velocity.z;
     double dz = msg->dz;
     double v_yaw = msg->v_yaw;
-    double armor_witch = msg->type == "large" ? 0.225 : 0.135;
+    double armor_witch = msg->type == "large" ? 0.225 : 0.135 ;
     size_t a_n = msg->armors_num;
-    
+
     z_gain = get_parameter("z_gain").as_double();
     y_gain = get_parameter("y_gain").as_double();
     x_gain = get_parameter("x_gain").as_double();
@@ -319,9 +235,9 @@ void SerialDriver::getArmorInfo(auto_aim_interfaces::msg::Target::SharedPtr msg)
       points_a_pre.push_back(p_a);
     }
 
-    // // 匹配最优装甲板
-    // // 按照v_yaw，优先选择最接近面朝摄像头的装甲板，面朝摄像头的装甲板的yaw为0，但需要考虑一定的阈值
-    // // 如果最接近0的yaw大于另一个阈值，则认为没有最优装甲板，不进行射击
+    // 匹配最优装甲板
+    // 按照v_yaw，优先选择最接近面朝摄像头的装甲板，面朝摄像头的装甲板的yaw为0，但需要考虑一定的阈值
+    // 如果最接近0的yaw大于另一个阈值，则认为没有最优装甲板，不进行射击
     double target_yaw = yaw;
     if(is_track){
       // 由于云台转动的延迟，进行最优装甲板筛选时，多预测一点，这里的delay应该比上面的delay大
@@ -337,6 +253,7 @@ void SerialDriver::getArmorInfo(auto_aim_interfaces::msg::Target::SharedPtr msg)
       double tmp_yaw = target_yaw + i * (2 * M_PI / a_n);
       // if(i==0)
         // RCLCPP_WARN(rclcpp::get_logger("lc_serial"), "%ld : yaw: %f", i, tmp_yaw * 180 / M_PI);
+      //限制范围
       tmp_yaw = std::fmod(tmp_yaw + 2 * M_PI, 2 * M_PI);
       double delta_to_0 = std::fabs(tmp_yaw - c_yaw);
       double delta_to_2pi = std::fabs(tmp_yaw - (c_yaw + 2 * M_PI));
@@ -414,8 +331,7 @@ void SerialDriver::getArmorInfo(auto_aim_interfaces::msg::Target::SharedPtr msg)
     RCLCPP_DEBUG(rclcpp::get_logger("lc_serial"), "SerialDriver shoot_diff: %f", shoot_diff);
     static int loss_cnt = 0;
     //如果云台yaw、pitch与当前目标yaw、pitch的差值小于阈值，则认为云台已经对准目标，可以进行射击
-    if( std::fabs(send_yaw - gimbal_yaw_) < fire_angle_threshold_ * shoot_diff && 
-        std::fabs(send_pitch - gimbal_pitch_) < fire_angle_threshold_ * shoot_diff )
+    if( std::fabs(send_yaw - gimbal_yaw_) < fire_angle_threshold_ * shoot_diff)
     {
       send_is_fire = 1.0;
       loss_cnt = 0;
@@ -423,8 +339,7 @@ void SerialDriver::getArmorInfo(auto_aim_interfaces::msg::Target::SharedPtr msg)
     {
       loss_cnt ++;
       if(loss_cnt >= 0)
-        //send_is_fire = 0.0;
-        send_is_fire = 1.0;
+        send_is_fire = 0.0;
       else 
         send_is_fire = 1.0;
     }
@@ -432,6 +347,15 @@ void SerialDriver::getArmorInfo(auto_aim_interfaces::msg::Target::SharedPtr msg)
       RCLCPP_WARN(rclcpp::get_logger("lc_serial"), "No optimal armor, now min yaw: %f", min_yaw * 180 / M_PI);
       send_is_fire = 0.0;
     }
+
+    bool target_yaw_judge = 0;
+    if(v_yaw >= 0.5){
+      target_yaw_judge = 1;
+      send_yaw = -atan2(point_c_pre.y, point_c_pre.x);
+    }else{
+      target_yaw_judge = 0;
+    }
+
     // 发布marker
     position_marker_.action = visualization_msgs::msg::Marker::ADD;
     position_marker_.pose.position.x = x;
@@ -441,10 +365,47 @@ void SerialDriver::getArmorInfo(auto_aim_interfaces::msg::Target::SharedPtr msg)
     visualization_msgs::msg::MarkerArray marker_array;
     marker_array.markers.emplace_back(position_marker_);
     marker_pub_->publish(marker_array);
-    
-    //cJSON 串口发送数据 已单独封装
+
+    auto_aim_interfaces::msg::DebugSerial debug_set_gimble_state;
+    debug_set_gimble_state.send_pitch = send_pitch;
+    debug_set_gimble_state.send_yaw = send_yaw;
+    debug_set_gimble_state.target_angular_v_c = v_yaw;
+    debug_set_gimble_state.send_is_fire = send_is_fire;
+    debug_set_gimble_state.target_yaw_v_judge = target_yaw_judge;
+    debug_set_gimble_state.imu_pitch = gimbal_pitch_;
+    debug_set_gimble_state.imu_yaw = gimbal_yaw_;
+    debug_set_gimble_state.car_w = angular_v_c.z;
+    debug_set_gimble_state.distance = std::sqrt(z * z + std::sqrt(x * x + y * y) * std::sqrt(x * x + y * y));
+    debug_serial_pub_->publish(debug_set_gimble_state);
+
+    visualization_msgs::msg::MarkerArray marker_array_debug;
+    for(unsigned int i = 0; i < points_a_pre.size(); i++){
+      visualization_msgs::msg::Marker marker_center;
+      marker_center.header.frame_id = "odom";
+      marker_center.header.stamp = this->get_clock()->now();
+      marker_center.ns = "points_armor_pre" + std::to_string(i);
+      marker_center.id = i;
+      marker_center.type = visualization_msgs::msg::Marker::SPHERE;
+      marker_center.action = visualization_msgs::msg::Marker::ADD;
+      marker_center.pose.position.x = points_a_pre[i].x;
+      marker_center.pose.position.y = points_a_pre[i].y;
+      marker_center.pose.position.z = points_a_pre[i].z;
+      marker_center.pose.orientation.w = 1.0;
+      marker_center.scale.x = 0.05;
+      marker_center.scale.y = 0.05;
+      marker_center.scale.z = 0.05;
+
+      marker_center.color.r = 1.0f;
+      marker_center.color.g = 1.0f;
+      marker_center.color.b = 0.0f;
+      marker_center.color.a = 1.0f; 
+      marker_center.lifetime = rclcpp::Duration::from_seconds(3); 
+      marker_array_debug.markers.push_back(marker_center);
+    }
+    marker_array_pub_->publish(marker_array_debug);
+
     /* 创建一个JSON数据对象(链表头结点) */
-    /*
+
     char* str = NULL;
 
     //"date":[x,y];
@@ -469,48 +430,34 @@ void SerialDriver::getArmorInfo(auto_aim_interfaces::msg::Target::SharedPtr msg)
     cJSON_Delete(cjson_send);
     int str_len = std::strlen(str);
     
-    std::vector<uint8_tc> data(str, str + str_len);
+    std::vector<uint8_t> data(str, str + str_len);
     data.push_back('\n');
     // data.push_back('\0');
 
     serial_driver_->port()->send(data);
     // RCLCPP_DEBUG(rclcpp::get_logger("lc_serial"), "SerialDriver sending data: %s", data.data());
     // RCLCPP_DEBUG(rclcpp::get_logger("lc_serial"), "SerialDriver sending data: %d", str_len);
-    */
-    sendData(send_pitch, send_yaw, send_is_fire);
   }
   catch (const std::exception& ex)
   {
     RCLCPP_ERROR(rclcpp::get_logger("lc_serial"), "Error while sending data: %s", ex.what());
-    //sreopenPort();
+    reopenPort();
   }
 }
 
-/**
- * @brief 自瞄任务处理
- */
 
-void SerialDriver::taskSelection(std::string task_mode){
-  if(task_mode == "armor"){
-
-  }else if(task_mode == "large_buff"){
-    
-  }else if(task_mode == "small_buff"){
-    
-  }
-}
 
   /**
    * @brief 不断接收电控数据
    */
   void SerialDriver::receiveData()
   {
-    std::vector<uint8_tc> data;
+    std::vector<uint8_t> data;
     while (rclcpp::ok())
     {
-      // std::cout<<"111"<<std::endl;
       try
       {
+
         data.clear();
         data.resize(200);
         int rec_len = serial_driver_->port()->receive(data);
@@ -551,6 +498,7 @@ void SerialDriver::taskSelection(std::string task_mode){
             // robot_level = (int)(cJSON_GetObjectItem(dat, "speed_level")->valuedouble);
           }
         }
+
         // if (!initial_set_param_ || robot_color != previous_receive_color_) {
         //   RCLCPP_INFO(get_logger(), "Setting detect_color to %d...", robot_color);
         //   setParam(rclcpp::Parameter("detect_color", robot_color));
@@ -581,14 +529,17 @@ void SerialDriver::taskSelection(std::string task_mode){
         try
         {
           // 保存云台角度
+          imu_pitch = -imu_pitch;
+          imu_yaw = imu_yaw;
+
           gimbal_yaw_ = -imu_yaw;
-          gimbal_pitch_ = -imu_pitch;
+          gimbal_pitch_ = imu_pitch;
           sensor_msgs::msg::JointState joint_state;
           timestamp_offset_ = this->get_parameter("timestamp_offset").as_double();
           joint_state.header.stamp =
             this->now() + rclcpp::Duration::from_seconds(timestamp_offset_);
-          joint_state.name.push_back("pitch_joint");
-          joint_state.name.push_back("yaw_joint");
+          joint_state.name.push_back("gimbal_pitch_joint");
+          joint_state.name.push_back("gimbal_yaw_joint");
           joint_state.position.push_back(imu_pitch);
           joint_state.position.push_back(imu_yaw);
           joint_state_pub_->publish(joint_state);
@@ -638,7 +589,7 @@ void SerialDriver::getParams()
   using Parity = drivers::serial_driver::Parity;
   using StopBits = drivers::serial_driver::StopBits;
 
-  unsigned int baud_rate{};
+  uint32_t baud_rate{};
   auto fc = FlowControl::NONE;
   auto pt = Parity::NONE;
   auto sb = StopBits::ONE;

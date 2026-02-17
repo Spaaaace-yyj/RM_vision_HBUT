@@ -1,0 +1,1 @@
+ros2 run camera_calibration cameracalibrator --size 8x11 --square 0.02000  image:=/image_raw
