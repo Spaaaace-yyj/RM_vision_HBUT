@@ -1,0 +1,9 @@
+float32 send_pitch
+float32 send_yaw
+float32 target_angular_v_c
+bool send_is_fire
+bool target_yaw_v_judge
+float32 imu_pitch
+float32 imu_yaw
+float32 car_w
+float32 distance
