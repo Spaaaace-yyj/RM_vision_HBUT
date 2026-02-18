@@ -9,6 +9,8 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
 find_package(auto_aim_interfaces REQUIRED)
 
 if(BUILD_TESTING)
@@ -27,6 +29,8 @@ add_executable(gimbal_controller src/gimbal_controller_node.cpp src/coordsolver.
 ament_target_dependencies(gimbal_controller
         rclcpp
         Eigen3
+        geometry_msgs
+        visualization_msgs
         auto_aim_interfaces
 )
 

@@ -8,8 +8,10 @@
 //Ros2
 #include <rclcpp/rclcpp.hpp>
 //Interface
+#include "visualization_msgs/msg/marker.hpp"
+#include "visualization_msgs/msg/marker_array.hpp"
+#include "auto_aim_interfaces/msg/gimbal_control.hpp"
 #include "auto_aim_interfaces/msg/target.hpp"
-
 
 #include "coordsolver.h"
 
@@ -23,6 +25,9 @@ private:
 
     //subscription
     rclcpp::Subscription<auto_aim_interfaces::msg::Target>::SharedPtr target_sub_;
+    //publisher
+    rclcpp::Publisher<auto_aim_interfaces::msg::GimbalControl>::SharedPtr control_pub_;
+    rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_array_pub_;
 
     //弹道解算器
     std::unique_ptr<CoordSolver> coord_solver_;
@@ -47,8 +52,8 @@ private:
     bool is_track_;
     bool is_pitch_gain_;
 
-    double gimbal_yaw_;         //云台的yaw，pitch的偏差，用于判断是否开火
-    double gimbal_pitch_;
+    double gimbal_yaw_ = 0;         //云台的yaw，pitch的偏差，用于判断是否开火
+    double gimbal_pitch_ = 0;       //来源与imu数据
 };
 
 #endif //BUILD_GIMBAL_CONTROLLER_NODE_H

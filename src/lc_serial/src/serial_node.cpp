@@ -349,6 +349,7 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::Target::SharedPtr msg)
       send_is_fire = 0.0;
     }
 
+    //为英雄加的
     bool target_yaw_judge = 0;
     if(v_yaw >= 0.5){
       target_yaw_judge = 1;

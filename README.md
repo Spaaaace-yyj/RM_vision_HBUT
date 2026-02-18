@@ -6,6 +6,7 @@
 rosdep install --from-paths src --ignore-src -r -y
 sudo apt-get install ros-humble-asio-cmake-module
 ./build.sh
+colcon build --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 ros2 launch bringup armor_launch.py
 ros2 launch rosbridge_server rosbridge_websocket_launch.xml
 ros2 param load /armor_detector src/bringup/config/params.yaml

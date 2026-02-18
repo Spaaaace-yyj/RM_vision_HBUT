@@ -27,8 +27,12 @@ GimbalControllerNode::GimbalControllerNode() : Node("GimbalControllerNode")
     int R_K_iter = declare_parameter("R_K_iter", 50);
     coord_solver_ = std::make_unique<CoordSolver>(max_iter, stop_error, R_K_iter);
 
+    //subscription
     target_sub_ = this->create_subscription<auto_aim_interfaces::msg::Target>(
       "/tracker/target", rclcpp::SensorDataQoS(), std::bind(&GimbalControllerNode::TargetCallback, this, std::placeholders::_1));
+    //publisher
+    control_pub_ = this->create_publisher<auto_aim_interfaces::msg::GimbalControl>("control/gimbal_control", 10);
+    marker_array_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("debug/control_visuallize", 10);
 
     RCLCPP_INFO(this->get_logger(), "Gimbal Controller Init!");
 }
@@ -86,6 +90,10 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
     angular_v_c.z = v_yaw;
 
     //装甲板坐标
+    if (a_n <= 0)
+    {
+        return;
+    }
     bool is_current_pair = true;
     std::vector<geometry_msgs::msg::Point> points_a;
     geometry_msgs::msg::Point p_a;
@@ -144,6 +152,144 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
         p_a.y = point_c_pre.y - r * sin(tmp_yaw);
         points_a_pre.push_back(p_a);
     }
+
+    // 匹配最优装甲板
+    // 按照v_yaw，优先选择最接近面朝摄像头的装甲板，面朝摄像头的装甲板的yaw为0，但需要考虑一定的阈值
+    // 如果最接近0的yaw大于另一个阈值，则认为没有最优装甲板，不进行射击
+    double target_yaw = yaw;
+    if (is_track_)
+    {
+        // 由于云台转动的延迟，进行最优装甲板筛选时，多预测一点，这里的delay应该比上面的delay大
+        target_yaw += angular_v_c.z * (delay_spin + gimbal_delay_);
+    }
+
+    int index = 0;
+    double min_yaw = 2 * M_PI;
+    double c_yaw = atan2(point_c.y, point_c.x);
+
+    for (size_t i = 0; i < a_n; i++)
+    {
+        double tmp_yaw = target_yaw + i * (2 * M_PI / a_n);
+        //限制范围
+        tmp_yaw = std::fmod(tmp_yaw + 2 * M_PI, 2 * M_PI);
+        double delta_to_0 = std::fabs(tmp_yaw - c_yaw);
+        double delta_to_2pi = std::fabs(tmp_yaw - (c_yaw + 2 * M_PI));
+        double delta_to_zero = std::min(delta_to_0, delta_to_2pi);
+
+        if (delta_to_zero < min_yaw)
+        {
+            min_yaw = delta_to_zero;
+            index = i;
+        }
+    }
+
+    //击打装甲板的世界坐标
+    double x, y, z;
+
+    if(is_track_){
+        x = points_a_pre[index].x;
+        y = points_a_pre[index].y;
+        z = points_a_pre[index].z;
+    }else{
+        x = points_a[index].x;
+        y = points_a[index].y;
+        z = points_a[index].z;
+    }
+
+    // 计算需要击打的装甲板的云台姿态
+    double send_pitch = atan2(z, sqrt(x * x + y * y));
+    double send_yaw = -atan2(y, x);
+    double send_is_fire = 0;
+
+    // 对抬枪角度进行增益
+    if(is_pitch_gain_){
+        pitch_gain_factor_ = get_parameter("pitch_gain_factor").as_double();
+        coord_solver_->bullet_speed = shoot_speed_;
+        Eigen::Vector3d xyz(x, y, z);
+        double send_pitch_gain = coord_solver_->dynamicCalcPitchOffset(xyz);
+        send_pitch_gain = send_pitch_gain * M_PI / 180.0;
+        if(pitch_gain_factor_ > 10.0)
+            send_pitch_gain *= xyz.norm() * (pitch_gain_factor_ - 10.0);
+        else
+            send_pitch_gain *= pitch_gain_factor_;
+        send_pitch += send_pitch_gain;
+    }
+
+    //开火控制
+    Eigen::Vector3d xyz(x, y, z);
+    //装甲板尺寸内
+    double shoot_diff = atan((armor_witch/2) / xyz.norm());
+    RCLCPP_DEBUG(rclcpp::get_logger("lc_serial"), "SerialDriver shoot_diff: %f", shoot_diff);
+    static int loss_cnt = 0;
+    //如果云台yaw、pitch与当前目标yaw、pitch的差值小于阈值，则认为云台已经对准目标，可以进行射击
+    if( std::fabs(send_yaw - gimbal_yaw_) < fire_angle_threshold_ * shoot_diff &&
+        std::fabs(send_pitch - gimbal_pitch_) < fire_angle_threshold_ * shoot_diff)
+    {
+        send_is_fire = 1.0;
+        loss_cnt = 0;
+    }else
+    {
+        loss_cnt ++;
+        if(loss_cnt > 0)
+            send_is_fire = 0.0;
+        else
+            send_is_fire = 1.0;
+    }
+    //开火窗口范围，max_move_yaw_单位度，只有在窗口内的装甲板才开火
+    //TODO：是不是可以当超出窗口的时候直接去追下一个装甲板，而不是只不开火
+    if(min_yaw > max_move_yaw_ * M_PI / 180){
+        RCLCPP_WARN(rclcpp::get_logger("lc_serial"), "No optimal armor, now min yaw: %f", min_yaw * 180 / M_PI);
+        send_is_fire = 0.0;
+    }
+
+    auto_aim_interfaces::msg::GimbalControl control_msg;
+    control_msg.is_fire = send_is_fire;
+    control_msg.yaw = send_yaw;
+    control_msg.pitch = send_pitch;
+    control_pub_->publish(control_msg);
+
+    //===================DEBUG=======================
+    visualization_msgs::msg::MarkerArray markers;
+
+    visualization_msgs::msg::Marker shoot_point_marker;
+    shoot_point_marker.header.frame_id = "odom";
+    shoot_point_marker.header.stamp = now();
+    shoot_point_marker.ns = "shoot_point";
+    shoot_point_marker.id = 0;
+    shoot_point_marker.type = visualization_msgs::msg::Marker::SPHERE;
+    shoot_point_marker.action = visualization_msgs::msg::Marker::ADD;
+    shoot_point_marker.pose.position.x = points_a_pre[index].x;
+    shoot_point_marker.pose.position.y = points_a_pre[index].y;
+    shoot_point_marker.pose.position.z = points_a_pre[index].z;
+    shoot_point_marker.scale.x = 0.04;
+    shoot_point_marker.scale.y = 0.04;
+    shoot_point_marker.scale.z = 0.04;
+    shoot_point_marker.color.r = 0.0;
+    shoot_point_marker.color.g = 0.1;
+    shoot_point_marker.color.b = 0.5;
+    shoot_point_marker.color.a = 0.4;
+    markers.markers.push_back(shoot_point_marker);
+
+    visualization_msgs::msg::Marker target_armor_marker;
+    target_armor_marker.header.frame_id = "odom";
+    target_armor_marker.header.stamp = now();
+    target_armor_marker.ns = "target_point";
+    target_armor_marker.id = 0;
+    target_armor_marker.type = visualization_msgs::msg::Marker::SPHERE;
+    target_armor_marker.action = visualization_msgs::msg::Marker::ADD;
+    target_armor_marker.pose.position.x = points_a[index].x;
+    target_armor_marker.pose.position.y = points_a[index].y;
+    target_armor_marker.pose.position.z = points_a[index].z;
+    target_armor_marker.scale.x = 0.02;
+    target_armor_marker.scale.y = 0.02;
+    target_armor_marker.scale.z = 0.02;
+    target_armor_marker.color.r = 1.0;
+    target_armor_marker.color.g = 0.6;
+    target_armor_marker.color.b = 0.0;
+    target_armor_marker.color.a = 0.9;
+    markers.markers.push_back(target_armor_marker);
+
+    marker_array_pub_->publish(markers);
 }
 
 int main(int argc, char **argv) {
