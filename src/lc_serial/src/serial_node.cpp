@@ -29,7 +29,6 @@ SerialDriver::SerialDriver(const rclcpp::NodeOptions& options)
   fire_angle_threshold_ = declare_parameter("fire_angle_threshold", 1.0);
   timestamp_offset_ = this->declare_parameter("timestamp_offset", 0.0);
 
-
   z_gain = declare_parameter("z_gain", 0.0);
   y_gain = declare_parameter("y_gain", 0.0);
   x_gain = declare_parameter("x_gain", 0.0);
@@ -107,6 +106,8 @@ SerialDriver::~SerialDriver()
  * @brief 发送数据
  * @param msg
  */
+
+//TODO:需要解耦装甲板弹道解算和火控与串口通信，把弹道解算，火控，云台规划单独写成一个节点->gimbal_planner
 void SerialDriver::sendData(auto_aim_interfaces::msg::Target::SharedPtr msg)
 {
   try
@@ -348,6 +349,7 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::Target::SharedPtr msg)
       send_is_fire = 0.0;
     }
 
+    //为英雄加的
     bool target_yaw_judge = 0;
     if(v_yaw >= 0.5){
       target_yaw_judge = 1;
