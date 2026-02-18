@@ -289,6 +289,44 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
     target_armor_marker.color.a = 0.9;
     markers.markers.push_back(target_armor_marker);
 
+    visualization_msgs::msg::Marker yaw_marker;
+    yaw_marker.header.frame_id = "odom";
+    yaw_marker.header.stamp = now();
+    yaw_marker.ns = "bullet_path";
+    yaw_marker.id = 0;
+    yaw_marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
+    yaw_marker.action = visualization_msgs::msg::Marker::ADD;
+    yaw_marker.scale.x = 0.01;
+    yaw_marker.scale.y = 0.01;
+    yaw_marker.scale.z = 0.01;
+    yaw_marker.color.r = 1.0;
+    yaw_marker.color.g = 0.5;
+    yaw_marker.color.b = 0.5;
+    yaw_marker.color.a = 0.2;
+    geometry_msgs::msg::Point p0;
+    p0.x = 0; p0.y = 0; p0.z = 0;
+    geometry_msgs::msg::Point pa;
+    pa.x = points_a[index].x;
+    pa.y = points_a[index].y;
+    pa.z = points_a[index].z;
+    yaw_marker.points.push_back(p0);
+    yaw_marker.points.push_back(point_c);
+    yaw_marker.points.push_back(pa);
+    markers.markers.push_back(yaw_marker);
+
+    yaw_marker.id = 2;
+    yaw_marker.color.r = 0.0;
+    yaw_marker.color.g = 1.0;
+    yaw_marker.color.b = 0.5;
+    yaw_marker.color.a = 0.2;
+    yaw_marker.points.clear();
+    yaw_marker.points.push_back(point_c);
+    pa.x = points_a_pre[index].x;
+    pa.y = points_a_pre[index].y;
+    pa.z = points_a_pre[index].z;
+    yaw_marker.points.push_back(pa);
+    markers.markers.push_back(yaw_marker);
+
     marker_array_pub_->publish(markers);
 }
 
