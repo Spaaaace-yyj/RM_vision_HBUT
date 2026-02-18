@@ -11,7 +11,7 @@ GimbalControllerNode::GimbalControllerNode() : Node("GimbalControllerNode")
     shoot_delay_ = declare_parameter("shoot_delay", 0.4);
     shoot_delay_spin_ = declare_parameter("shoot_delay_spin_", 0.2);
     gimbal_delay_ = declare_parameter("gimbal_delay", 0.1);
-    max_move_yaw_ = declare_parameter("max_move_yaw", 0.0);
+    max_move_yaw_ = declare_parameter("max_move_yaw", 30.0);
     fire_angle_threshold_ = declare_parameter("fire_angle_threshold", 1.0);
     z_gain_ = declare_parameter("z_gain", 0.0);
     y_gain_ = declare_parameter("y_gain", 0.0);
@@ -237,6 +237,7 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
     }
     //开火窗口范围，max_move_yaw_单位度，只有在窗口内的装甲板才开火
     //TODO：是不是可以当超出窗口的时候直接去追下一个装甲板，而不是只不开火
+    max_move_yaw_ = get_parameter("max_move_yaw").as_double();
     if(min_yaw > max_move_yaw_ * M_PI / 180){
         RCLCPP_WARN(rclcpp::get_logger("lc_serial"), "No optimal armor, now min yaw: %f", min_yaw * 180 / M_PI);
         send_is_fire = 0.0;

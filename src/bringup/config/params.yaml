@@ -109,19 +109,22 @@
     prob_threshold: 0.25 
     nms_threshold: 0.45
 
-/lc_serial_driver:
+/lc_serial_node:
   ros__parameters:
     device_name: /dev/ttyACM0
     baud_rate: 115200
     flow_control: none
     parity: none
     stop_bits: "1"
+
+/gimbal_controller:
+  ros__parameters:
     
     is_pitch_gain: true
     is_track: true
     shoot_delay: 0.0
-    shoot_delay_spin_: 0.0
-    gimbal_delay: 0.05
+    shoot_delay_spin_: 0.1
+    gimbal_delay: 0.1
     max_move_yaw: 90.0
     fire_angle_threshold: 2.0
     timestamp_offset: 0.005
@@ -129,9 +132,9 @@
     shoot_speed: 28.5
 
     x_gain: 0.0
-    y_gain: 0.1
-    z_gain: 0.25
-    pitch_gain_factor: 0.0
+    y_gain: 0.0
+    z_gain: 0.0
+    pitch_gain_factor: 1.0
     
     
     # 龙格库塔法求解落点的迭代次数

@@ -14,11 +14,16 @@ import yaml
 def generate_launch_description():
 
     use_serial = LaunchConfiguration('use_serial')
+    debug_mode = LaunchConfiguration('debug_mode')
     
     declare_use_serial_cmd = DeclareLaunchArgument(
         'use_serial',
         default_value='True',
         description='Whether use serial port')
+    declare_debug_mode_cmd = DeclareLaunchArgument(
+        'debug_mode',
+        default_value='False',
+    )
 
     # params file path
     params_file = os.path.join(
@@ -32,7 +37,9 @@ def generate_launch_description():
     with open(params_file, 'r') as f:
         processor_params = yaml.safe_load(f)['/armor_tracker']['ros__parameters']
     with open(params_file, 'r') as f:
-        serial_params = yaml.safe_load(f)['/lc_serial_driver']['ros__parameters']
+        controller_params = yaml.safe_load(f)['/gimbal_controller']['ros__parameters']
+    with open(params_file, 'r') as f:
+        serial_params = yaml.safe_load(f)['/lc_serial_node']['ros__parameters']
     with open(params_file, 'r') as f:
         video_params = yaml.safe_load(f)['/video_pub']['ros__parameters']
 
@@ -50,23 +57,24 @@ def generate_launch_description():
     )
 
     # 相机和观测节点注册
-    # mv_camera_detector_container = ComposableNodeContainer(
-    #     name='camera_detector_container',
-    #     namespace='',
-    #     package='rclcpp_components',
-    #     executable='component_container',
-    #     composable_node_descriptions=[
-    #         ComposableNode(
-    #             package='mindvision_camera',
-    #             plugin='mindvision_camera::MVCameraNode',
-    #             name='camera_node',
-    #             parameters=[camera_params, {'use_sensor_data_qos': False}],
-    #             extra_arguments=[{'use_intra_process_comms': True}]
-    #         ),
-    #         detector_node
-    #     ],
-    #     output='screen',
-    # )
+    mv_camera_detector_container = ComposableNodeContainer(
+        name='camera_detector_container',
+        namespace='',
+        package='rclcpp_components',
+        executable='component_container',
+        composable_node_descriptions=[
+            ComposableNode(
+                package='mindvision_camera',
+                plugin='mindvision_camera::MVCameraNode',
+                name='camera_node',
+                parameters=[camera_params, {'use_sensor_data_qos': False}],
+                extra_arguments=[{'use_intra_process_comms': True}]
+            ),
+            detector_node
+        ],
+        condition=IfCondition(PythonExpression(["not ", debug_mode])),
+        output='screen',
+    )
 
     video_detector_container = ComposableNodeContainer(
         name='video_detector_container',
@@ -94,6 +102,14 @@ def generate_launch_description():
         parameters=[processor_params],
         # arguments=['--ros-args', '--log-level', 'armor_tracker:=INFO'],
     )
+
+    gimbal_controller_node = Node(
+        package='gimbal_controller',
+        executable='gimbal_controller',
+        output='screen',
+        emulate_tty=True,
+        parameters=[controller_params],
+    )
     
     serial_node = Node(
         package='lc_serial',
@@ -111,8 +127,17 @@ def generate_launch_description():
         executable='aruco_detector',
         namespace='',
         output='screen',
-        parameters=[serial_params],
+        condition=IfCondition(debug_mode),
         arguments=['--ros-args', '--log-level', 'aruco_detector:=INFO'],
+    )
+
+    debug_dji_camera = Node(
+        package='dji_action4_camera',
+        executable='camera_node',
+        namespace='',
+        output='screen',
+        condition=IfCondition(debug_mode),
+        arguments=['--ros-args', '--log-level', 'camera_node:=INFO'],
     )
     
     robot_state_publisher = Node(
@@ -139,11 +164,17 @@ def generate_launch_description():
         actions=[tracker_node],
     )
 
+    delay_controller_node = TimerAction(
+        period=1.0,
+        actions=[gimbal_controller_node],
+    )
 
     return LaunchDescription([
         declare_use_serial_cmd,
+        declare_debug_mode_cmd,
         # 启动相机和观测节点
-        # mv_camera_detector_container,
+        mv_camera_detector_container,
+        debug_dji_camera,
         debug_aruco_detector,
 
         # video_detector_container,
@@ -153,4 +184,5 @@ def generate_launch_description():
         # serial_node,
         delay_serial_node,
         delay_tracker_node,
+        delay_controller_node,
     ])
