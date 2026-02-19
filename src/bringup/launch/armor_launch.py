@@ -100,7 +100,7 @@ def generate_launch_description():
         output='screen',
         emulate_tty=True,
         parameters=[processor_params],
-        # arguments=['--ros-args', '--log-level', 'armor_tracker:=INFO'],
+        arguments=['--ros-args', '--log-level', 'armor_tracker:=DEBUG'],
     )
 
     gimbal_controller_node = Node(

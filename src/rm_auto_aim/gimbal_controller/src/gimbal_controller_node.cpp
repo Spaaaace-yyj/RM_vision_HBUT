@@ -33,6 +33,7 @@ GimbalControllerNode::GimbalControllerNode() : Node("GimbalControllerNode")
     //publisher
     control_pub_ = this->create_publisher<auto_aim_interfaces::msg::GimbalControl>("control/gimbal_control", 10);
     marker_array_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("debug/control_visuallize", 10);
+    debug_pub_ = this->create_publisher<auto_aim_interfaces::msg::DebugController>("debug/controller", 10);
 
     RCLCPP_INFO(this->get_logger(), "Gimbal Controller Init!");
 }
@@ -201,6 +202,11 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
     double send_yaw = -atan2(y, x);
     double send_is_fire = 0;
 
+    auto_aim_interfaces::msg::DebugController debug_msg;
+    debug_msg.send_pitch = send_pitch;
+    debug_msg.armor_x = x;
+    debug_msg.armor_y = y;
+    debug_msg.armor_z = z;
     // 对抬枪角度进行增益
     if(is_pitch_gain_){
         pitch_gain_factor_ = get_parameter("pitch_gain_factor").as_double();
@@ -208,12 +214,15 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
         Eigen::Vector3d xyz(x, y, z);
         double send_pitch_gain = coord_solver_->dynamicCalcPitchOffset(xyz);
         send_pitch_gain = send_pitch_gain * M_PI / 180.0;
+        debug_msg.send_pitch_gain = send_pitch_gain;
         if(pitch_gain_factor_ > 10.0)
             send_pitch_gain *= xyz.norm() * (pitch_gain_factor_ - 10.0);
         else
             send_pitch_gain *= pitch_gain_factor_;
         send_pitch += send_pitch_gain;
     }
+
+    debug_pub_->publish(debug_msg);
 
     //开火控制
     Eigen::Vector3d xyz(x, y, z);

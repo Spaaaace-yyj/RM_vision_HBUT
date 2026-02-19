@@ -56,7 +56,7 @@ void Tracker::update(const Armors::SharedPtr & armors_msg)
 {
   // KF predict
   Eigen::VectorXd ekf_prediction = ekf.predict();
-  RCLCPP_DEBUG(rclcpp::get_logger("armor_tracker"), "EKF predict");
+  // RCLCPP_DEBUG(rclcpp::get_logger("armor_tracker"), "EKF predict");
 
   bool matched = false;
   // Use KF prediction as default target state if no matched armor is found
@@ -102,7 +102,7 @@ void Tracker::update(const Armors::SharedPtr & armors_msg)
       double measured_yaw = orientationToYaw(tracked_armor.pose.orientation);
       measurement = Eigen::Vector4d(p.x, p.y, p.z, measured_yaw);
       target_state = ekf.update(measurement);
-      RCLCPP_DEBUG(rclcpp::get_logger("armor_tracker"), "EKF update");
+      // RCLCPP_DEBUG(rclcpp::get_logger("armor_tracker"), "EKF update");
     } else if (same_id_armors_count == 1 && yaw_diff > max_match_yaw_diff_) {
       // Matched armor not found, but there is only one armor with the same id
       // and yaw has jumped, take this case as the target is spinning and armor jumped
@@ -113,11 +113,11 @@ void Tracker::update(const Armors::SharedPtr & armors_msg)
       measurement = Eigen::Vector4d(p.x, p.y, p.z, measured_yaw);
       target_state = ekf.update(measurement);
       matched = true;
-      RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "[FORCE UPDATE] single armor");
+      RCLCPP_DEBUG(rclcpp::get_logger("armor_tracker"), "[FORCE UPDATE] single armor");
       handleArmorJump(same_id_armor);
     } else {
       // No matched armor found
-      RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "No matched armor found! Same armor num = %d", same_id_armors_count);
+      RCLCPP_DEBUG(rclcpp::get_logger("armor_tracker"), "No matched armor found! Same armor num = %d", same_id_armors_count);
     }
   }
 
@@ -203,7 +203,7 @@ void Tracker::handleArmorJump(const Armor & current_armor)
     target_state(4) = current_armor.pose.position.z;
     std::swap(target_state(8), another_r);
   }
-  RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "Armor jump!, max_match_distance = [%f]", max_match_distance_);
+  RCLCPP_DEBUG(rclcpp::get_logger("armor_tracker"), "Armor jump!, max_match_distance = [%f]", max_match_distance_);
 
   // If position difference is larger than max_match_distance_,
   // take this case as the ekf diverged, reset the state

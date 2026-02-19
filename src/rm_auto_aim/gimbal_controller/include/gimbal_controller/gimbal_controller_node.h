@@ -12,6 +12,7 @@
 #include "visualization_msgs/msg/marker_array.hpp"
 #include "auto_aim_interfaces/msg/gimbal_control.hpp"
 #include "auto_aim_interfaces/msg/target.hpp"
+#include "auto_aim_interfaces/msg/debug_controller.hpp"
 
 #include "coordsolver.h"
 
@@ -28,7 +29,7 @@ private:
     //publisher
     rclcpp::Publisher<auto_aim_interfaces::msg::GimbalControl>::SharedPtr control_pub_;
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_array_pub_;
-
+    rclcpp::Publisher<auto_aim_interfaces::msg::DebugController>::SharedPtr debug_pub_;
     //弹道解算器
     std::unique_ptr<CoordSolver> coord_solver_;
 

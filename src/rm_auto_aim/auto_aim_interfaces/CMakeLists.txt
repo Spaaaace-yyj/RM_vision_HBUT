@@ -24,6 +24,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/DebugSerial.msg"
   "msg/DebugTracker.msg"
   "msg/GimbalControl.msg"
+  "msg/DebugController.msg"
   DEPENDENCIES
     std_msgs
     geometry_msgs
