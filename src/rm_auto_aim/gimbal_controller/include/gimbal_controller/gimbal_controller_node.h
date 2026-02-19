@@ -13,6 +13,7 @@
 #include "auto_aim_interfaces/msg/gimbal_control.hpp"
 #include "auto_aim_interfaces/msg/target.hpp"
 #include "auto_aim_interfaces/msg/debug_controller.hpp"
+#include "auto_aim_interfaces/msg/gimbal_feed.hpp"
 
 #include "coordsolver.h"
 
@@ -24,8 +25,11 @@ public:
 private:
     void TargetCallback(auto_aim_interfaces::msg::Target::SharedPtr msg);
 
+    void GimbalFeedCallback(auto_aim_interfaces::msg::GimbalFeed::SharedPtr msg);
+
     //subscription
     rclcpp::Subscription<auto_aim_interfaces::msg::Target>::SharedPtr target_sub_;
+    rclcpp::Subscription<auto_aim_interfaces::msg::GimbalFeed>::SharedPtr gimbal_feed_sub_;
     //publisher
     rclcpp::Publisher<auto_aim_interfaces::msg::GimbalControl>::SharedPtr control_pub_;
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_array_pub_;

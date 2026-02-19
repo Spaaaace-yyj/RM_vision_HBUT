@@ -27,6 +27,8 @@
 // user
 #include "auto_aim_interfaces/msg/target.hpp"
 #include "auto_aim_interfaces/msg/debug_serial.hpp"
+#include "auto_aim_interfaces/msg/gimbal_control.hpp"
+#include "auto_aim_interfaces/msg/gimbal_feed.hpp"
 #include <lc_serial/cJSON.h>
 // #include <lc_serial/../../src/cJSON.c>
 #include <lc_serial/malloc.h>
@@ -45,7 +47,7 @@ private:
 
   void receiveData();
   
-  void sendData(auto_aim_interfaces::msg::Target::SharedPtr msg);
+  void sendData(auto_aim_interfaces::msg::GimbalControl::SharedPtr msg);
 
   void reopenPort();
 
@@ -58,11 +60,11 @@ private:
   std::unique_ptr<drivers::serial_driver::SerialPortConfig> device_config_;
   std::unique_ptr<drivers::serial_driver::SerialDriver> serial_driver_;
 
-  rclcpp::Subscription<auto_aim_interfaces::msg::Target>::SharedPtr target_sub_;
+  rclcpp::Subscription<auto_aim_interfaces::msg::GimbalControl>::SharedPtr gimbal_sub_;
 
   //debug_publisher
   rclcpp::Publisher<auto_aim_interfaces::msg::DebugSerial>::SharedPtr debug_serial_pub_;
-  
+  rclcpp::Publisher<auto_aim_interfaces::msg::GimbalFeed>::SharedPtr gimbal_feed_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_array_pub_;
 
   void setParam(const rclcpp::Parameter & param);

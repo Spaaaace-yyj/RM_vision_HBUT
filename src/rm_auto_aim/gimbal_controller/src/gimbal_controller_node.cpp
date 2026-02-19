@@ -30,6 +30,8 @@ GimbalControllerNode::GimbalControllerNode() : Node("GimbalControllerNode")
     //subscription
     target_sub_ = this->create_subscription<auto_aim_interfaces::msg::Target>(
       "/tracker/target", rclcpp::SensorDataQoS(), std::bind(&GimbalControllerNode::TargetCallback, this, std::placeholders::_1));
+    gimbal_feed_sub_ = this->create_subscription<auto_aim_interfaces::msg::GimbalFeed>(
+        "/gimbal_feed", rclcpp::SensorDataQoS(), std::bind(&GimbalControllerNode::GimbalFeedCallback, this, std::placeholders::_1));
     //publisher
     control_pub_ = this->create_publisher<auto_aim_interfaces::msg::GimbalControl>("control/gimbal_control", 10);
     marker_array_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("debug/control_visuallize", 10);
@@ -338,6 +340,12 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
     markers.markers.push_back(yaw_marker);
 
     marker_array_pub_->publish(markers);
+}
+
+void GimbalControllerNode::GimbalFeedCallback(auto_aim_interfaces::msg::GimbalFeed::SharedPtr msg)
+{
+    gimbal_yaw_ = msg->yaw;
+    gimbal_pitch_ = msg->pitch;
 }
 
 int main(int argc, char **argv) {
