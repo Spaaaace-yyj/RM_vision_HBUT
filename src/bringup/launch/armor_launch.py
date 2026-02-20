@@ -122,6 +122,17 @@ def generate_launch_description():
         arguments=['--ros-args', '--log-level', 'lc_serial:=INFO'],
     )
 
+    serial_test_node = Node(
+        package='lc_serial_test',
+        executable='lc_serial_test',
+        namespace='',
+        output='screen',
+        emulate_tty=True,
+        # parameters=[serial_params],
+        # condition=IfCondition(use_serial),
+        arguments=['--ros-args', '--log-level', 'serial_test:=INFO'],
+    )
+
     debug_aruco_detector = Node(
         package='aruco_detector',
         executable='aruco_detector',

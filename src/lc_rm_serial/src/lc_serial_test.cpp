@@ -7,10 +7,16 @@ LcSerialTestNode::LcSerialTestNode(const rclcpp::NodeOptions & options)
 {
 
     RCLCPP_INFO(this->get_logger(), "Starting serial node...");
-
+    //subscription
     cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
-        "/red_standard_robot1/cmd_vel", 1, std::bind(&LcSerialTestNode::navigation_callback, this, std::placeholders::_1));
-
+        "/red_standard_robot1/cmd_vel", 1, std::bind(&LcSerialTestNode::NavigationCallback, this, std::placeholders::_1));
+    gimbal_control_sub_ = this->create_subscription<auto_aim_interfaces::msg::GimbalControl>(
+        "control/gimbal_control", 1, std::bind(&LcSerialTestNode::GimbalControlCallback, this, std::placeholders::_1));
+    //publisher
+    gimbal_feed_pub_ =
+        this->create_publisher<auto_aim_interfaces::msg::GimbalFeed>("/gimbal_feed", 10);
+    joint_state_pub_ =
+          this->create_publisher<sensor_msgs::msg::JointState>("/joint_states", rclcpp::QoS(rclcpp::KeepLast(1)));
     using FlowControl = drivers::serial_driver::FlowControl;
     using Parity = drivers::serial_driver::Parity;
     using StopBits = drivers::serial_driver::StopBits;
@@ -31,15 +37,26 @@ LcSerialTestNode::LcSerialTestNode(const rclcpp::NodeOptions & options)
         }
     }catch (const std::exception& ex){
         RCLCPP_ERROR(rclcpp::get_logger("lc_serial"), "Error creating lc_serial port: %s - %s", device_name_.c_str(), ex.what());
-        throw ex;
+        // throw ex;
     }
 
 }
 
-void LcSerialTestNode::navigation_callback(const geometry_msgs::msg::Twist::SharedPtr msg){
-    RCLCPP_INFO(this->get_logger(), "(%f, %f, %f)", msg->linear.x, msg->linear.y, msg->linear.z);
+void LcSerialTestNode::NavigationCallback(const geometry_msgs::msg::Twist::SharedPtr msg){
+    RCLCPP_DEBUG(this->get_logger(), "(%f, %f, %f)", msg->linear.x, msg->linear.y, msg->linear.z);
+    send_data.v_x = msg->linear.x;
+    send_data.v_y = msg->linear.y;
+    send_data.w = msg->linear.z;
 }
 
+void LcSerialTestNode::GimbalControlCallback(const auto_aim_interfaces::msg::GimbalControl::SharedPtr msg)
+{
+    send_data.pitch = msg->pitch;
+    send_data.yaw = msg->yaw;
+    send_data.fire = static_cast<bool>(msg->is_fire);
+    send_data.tracing = static_cast<bool>(msg->tracing);
+    SendData();
+}
 
 void LcSerialTestNode::OpenPort(){
     try
@@ -72,23 +89,30 @@ void LcSerialTestNode::OpenPort(){
 void LcSerialTestNode::DecodeData(){
     uint16_t flags_register;
     get_protocol_info(buffer.data(), &flags_register, (uint8_t *)&recv_data.yaw);
-    // std::cout << "decode result:" << recv_data.yaw << ", " << recv_data.pitch << ", " << recv_data.row << std::endl;
 }
 
 void LcSerialTestNode::SendData(){
-    uint16_t flags_register;
+    uint16_t flags_register = 0x0000;
     uint16_t tx_len;
     uint8_t send_temp[64]= {0};
+    //标志位处理
+    setBit(flags_register, CAN_FIRE_BIT, send_data.fire);
+    setBit(flags_register, TRACING_STATE_BIT, send_data.tracing);
 
-    flags_register = 0x0001;
-
-    get_protocol_send_data(0x01, flags_register, &send_data.pitch, 2, send_temp, &tx_len);
+    get_protocol_send_data(0x01, flags_register, &send_data.pitch, 5, send_temp, &tx_len);
     std::vector<uint8_t> send_buffer(send_temp, send_temp + tx_len);
+    //debug
+    // for (size_t i = 0; i < send_buffer.size(); ++i)
+    // {
+    //     printf("%02X ", send_buffer[i]);
+    // }
+    //
+    // printf("\n");
     try {
         if(serial_driver_->port()->is_open()){
             serial_driver_->port()->send(send_buffer);
 
-            RCLCPP_INFO(this->get_logger(), "Send %d bytes", tx_len);
+            RCLCPP_DEBUG(this->get_logger(), "Send %d bytes", tx_len);
         }else{
             RCLCPP_ERROR(this->get_logger(), "Disconnect with Serial port! Try to reconnect....");
             OpenPort();
@@ -127,6 +151,13 @@ void LcSerialTestNode::receiveLoop()
             }else{
                 RCLCPP_WARN(this->get_logger(), "Can't find CMD_ID! skip this loop!");
             }
+            sensor_msgs::msg::JointState joint_state;
+            joint_state.header.stamp = this->now();
+            joint_state.name.push_back("gimbal_pitch_joint");
+            joint_state.name.push_back("gimbal_yaw_joint");
+            joint_state.position.push_back(recv_data.pitch);
+            joint_state.position.push_back(recv_data.yaw);
+            joint_state_pub_->publish(joint_state);
 
         }catch (const std::exception & e){
             RCLCPP_ERROR(this->get_logger(), "Serial read error: %s", e.what());
@@ -134,6 +165,20 @@ void LcSerialTestNode::receiveLoop()
             rclcpp::sleep_for(std::chrono::milliseconds(200));
         }
     }
+}
+
+void LcSerialTestNode::setBit(uint16_t& data, uint8_t n, bool state)
+{
+    if (n >= 16) return;
+    if (state)
+        data |= (1U << n);
+    else
+        data &= ~(1U << n);
+}
+
+bool LcSerialTestNode::getBit(uint16_t& data, uint8_t n)
+{
+    return (data >> n) & 1U;
 }
 
 LcSerialTestNode::~LcSerialTestNode()

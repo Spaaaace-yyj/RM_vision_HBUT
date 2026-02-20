@@ -13,80 +13,33 @@
 // ROS2
 #include <rclcpp/rclcpp.hpp>
 #include "geometry_msgs/msg/twist.hpp"
-
+#include <sensor_msgs/msg/joint_state.hpp>
+#include "auto_aim_interfaces/msg/gimbal_feed.hpp"
+#include "auto_aim_interfaces/msg/gimbal_control.hpp"
 // serial_driver
 #include <serial_driver/serial_driver.hpp>
 
 #define VISION_SEND_SIZE 36u
 
-typedef enum
-{
-	NO_FIRE = 0,
-	AUTO_FIRE = 1,
-	AUTO_AIM = 2
-} Fire_Mode_e;
+//16位标志位定义结构体
+#define CAN_FIRE_BIT 0
+#define	TRACING_STATE_BIT 1
 
-typedef enum
-{
-	NO_TARGET = 0,
-	TARGET_CONVERGING = 1,
-	READY_TO_FIRE = 2
-} Target_State_e;
-
-typedef enum
-{
-	NO_TARGET_NUM = 0,
-	HERO1 = 1,
-	ENGINEER2 = 2,
-	INFANTRY3 = 3,
-	INFANTRY4 = 4,
-	INFANTRY5 = 5,
-	OUTPOST = 6,
-	SENTRY = 7,
-	BASE = 8
-} Target_Type_e;
-
-typedef enum
-{
-	COLOR_NONE = 0,
-	COLOR_BLUE = 1,
-	COLOR_RED = 2,
-} Enemy_Color_e;
-
-typedef enum
-{
-	VISION_MODE_AIM = 0,
-	VISION_MODE_SMALL_BUFF = 1,
-	VISION_MODE_BIG_BUFF = 2
-} Work_Mode_e;
-
-typedef enum
-{
-	BULLET_SPEED_NONE = 0,
-	BIG_AMU_10 = 10,
-	SMALL_AMU_15 = 15,
-	BIG_AMU_16 = 16,
-	SMALL_AMU_18 = 18,
-	SMALL_AMU_30 = 30,
-} Bullet_Speed_e;
-
-//按照通信格式修改接收或发送结构体，保证和下位机通信一致
+//按照通信格式修改接收或发送结构体，保证和下位机通信一致，只有浮点位
 typedef struct
 {
-	Fire_Mode_e fire_mode;
-	Target_State_e target_state;
-	Target_Type_e target_type;
+	bool fire = false;
+	bool tracing = false;
 
 	float pitch;
 	float yaw;
+	float v_x;
+	float v_y;
+	float w;
 } Vision_Send_s;
 
 typedef struct
 {
-    Enemy_Color_e enemy_color;
-	Work_Mode_e work_mode;
-	Bullet_Speed_e bullet_speed;
-
 	float yaw;
 	float pitch;
     float row;
@@ -107,17 +60,35 @@ private:
 
 	void OpenPort();
 private:
-	void navigation_callback(const geometry_msgs::msg::Twist::SharedPtr msg);
+	void NavigationCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
+
+	void GimbalControlCallback(const auto_aim_interfaces::msg::GimbalControl::SharedPtr msg);
+
+	inline void setBit(uint16_t &data, uint8_t n, bool state);
+
+	inline bool getBit(uint16_t &data, uint8_t n);
 
 private:
     std::vector<uint8_t> buffer;
 
 
     Vision_Recv_s recv_data;
-	Vision_Send_s send_data;
+	Vision_Send_s send_data = {
+		.pitch = 0.0,
+		.yaw = 0.0,
+		.v_x = 0.0,
+		.v_y = 0.0,
+		.w = 0.0,
+	};
 
 private:
+	//subscription
 	rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_sub_;
+	rclcpp::Subscription<auto_aim_interfaces::msg::GimbalControl>::SharedPtr gimbal_control_sub_;
+	//publisher
+	rclcpp::Publisher<auto_aim_interfaces::msg::GimbalFeed>::SharedPtr gimbal_feed_pub_;
+	rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
+
 	geometry_msgs::msg::Twist latest_cmd_vel_;
 
 private:

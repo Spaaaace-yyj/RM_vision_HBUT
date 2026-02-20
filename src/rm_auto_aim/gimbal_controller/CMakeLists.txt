@@ -25,7 +25,7 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 endif()
 
-add_executable(gimbal_controller src/gimbal_controller_node.cpp src/coordsolver.cpp)
+add_executable(gimbal_controller src/gimbal_controller_node.cpp src/coordsolver.cpp src/sinScanner.cpp)
 ament_target_dependencies(gimbal_controller
         rclcpp
         Eigen3

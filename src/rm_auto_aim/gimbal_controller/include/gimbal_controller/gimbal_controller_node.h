@@ -16,6 +16,7 @@
 #include "auto_aim_interfaces/msg/gimbal_feed.hpp"
 
 #include "coordsolver.h"
+#include "sinScanner.h"
 
 class GimbalControllerNode : public rclcpp::Node
 {
@@ -34,8 +35,11 @@ private:
     rclcpp::Publisher<auto_aim_interfaces::msg::GimbalControl>::SharedPtr control_pub_;
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_array_pub_;
     rclcpp::Publisher<auto_aim_interfaces::msg::DebugController>::SharedPtr debug_pub_;
+
     //弹道解算器
     std::unique_ptr<CoordSolver> coord_solver_;
+    SineScanner* pitch_scanner_;
+
 
     //param
     double shoot_speed_;        //子弹飞行速度
@@ -57,8 +61,18 @@ private:
     bool is_track_;
     bool is_pitch_gain_;
 
+    bool sentray_mode_ = false;     //哨兵模式，丢失目标后云台来回扫描
+    double pitch_scan_range_;       //pitch扫描幅度，单位度
+    double pitch_scan_f_;           //pitch扫描频率，单位Hz
+    double yaw_scan_speed_;         //yaw旋转速度，单位度每秒
+    rclcpp::Time lost_time;
+
     double gimbal_yaw_ = 0;         //云台的yaw，pitch的偏差，用于判断是否开火
     double gimbal_pitch_ = 0;       //来源与imu数据
+
+    double send_pitch = 0;
+    double send_yaw = 0;
+    double send_is_fire = 0;
 };
 
 #endif //BUILD_GIMBAL_CONTROLLER_NODE_H
