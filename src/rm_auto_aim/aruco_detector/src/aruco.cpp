@@ -24,7 +24,7 @@ bool Aruco::solveArucoPnP(const cv::Mat camera_matrix, const cv::Mat dist_coeffs
     {
         return false;
     }
-    bool can_solve = cv::solvePnP(world_def_, image_point_, camera_matrix, dist_coeffs, rvec_cv, tvec_cv, false, cv::SOLVEPNP_IPPE_SQUARE);
+    bool can_solve = cv::solvePnP(world_def_, image_point_, camera_matrix, dist_coeffs, rvec_cv, tvec_cv, false, cv::SOLVEPNP_IPPE);
 
     if (can_solve)
     {
@@ -49,6 +49,9 @@ bool Aruco::solveArucoPnP(const cv::Mat camera_matrix, const cv::Mat dist_coeffs
         aruco_pos_cv_.position.x = world_location_.x;
         aruco_pos_cv_.position.y = world_location_.y;
         aruco_pos_cv_.position.z = world_location_.z;
+        // aruco_pos_cv_.position.x = tvec_cv[0];
+        // aruco_pos_cv_.position.y = tvec_cv[1];
+        // aruco_pos_cv_.position.z = tvec_cv[2];
 
         aruco_pos_cv_.orientation.x = q_cv.x();
         aruco_pos_cv_.orientation.y = q_cv.y();

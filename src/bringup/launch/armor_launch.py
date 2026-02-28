@@ -167,7 +167,7 @@ def generate_launch_description():
 
     delay_serial_node = TimerAction(
         period=1.0,
-        actions=[serial_node],
+        actions=[serial_test_node],
     )
 
     delay_tracker_node = TimerAction(
@@ -190,7 +190,7 @@ def generate_launch_description():
 
         # video_detector_container,
         robot_state_publisher,
-        joint_state_publisher,
+        # joint_state_publisher,
 
         # serial_node,
         delay_serial_node,

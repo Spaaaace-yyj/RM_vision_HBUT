@@ -95,7 +95,6 @@ void ArucoDetector::imageCallback(const sensor_msgs::msg::Image::SharedPtr msg)
     }
     armors_pub_->publish(armors);
 
-
     if (debug_msg)
     {
         visualization_msgs::msg::MarkerArray markers;

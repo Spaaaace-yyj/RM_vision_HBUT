@@ -43,7 +43,7 @@ LcSerialTestNode::LcSerialTestNode(const rclcpp::NodeOptions & options)
 }
 
 void LcSerialTestNode::NavigationCallback(const geometry_msgs::msg::Twist::SharedPtr msg){
-    RCLCPP_DEBUG(this->get_logger(), "(%f, %f, %f)", msg->linear.x, msg->linear.y, msg->linear.z);
+    RCLCPP_DEBUG(this->get_logger(), "navigation_msg(%f, %f, %f)", msg->linear.x, msg->linear.y, msg->linear.z);
     send_data.v_x = msg->linear.x;
     send_data.v_y = msg->linear.y;
     send_data.w = msg->linear.z;
@@ -51,9 +51,15 @@ void LcSerialTestNode::NavigationCallback(const geometry_msgs::msg::Twist::Share
 
 void LcSerialTestNode::GimbalControlCallback(const auto_aim_interfaces::msg::GimbalControl::SharedPtr msg)
 {
-    send_data.pitch = msg->pitch;
-    send_data.yaw = msg->yaw;
+    float send_pitch = msg->pitch * (180.0 / M_PI);
+    float send_yaw = msg->yaw * (180.0 / M_PI);
+    if (send_reverse_pitch) send_pitch *= -1;
+    if (send_reverse_yaw) send_yaw *= -1;
+
+    send_data.pitch = send_pitch;
+    send_data.yaw = send_yaw;
     send_data.fire = static_cast<bool>(msg->is_fire);
+    send_data.is_fire = msg->is_fire;
     send_data.tracing = static_cast<bool>(msg->tracing);
     SendData();
 }
@@ -151,13 +157,25 @@ void LcSerialTestNode::receiveLoop()
             }else{
                 RCLCPP_WARN(this->get_logger(), "Can't find CMD_ID! skip this loop!");
             }
+
+            float gimbal_pitch = recv_data.pitch * (M_PI / 180.0);
+            float gimbal_yaw = recv_data.yaw * (M_PI / 180.0);
+
+            if (recv_reverse_pitch) gimbal_pitch *= -1;
+            if (recv_reverse_yaw) gimbal_yaw *= -1;
+
             sensor_msgs::msg::JointState joint_state;
             joint_state.header.stamp = this->now();
             joint_state.name.push_back("gimbal_pitch_joint");
             joint_state.name.push_back("gimbal_yaw_joint");
-            joint_state.position.push_back(recv_data.pitch);
-            joint_state.position.push_back(recv_data.yaw);
+            joint_state.position.push_back(gimbal_pitch);
+            joint_state.position.push_back(gimbal_yaw);
             joint_state_pub_->publish(joint_state);
+
+            auto_aim_interfaces::msg::GimbalFeed gimbal_feed_msg;
+            gimbal_feed_msg.pitch = gimbal_pitch;
+            gimbal_feed_msg.yaw = gimbal_yaw;
+            gimbal_feed_pub_->publish(gimbal_feed_msg);
 
         }catch (const std::exception & e){
             RCLCPP_ERROR(this->get_logger(), "Serial read error: %s", e.what());

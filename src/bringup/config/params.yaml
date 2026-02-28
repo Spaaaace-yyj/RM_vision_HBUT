@@ -61,7 +61,7 @@
       sigma2_q_xyz: 0.01
       sigma2_q_yaw: 1.0
       sigma2_q_r: 20.0
-      sigma2_q_vyaw: 50.0
+      sigma2_q_vyaw: 10.0
       r_xyz_factor: 1e-4
       r_yaw: 5e-3
 
@@ -137,8 +137,8 @@
     pitch_gain_factor: 0.0
 
     sentray_mode: true
-    pitch_scan_range: 30.0
-    pitch_scan_f: 2.0
+    pitch_scan_range: 10.0
+    pitch_scan_f: 1.0
     yaw_scan_speed: 30.0
     
     # 龙格库塔法求解落点的迭代次数

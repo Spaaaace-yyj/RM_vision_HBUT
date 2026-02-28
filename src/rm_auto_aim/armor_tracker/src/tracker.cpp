@@ -171,7 +171,7 @@ void Tracker::initEKF(const Armor & a)
 
   // Set initial position at 0.2m behind the target
   target_state = Eigen::VectorXd::Zero(9);
-  double r = 0.14;  //0.26
+  double r = 0.26;  //0.26
   double xc = xa + r * cos(yaw);
   double yc = ya + r * sin(yaw);
   dz = 0, another_r = r;
@@ -231,12 +231,12 @@ double Tracker::orientationToYaw(const geometry_msgs::msg::Quaternion & q)
   tf2::fromMsg(q, tf_q);
   double roll, pitch, yaw;
   tf2::Matrix3x3(tf_q).getRPY(roll, pitch, yaw);
-  //TODO：需要用detector模块调式，看看完整形态视频是不是这个原因导致的，存疑
-  pitch *= -1;
+  //TODO：需要用detector模块调式，看看完整形态是不是这个原因导致的，存疑
+
   // Make yaw change continuous (-pi~pi to -inf~inf)
-  pitch = last_yaw_ + angles::shortest_angular_distance(last_yaw_, pitch);
-  last_yaw_ = pitch;
-  return pitch;
+  yaw = last_yaw_ + angles::shortest_angular_distance(last_yaw_, yaw);
+  last_yaw_ = yaw;
+  return yaw;
 }
 
 Eigen::Vector3d Tracker::getArmorPositionFromState(const Eigen::VectorXd & x)

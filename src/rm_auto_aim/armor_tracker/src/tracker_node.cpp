@@ -164,8 +164,8 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions & options)
   angular_v_marker_.color.g = 1.0;
   armor_marker_.ns = "armors";
   armor_marker_.type = visualization_msgs::msg::Marker::CUBE;
-  armor_marker_.scale.x = 0.01;
-  armor_marker_.scale.z = 0.03;  //0.125
+  armor_marker_.scale.x = 0.03; //厚度
+  armor_marker_.scale.z = 0.125;  //0.125
   armor_marker_.color.a = 1.0;
   armor_marker_.color.r = 1.0;
   marker_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("/tracker/marker", 10);
@@ -290,6 +290,7 @@ void ArmorTrackerNode::publishMarkers(const auto_aim_interfaces::msg::Target & t
     arrow_end.z += vz;
     linear_v_marker_.points.emplace_back(arrow_end);
 
+
     angular_v_marker_.action = visualization_msgs::msg::Marker::ADD;
     angular_v_marker_.points.clear();
     angular_v_marker_.points.emplace_back(position_marker_.pose.position);
@@ -298,7 +299,8 @@ void ArmorTrackerNode::publishMarkers(const auto_aim_interfaces::msg::Target & t
     angular_v_marker_.points.emplace_back(arrow_end);
 
     armor_marker_.action = visualization_msgs::msg::Marker::ADD;
-    armor_marker_.scale.y = tracker_->tracked_armor.type == "small" ? 0.03 : 0.23; //0.135
+    //宽度
+    armor_marker_.scale.y = tracker_->tracked_armor.type == "small" ? 0.135 : 0.23; //0.135
     bool is_current_pair = true;
     size_t a_n = target_msg.armors_num;
     geometry_msgs::msg::Point p_a;

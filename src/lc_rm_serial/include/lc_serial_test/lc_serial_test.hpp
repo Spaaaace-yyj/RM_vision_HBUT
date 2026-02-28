@@ -33,6 +33,7 @@ typedef struct
 
 	float pitch;
 	float yaw;
+	float is_fire;
 	float v_x;
 	float v_y;
 	float w;
@@ -100,6 +101,11 @@ private:
 
     std::thread receive_thread_;
 
+private:
+	bool send_reverse_pitch = false;
+	bool send_reverse_yaw = true;
+	bool recv_reverse_pitch = true;
+	bool recv_reverse_yaw = false;
 };
 
 #endif

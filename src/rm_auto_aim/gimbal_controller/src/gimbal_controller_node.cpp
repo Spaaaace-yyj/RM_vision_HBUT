@@ -285,9 +285,9 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
         shoot_point_marker.pose.position.x = points_a_pre[index].x;
         shoot_point_marker.pose.position.y = points_a_pre[index].y;
         shoot_point_marker.pose.position.z = points_a_pre[index].z;
-        shoot_point_marker.scale.x = 0.04;
-        shoot_point_marker.scale.y = 0.04;
-        shoot_point_marker.scale.z = 0.04;
+        shoot_point_marker.scale.x = 0.1;
+        shoot_point_marker.scale.y = 0.1;
+        shoot_point_marker.scale.z = 0.1;
         shoot_point_marker.color.r = 0.0;
         shoot_point_marker.color.g = 0.1;
         shoot_point_marker.color.b = 0.5;
@@ -304,9 +304,9 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
         target_armor_marker.pose.position.x = points_a[index].x;
         target_armor_marker.pose.position.y = points_a[index].y;
         target_armor_marker.pose.position.z = points_a[index].z;
-        target_armor_marker.scale.x = 0.02;
-        target_armor_marker.scale.y = 0.02;
-        target_armor_marker.scale.z = 0.02;
+        target_armor_marker.scale.x = 0.05;
+        target_armor_marker.scale.y = 0.05;
+        target_armor_marker.scale.z = 0.05;
         target_armor_marker.color.r = 1.0;
         target_armor_marker.color.g = 0.6;
         target_armor_marker.color.b = 0.0;
@@ -320,9 +320,9 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
         yaw_marker.id = 0;
         yaw_marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
         yaw_marker.action = visualization_msgs::msg::Marker::ADD;
-        yaw_marker.scale.x = 0.005;
-        yaw_marker.scale.y = 0.005;
-        yaw_marker.scale.z = 0.005;
+        yaw_marker.scale.x = 0.01;
+        yaw_marker.scale.y = 0.01;
+        yaw_marker.scale.z = 0.01;
         yaw_marker.color.r = 1.0;
         yaw_marker.color.g = 0.5;
         yaw_marker.color.b = 0.5;
@@ -358,8 +358,8 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
         control_msg.tracing = 0.0;
         if (sentray_mode_){
             control_msg.is_fire = 0;
-            control_msg.pitch = pitch_scanner_->getValue();
-            control_msg.yaw = send_yaw + yaw_scan_speed_ * (M_PI / 180.0) * dt;
+            control_msg.pitch = pitch_scanner_->getValue() + (-5.0 * (M_PI / 180.0));
+            // control_msg.yaw = send_yaw + yaw_scan_speed_ * (M_PI / 180.0) * dt;
             //TODO:这个IMU角度范围是360还是正负180？
             while (control_msg.yaw > M_PI)
                 control_msg.yaw -= 2.0 * M_PI;
