@@ -23,6 +23,7 @@
 #include <serial_driver/serial_driver.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
+#include "geometry_msgs/msg/twist.hpp"
 
 // user
 #include "auto_aim_interfaces/msg/target.hpp"
@@ -32,8 +33,6 @@
 #include <lc_serial/cJSON.h>
 // #include <lc_serial/../../src/cJSON.c>
 #include <lc_serial/malloc.h>
-#include <lc_serial/coordsolver.h>
-// #include <lc_serial/../../src/coordsolver.cpp>
 
 class SerialDriver : public rclcpp::Node
 {
@@ -48,10 +47,9 @@ private:
   void receiveData();
   
   void sendData(auto_aim_interfaces::msg::GimbalControl::SharedPtr msg);
+  void NavigationCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
 
   void reopenPort();
-
-  std::unique_ptr<CoordSolver> coord_solver_;
 
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
 
@@ -61,6 +59,7 @@ private:
   std::unique_ptr<drivers::serial_driver::SerialDriver> serial_driver_;
 
   rclcpp::Subscription<auto_aim_interfaces::msg::GimbalControl>::SharedPtr gimbal_sub_;
+	rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_sub_;
 
   //debug_publisher
   rclcpp::Publisher<auto_aim_interfaces::msg::DebugSerial>::SharedPtr debug_serial_pub_;
@@ -108,6 +107,17 @@ private:
 
   bool is_track;
   bool is_pitch_gain;
+
+  //导航消息
+  float v_x = 0;
+  float v_y = 0;
+  float w = 0;
+
+  //pitch/yaw翻转标志
+  bool reverse_send_pitch = false;
+  bool reverse_send_yaw = false;
+  bool reverse_recv_pitch = false;
+  bool reverse_recv_yaw = false;
 
 
   // Visualization marker publisher

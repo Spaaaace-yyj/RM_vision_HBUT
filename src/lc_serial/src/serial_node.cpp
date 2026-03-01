@@ -56,8 +56,9 @@ SerialDriver::SerialDriver(const rclcpp::NodeOptions& options)
 
   // Create Subscription
   gimbal_sub_ = this->create_subscription<auto_aim_interfaces::msg::GimbalControl>(
-      "/tracker/target", rclcpp::SensorDataQoS(), std::bind(&SerialDriver::sendData, this, std::placeholders::_1));
-
+      "control/gimbal_control", rclcpp::SensorDataQoS(), std::bind(&SerialDriver::sendData, this, std::placeholders::_1));
+  cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
+          "/red_standard_robot1/cmd_vel", 1, std::bind(&SerialDriver::NavigationCallback, this, std::placeholders::_1));
 }
 
 SerialDriver::~SerialDriver()
@@ -78,6 +79,14 @@ SerialDriver::~SerialDriver()
   }
 }
 
+void SerialDriver::NavigationCallback(const geometry_msgs::msg::Twist::SharedPtr msg)
+{
+  v_x = msg->linear.x;
+  v_y = msg->linear.y;
+  w = msg->linear.z;
+}
+
+
 /**
  * @brief 发送数据
  * @param msg
@@ -91,6 +100,9 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::GimbalControl::SharedPtr m
     double send_pitch = msg->pitch;
     double send_is_fire = msg->is_fire;
 
+    if (reverse_send_pitch) send_pitch *= -1;
+    if (reverse_send_yaw) send_yaw *= -1;
+
     /* 创建一个JSON数据对象(链表头结点) */
     char* str = NULL;
 
@@ -99,6 +111,9 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::GimbalControl::SharedPtr m
     cJSON_AddItemToArray(cjson_date, cJSON_CreateNumber(send_yaw));
     cJSON_AddItemToArray(cjson_date, cJSON_CreateNumber(send_pitch));
     cJSON_AddItemToArray(cjson_date, cJSON_CreateNumber(send_is_fire));
+    cJSON_AddItemToArray(cjson_date, cJSON_CreateNumber(v_x));
+    cJSON_AddItemToArray(cjson_date, cJSON_CreateNumber(v_y));
+
 
     // dat
     cJSON* cjson_dat = cJSON_CreateObject();
@@ -181,6 +196,9 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::GimbalControl::SharedPtr m
           continue;
         try
         {
+          if (reverse_recv_pitch) imu_pitch *= -1;
+          if (reverse_recv_yaw) imu_yaw *= -1;
+
           // 保存云台角度
           auto_aim_interfaces::msg::GimbalFeed gimbal_feed_msg;
           gimbal_feed_msg.pitch = imu_pitch;
