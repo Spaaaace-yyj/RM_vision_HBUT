@@ -39,8 +39,10 @@ SerialDriver::SerialDriver(const rclcpp::NodeOptions& options)
   catch (const std::exception& ex)
   {
     RCLCPP_ERROR(rclcpp::get_logger("lc_serial"), "Error creating lc_serial port: %s - %s", device_name_.c_str(), ex.what());
-    throw ex;
+    // throw ex;
+    // reopenPort();
   }
+
   
   // Visualization Marker Publisher
   // See http://wiki.ros.org/rviz/DisplayTypes/Marker
@@ -59,6 +61,42 @@ SerialDriver::SerialDriver(const rclcpp::NodeOptions& options)
       "control/gimbal_control", rclcpp::SensorDataQoS(), std::bind(&SerialDriver::sendData, this, std::placeholders::_1));
   cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
           "/red_standard_robot1/cmd_vel", 1, std::bind(&SerialDriver::NavigationCallback, this, std::placeholders::_1));
+
+  //看门狗
+  timer_ = this->create_wall_timer(
+              std::chrono::milliseconds(50),
+              std::bind(&SerialDriver::WatchDog, this));
+
+  auto now = std::chrono::steady_clock::now();
+  auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+      now.time_since_epoch()).count();
+
+  last_trigger_time_.store(ms);
+
+  timestamp_offset_ = declare_parameter<double>("timestamp_offset", 0);
+
+  char* str = NULL;
+
+  // 创建 "dat" 对象
+  cJSON* cjson_dat = cJSON_CreateObject();
+  cJSON_AddNumberToObject(cjson_dat, "imu_roll", 0);
+  cJSON_AddNumberToObject(cjson_dat, "imu_yaw", 1);
+  cJSON_AddNumberToObject(cjson_dat, "imu_pitch", 1);
+
+  // 创建 "send" 对象
+  cJSON* cjson_send = cJSON_CreateObject();
+  cJSON_AddStringToObject(cjson_send, "cmd", "wave_set");
+  cJSON_AddItemToObject(cjson_send, "dat", cjson_dat);
+
+  // 转化为待发送数据结构
+  str = cJSON_PrintUnformatted(cjson_send);
+  cJSON_Delete(cjson_send);
+
+  // 获取字符串长度并转换为字节数组
+  int str_len = std::strlen(str);
+  std::vector<uint8_t> data(str, str + str_len);
+  data.push_back('\n');  // 加上换行符
+  mcu_enable_data = data;
 }
 
 SerialDriver::~SerialDriver()
@@ -76,6 +114,33 @@ SerialDriver::~SerialDriver()
   if (owned_ctx_)
   {
     owned_ctx_->waitForExit();
+  }
+}
+
+void SerialDriver::WatchDog()
+{
+  RCLCPP_INFO(this->get_logger(), "WatchDog Checking......");
+
+  auto now = std::chrono::steady_clock::now();
+  auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+      now.time_since_epoch()).count();
+
+
+  if (now_ms - last_trigger_time_ < 1000)
+  {
+    RCLCPP_DEBUG(this->get_logger(), "Successfully get imu data!");
+    function_is_trigger = false;
+  }else
+  {
+    RCLCPP_ERROR(this->get_logger(), "Timeout! Try to send enable data! WaitingTime:%ld", now_ms - last_trigger_time_);
+    try
+    {
+      serial_driver_->port()->send(mcu_enable_data);
+    }catch (const std::exception& ex)
+    {
+      RCLCPP_ERROR(rclcpp::get_logger("lc_serial"), "Error while sending data: %s", ex.what());
+      reopenPort();
+    }
   }
 }
 
@@ -111,9 +176,9 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::GimbalControl::SharedPtr m
     cJSON_AddItemToArray(cjson_date, cJSON_CreateNumber(send_yaw));
     cJSON_AddItemToArray(cjson_date, cJSON_CreateNumber(send_pitch));
     cJSON_AddItemToArray(cjson_date, cJSON_CreateNumber(send_is_fire));
+    //烧饼导航消息，其他车可以把这两个删掉
     cJSON_AddItemToArray(cjson_date, cJSON_CreateNumber(v_x));
     cJSON_AddItemToArray(cjson_date, cJSON_CreateNumber(v_y));
-
 
     // dat
     cJSON* cjson_dat = cJSON_CreateObject();
@@ -147,6 +212,15 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::GimbalControl::SharedPtr m
   /**
    * @brief 不断接收电控数据
    */
+
+// {
+//   "cmd":"wave_set",
+//   "dat":{
+//     "imu_roll":0,
+//     "imu_yaw":1,
+//     "imu_pitch":1
+//    }
+// }
   void SerialDriver::receiveData()
   {
     std::vector<uint8_t> data;
@@ -171,7 +245,7 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::GimbalControl::SharedPtr m
         cJSON* root = cJSON_Parse((char*)data.data());
         if (!root)
         {
-          RCLCPP_ERROR(rclcpp::get_logger("lc_serial"), "receiveData Error before: [%s]", cJSON_GetErrorPtr());
+          RCLCPP_ERROR(rclcpp::get_logger("lc_serial"), "receiveData Error before1: [%s]", cJSON_GetErrorPtr());
           continue;
         }
         else
@@ -179,7 +253,7 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::GimbalControl::SharedPtr m
           cJSON* dat = cJSON_GetObjectItem(root, "dat");
           if (!dat)
           {
-            RCLCPP_ERROR(rclcpp::get_logger("lc_serial"), "receiveData Error before: [%s]", cJSON_GetErrorPtr());
+            RCLCPP_ERROR(rclcpp::get_logger("lc_serial"), "receiveData Error before2: [%s]", cJSON_GetErrorPtr());
             continue;
           }
           else
@@ -196,6 +270,7 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::GimbalControl::SharedPtr m
           continue;
         try
         {
+          function_is_trigger = true;
           if (reverse_recv_pitch) imu_pitch *= -1;
           if (reverse_recv_yaw) imu_yaw *= -1;
 
@@ -214,6 +289,13 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::GimbalControl::SharedPtr m
           joint_state.position.push_back(imu_pitch);
           joint_state.position.push_back(imu_yaw);
           joint_state_pub_->publish(joint_state);
+
+          //刷新看门狗时间
+          auto now = std::chrono::steady_clock::now();
+          auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+              now.time_since_epoch()).count();
+
+          last_trigger_time_.store(ms);
         }
         catch (const std::exception& ex)
         {
@@ -249,7 +331,7 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::GimbalControl::SharedPtr m
       if (rclcpp::ok())
       {
         rclcpp::sleep_for(std::chrono::seconds(1));
-        reopenPort();
+        // reopenPort();
       }
     }
   }

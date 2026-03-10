@@ -49,6 +49,8 @@ private:
   void sendData(auto_aim_interfaces::msg::GimbalControl::SharedPtr msg);
   void NavigationCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
 
+  void WatchDog();
+
   void reopenPort();
 
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
@@ -73,9 +75,14 @@ private:
   uint8_t previous_receive_speed_ = 0;
   rclcpp::AsyncParametersClient::SharedPtr detector_param_client_;
   rclcpp::AsyncParametersClient::SharedPtr serial_param_client_;
-  
 
   std::thread receive_thread_;
+
+  //串口接收看门狗程序
+  rclcpp::TimerBase::SharedPtr timer_;  // 定时器回调
+  std::atomic<int64_t> last_trigger_time_;
+  bool function_is_trigger = true;
+  std::vector<uint8_t> mcu_enable_data;
 
   double shoot_speed_;
   double shoot_delay_;

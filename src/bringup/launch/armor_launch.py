@@ -23,6 +23,7 @@ def generate_launch_description():
     declare_debug_mode_cmd = DeclareLaunchArgument(
         'debug_mode',
         default_value='False',
+        description='Use aruco detector'
     )
 
     # params file path
@@ -121,7 +122,7 @@ def generate_launch_description():
         condition=IfCondition(use_serial),
         arguments=['--ros-args', '--log-level', 'lc_serial:=INFO'],
     )
-
+    # 如果要这个通讯把下面的延迟启动替换
     serial_test_node = Node(
         package='lc_serial_test',
         executable='lc_serial_test',

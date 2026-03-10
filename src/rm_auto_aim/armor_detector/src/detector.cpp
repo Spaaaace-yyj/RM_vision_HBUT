@@ -73,6 +73,7 @@ std::vector<Light> Detector::findLights(const cv::Mat & rbg_img, const cv::Mat &
 
     if (isLight(light)) {
       auto rect = light.boundingRect();
+      //防止rect超出图像边界
       if (  // Avoid assertion failed
         0 <= rect.x && 0 <= rect.width && rect.x + rect.width <= rbg_img.cols && 0 <= rect.y &&
         0 <= rect.height && rect.y + rect.height <= rbg_img.rows) {
