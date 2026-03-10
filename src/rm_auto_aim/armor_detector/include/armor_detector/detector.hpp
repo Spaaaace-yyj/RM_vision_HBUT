@@ -49,8 +49,16 @@ public:
   std::vector<Armor> detect(const cv::Mat & input);
 
   cv::Mat preprocessImage(const cv::Mat & input);
-  std::vector<Light> findLights(const cv::Mat & rbg_img, const cv::Mat & binary_img);
+  std::vector<Light> findLights(const cv::Mat & rbg_img, const cv::Mat & binary_img, const cv::Mat & gray_img);
   std::vector<Armor> matchLights(const std::vector<Light> & lights);
+
+  cv::Point2f findLightCorner(
+    const cv::Mat& gray_img,
+    const cv::Point2f& center,
+    const cv::Point2f& axis,
+    float length,
+    float width,
+    int direction);
 
   // For debug usage
   cv::Mat getAllNumbersImage();
@@ -65,6 +73,7 @@ public:
 
   // Debug msgs
   cv::Mat binary_img;
+  cv::Mat gray_img;
   auto_aim_interfaces::msg::DebugLights debug_lights;
   auto_aim_interfaces::msg::DebugArmors debug_armors;
 

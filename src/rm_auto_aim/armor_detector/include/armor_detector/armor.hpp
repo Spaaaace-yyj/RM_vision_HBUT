@@ -38,6 +38,7 @@ struct Light : public cv::RotatedRect
 
   int color;
   cv::Point2f top, bottom;
+  cv::Point2f pca_top, pca_bottom;
   double length;
   double width;
   float tilt_angle;

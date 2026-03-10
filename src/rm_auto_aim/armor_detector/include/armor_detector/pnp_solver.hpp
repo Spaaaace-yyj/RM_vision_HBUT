@@ -27,6 +27,18 @@ public:
 
   // Calculate the distance between armor center and image center
   float calculateDistanceToCenter(const cv::Point2f & image_point);
+  //重投影误差
+  double reprojectionError(
+    const std::vector<cv::Point3f>& object_points,
+    const std::vector<cv::Point2f>& image_points,
+    const cv::Mat& rvec,
+    const cv::Mat& tvec);
+  //YAW优化
+  void optimizeYaw(
+    const std::vector<cv::Point3f>& object_points,
+    const std::vector<cv::Point2f>& image_points,
+    cv::Mat& rvec,
+    cv::Mat& tvec);
 
 private:
   cv::Mat camera_matrix_;

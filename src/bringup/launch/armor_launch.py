@@ -190,7 +190,7 @@ def generate_launch_description():
 
         # video_detector_container,
         robot_state_publisher,
-        # joint_state_publisher,
+        joint_state_publisher,
 
         # serial_node,
         delay_serial_node,
