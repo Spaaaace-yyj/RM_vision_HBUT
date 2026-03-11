@@ -39,7 +39,7 @@ def generate_launch_description():
     with open(params_file, 'r') as f:
         controller_params = yaml.safe_load(f)['/gimbal_controller']['ros__parameters']
     with open(params_file, 'r') as f:
-        serial_params = yaml.safe_load(f)['/lc_serial_node']['ros__parameters']
+        serial_params = yaml.safe_load(f)['/lc_serial_driver']['ros__parameters']
     with open(params_file, 'r') as f:
         video_params = yaml.safe_load(f)['/video_pub']['ros__parameters']
 
@@ -167,7 +167,7 @@ def generate_launch_description():
 
     delay_serial_node = TimerAction(
         period=1.0,
-        actions=[serial_node],
+        actions=[serial_test_node],
     )
 
     delay_tracker_node = TimerAction(
@@ -190,7 +190,7 @@ def generate_launch_description():
 
         # video_detector_container,
         robot_state_publisher,
-        joint_state_publisher,
+        # joint_state_publisher,
 
         # serial_node,
         delay_serial_node,

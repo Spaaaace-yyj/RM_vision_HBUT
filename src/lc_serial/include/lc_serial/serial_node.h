@@ -118,6 +118,8 @@ private:
   bool reverse_send_yaw = false;
   bool reverse_recv_pitch = false;
   bool reverse_recv_yaw = false;
+  bool reverse_recv_tf_pitch = false;
+  bool reverse_recv_tf_yaw = false;
 
 
   // Visualization marker publisher

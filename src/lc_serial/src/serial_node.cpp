@@ -16,6 +16,7 @@ SerialDriver::SerialDriver(const rclcpp::NodeOptions& options)
 {
   RCLCPP_INFO(rclcpp::get_logger("lc_serial"), "Start SerialDriver!");
 
+  timestamp_offset_ = declare_parameter<double>("timestamp_offset", 0.0);
   getParams();
   // Create Publisher
   debug_serial_pub_ = this->create_publisher<auto_aim_interfaces::msg::DebugSerial>(
@@ -196,6 +197,11 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::GimbalControl::SharedPtr m
           continue;
         try
         {
+          float imu_tf_pitch = imu_pitch;
+          float imu_tf_yaw = imu_yaw;
+
+          if (reverse_recv_tf_pitch) imu_tf_pitch *= -1;
+          if (reverse_recv_tf_yaw) imu_tf_yaw *= -1;
           if (reverse_recv_pitch) imu_pitch *= -1;
           if (reverse_recv_yaw) imu_yaw *= -1;
 
@@ -206,13 +212,14 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::GimbalControl::SharedPtr m
           gimbal_feed_pub_->publish(gimbal_feed_msg);
 
           sensor_msgs::msg::JointState joint_state;
+
           timestamp_offset_ = this->get_parameter("timestamp_offset").as_double();
           joint_state.header.stamp =
             this->now() + rclcpp::Duration::from_seconds(timestamp_offset_);
           joint_state.name.push_back("gimbal_pitch_joint");
           joint_state.name.push_back("gimbal_yaw_joint");
-          joint_state.position.push_back(imu_pitch);
-          joint_state.position.push_back(imu_yaw);
+          joint_state.position.push_back(imu_tf_pitch);
+          joint_state.position.push_back(imu_tf_yaw);
           joint_state_pub_->publish(joint_state);
         }
         catch (const std::exception& ex)

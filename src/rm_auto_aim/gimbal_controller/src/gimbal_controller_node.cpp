@@ -359,12 +359,12 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
         if (sentray_mode_){
             control_msg.is_fire = 0;
             control_msg.pitch = pitch_scanner_->getValue() + (-5.0 * (M_PI / 180.0));
-            // control_msg.yaw = send_yaw + yaw_scan_speed_ * (M_PI / 180.0) * dt;
+            control_msg.yaw = send_yaw + yaw_scan_speed_ * (M_PI / 180.0) * dt;
             //TODO:这个IMU角度范围是360还是正负180？
-            while (control_msg.yaw > M_PI)
+            while (control_msg.yaw - gimbal_yaw_ > M_PI)
                 control_msg.yaw -= 2.0 * M_PI;
 
-            while (control_msg.yaw < -M_PI)
+            while (control_msg.yaw - gimbal_yaw_ < -M_PI)
                 control_msg.yaw += 2.0 * M_PI;
         }
     }
