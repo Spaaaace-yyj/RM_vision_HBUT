@@ -58,12 +58,12 @@
     #   r_yaw: 5e-3
 
     ekf:
-      sigma2_q_xyz: 0.01
-      sigma2_q_yaw: 1.0
-      sigma2_q_r: 10.0
-      sigma2_q_vyaw: 0.2
-      r_xyz_factor: 1e-4
-      r_yaw: 5e-3
+      sigma2_q_xyz: 0.3
+      sigma2_q_yaw: 5.0
+      sigma2_q_r: 0.5
+      sigma2_q_vyaw: 0.5
+      r_xyz_factor: 0.08
+      r_yaw: 0.08
 
 
     # ekf:
@@ -78,7 +78,7 @@
       # max_match_distance: 0.25
       max_match_distance: 0.35
       # max_match_yaw_diff: 0.85
-      max_match_yaw_diff: 0.3
+      max_match_yaw_diff: 0.8
 
       tracking_thres: 5
       lost_time_thres: 1.0

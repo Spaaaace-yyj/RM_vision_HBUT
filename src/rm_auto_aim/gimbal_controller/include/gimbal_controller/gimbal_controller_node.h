@@ -40,6 +40,7 @@ private:
     std::unique_ptr<CoordSolver> coord_solver_;
     SineScanner* pitch_scanner_;
 
+    int lock_armor_idx_ = -1;
 
     //param
     double shoot_speed_;        //子弹飞行速度
