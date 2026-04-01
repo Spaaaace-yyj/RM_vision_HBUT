@@ -12,10 +12,61 @@ ros2 launch rosbridge_server rosbridge_websocket_launch.xml
 ros2 param load /armor_detector src/bringup/config/params.yaml
 ```
 ### 启动相机节点
-  //相机节点
-  ros2 launch mindvision_camera mv_launch.py
-  //相机标定
-	ros2 run camera_calibration cameracalibrator --size 7x10 --square 0.02000  image:=/image_raw
+相机节点
+
+```bash
+ros2 launch mindvision_camera mv_launch.py
+```
+
+相机标定
+
+```bash
+ros2 run camera_calibration cameracalibrator --size 7x10 --square 0.02000  image:=/image_raw
+```
+
+### 开机自启设置
+
+创建service文件
+
+```bash
+sudo vim /etc/systemd/system/rm_vision_launch.service
+```
+
+每次修改完service文件后需要执行
+
+```bash
+sudo systemctl daemon-reload
+```
+
+启动开机自启动
+
+```bash
+sudo systemctl enable rm_vision_launch.service
+```
+
+关闭开机自启动
+
+```bash
+sudo systemctl disable rm_vision_launch.service
+```
+
+开启服务
+
+```bash
+sudo systemctl start rm_vision_launch.service
+```
+
+停止服务
+
+```
+sudo systemctl stop rm_vision_launch.service
+```
+
+查看日志
+
+```bash
+journalctl -u rm_vision_launch.service -f
+```
 
 
 ## 编码规范：

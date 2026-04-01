@@ -6,8 +6,8 @@
   <!-- <xacro:arg name="xyz" default="0.05614 0 -0.033888" /> -->
   <!-- <xacro:arg name="xyz" default="0.08313 0 -0.05887" /> -->
   <!-- <xacro:arg name="xyz" default="0.05794 0 -0.03709" /> -->
-<!--  <xacro:arg name="xyz" default="0.0872 0.066 0.036" />-->
-   <xacro:arg name="xyz" default="0.0497 0.0 0.055" />
+  <xacro:arg name="xyz" default="0.0872 0.066 0.036" />
+<!--   <xacro:arg name="xyz" default="0.0497 0.0 0.055" />-->
 
   <xacro:arg name="rpy" default="0 0 0" />
 

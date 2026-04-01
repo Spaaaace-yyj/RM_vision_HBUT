@@ -9,6 +9,7 @@
 // STL
 #include <algorithm>
 #include <string>
+#include <vector>
 
 namespace rm_auto_aim
 {

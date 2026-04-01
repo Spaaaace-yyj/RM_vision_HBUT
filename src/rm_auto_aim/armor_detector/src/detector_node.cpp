@@ -86,6 +86,9 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
       cam_info_sub_.reset();
     });
 
+  //tf
+  tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
+  tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
   std::string transport_ = this->declare_parameter("subscribe_compressed", false) ? "compressed" : "raw";
   img_sub_ = std::make_shared<image_transport::Subscriber>(image_transport::create_subscription(
@@ -119,13 +122,14 @@ void ArmorDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstShared
       fps = 0;
       start_time = this->now();
     }
-    fps ++ ;
+    fps++;
   }
   auto armors = detectArmors(img_msg);
 
-
   if (pnp_solver_ != nullptr) {
     armors_msg_.header = armor_marker_.header = text_marker_.header = img_msg->header;
+    //todo:要把时间改回图像时间，使用系统时间仅供调试！！
+    armors_msg_.header.stamp = armor_marker_.header.stamp = text_marker_.header.stamp = this->get_clock()->now();;
     armors_msg_.armors.clear();
     marker_array_.markers.clear();
     armor_marker_.id = 0;
@@ -284,7 +288,6 @@ std::vector<Armor> ArmorDetectorNode::detectArmors(
     cv::putText(
       img, latency_s, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 255, 0), 2);
     result_img_pub_.publish(cv_bridge::CvImage(img_msg->header, "rgb8", img).toImageMsg());
-    
   }
 
   return armors;

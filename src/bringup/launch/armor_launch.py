@@ -15,6 +15,7 @@ def generate_launch_description():
 
     use_serial = LaunchConfiguration('use_serial')
     debug_mode = LaunchConfiguration('debug_mode')
+    ros_bag_mode = LaunchConfiguration('ros_bag_mode')
     
     declare_use_serial_cmd = DeclareLaunchArgument(
         'use_serial',
@@ -22,6 +23,10 @@ def generate_launch_description():
         description='Whether use serial port')
     declare_debug_mode_cmd = DeclareLaunchArgument(
         'debug_mode',
+        default_value='False',
+    )
+    declare_ros_bag_cmd = DeclareLaunchArgument(
+        'ros_bag_mode',
         default_value='False',
     )
 
@@ -67,6 +72,7 @@ def generate_launch_description():
                 package='mindvision_camera',
                 plugin='mindvision_camera::MVCameraNode',
                 name='camera_node',
+                condition=IfCondition(PythonExpression(["not ", ros_bag_mode])),
                 parameters=[camera_params, {'use_sensor_data_qos': False}],
                 extra_arguments=[{'use_intra_process_comms': True}]
             ),
@@ -129,7 +135,7 @@ def generate_launch_description():
         output='screen',
         emulate_tty=True,
         # parameters=[serial_params],
-        # condition=IfCondition(use_serial),
+        condition=IfCondition(use_serial),
         arguments=['--ros-args', '--log-level', 'serial_test:=INFO'],
     )
 
@@ -183,14 +189,15 @@ def generate_launch_description():
     return LaunchDescription([
         declare_use_serial_cmd,
         declare_debug_mode_cmd,
+        declare_ros_bag_cmd,
         # 启动相机和观测节点
         mv_camera_detector_container,
-        debug_dji_camera,
-        debug_aruco_detector,
+        # debug_dji_camera,
+        # debug_aruco_detector,
 
         # video_detector_container,
         robot_state_publisher,
-        # joint_state_publisher,
+        joint_state_publisher,
 
         # serial_node,
         delay_serial_node,

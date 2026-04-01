@@ -29,6 +29,8 @@
     save_video_width: 1280
     save_video_height: 1024
 
+    subscribe_compressed: true
+
     light:
       max_angle: 40.0
       max_ratio: 0.8
@@ -58,10 +60,10 @@
     #   r_yaw: 5e-3
 
     ekf:
-      sigma2_q_xyz: 0.3
-      sigma2_q_yaw: 5.0
-      sigma2_q_r: 0.5
-      sigma2_q_vyaw: 0.5
+      sigma2_q_xyz: 10.3
+      sigma2_q_yaw: 0.00001
+      sigma2_q_r: 30.0
+      sigma2_q_vyaw: 25.0
       r_xyz_factor: 0.08
       r_yaw: 0.08
 
@@ -76,7 +78,7 @@
 
     tracker:
       # max_match_distance: 0.25
-      max_match_distance: 0.35
+      max_match_distance: 0.5
       # max_match_yaw_diff: 0.85
       max_match_yaw_diff: 0.8
 
