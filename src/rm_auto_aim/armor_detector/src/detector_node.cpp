@@ -77,18 +77,18 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
       debug_ ? createDebugPublishers() : destroyDebugPublishers();
     });
 
+  //tf
+  tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
+  tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+
   cam_info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
     "/camera_info", rclcpp::SensorDataQoS(),
     [this](sensor_msgs::msg::CameraInfo::ConstSharedPtr camera_info) {
       cam_center_ = cv::Point2f(camera_info->k[2], camera_info->k[5]);
       cam_info_ = std::make_shared<sensor_msgs::msg::CameraInfo>(*camera_info);
-      pnp_solver_ = std::make_unique<PnPSolver>(camera_info->k, camera_info->d);
+      pnp_solver_ = std::make_unique<PnPSolver>(camera_info->k, camera_info->d, tf_buffer_);
       cam_info_sub_.reset();
     });
-
-  //tf
-  tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
-  tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
   std::string transport_ = this->declare_parameter("subscribe_compressed", false) ? "compressed" : "raw";
   img_sub_ = std::make_shared<image_transport::Subscriber>(image_transport::create_subscription(
@@ -106,10 +106,6 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
       save_video_path, cv::VideoWriter::fourcc('P', 'I', 'M', '1'), save_video_fps,
       cv::Size(save_video_width, save_video_height), true);
   }
-
-  // img_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
-  //   "/image_raw", rclcpp::SensorDataQoS(),
-  //   std::bind(&ArmorDetectorNode::imageCallback, this, std::placeholders::_1));
 }
 
 void ArmorDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr img_msg)
@@ -129,16 +125,16 @@ void ArmorDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstShared
   if (pnp_solver_ != nullptr) {
     armors_msg_.header = armor_marker_.header = text_marker_.header = img_msg->header;
     //todo:要把时间改回图像时间，使用系统时间仅供调试！！
-    armors_msg_.header.stamp = armor_marker_.header.stamp = text_marker_.header.stamp = this->get_clock()->now();;
+    // armors_msg_.header.stamp = armor_marker_.header.stamp = text_marker_.header.stamp = this->get_clock()->now();;
     armors_msg_.armors.clear();
     marker_array_.markers.clear();
     armor_marker_.id = 0;
     text_marker_.id = 0;
 
     auto_aim_interfaces::msg::Armor armor_msg;
-    for (const auto & armor : armors) {
+    for (auto & armor : armors) {
       cv::Mat rvec, tvec;
-      bool success = pnp_solver_->solvePnP(armor, rvec, tvec);
+      bool success = pnp_solver_->solvePnP(armor, rvec, tvec, img_msg->header.stamp);
       if (success) {
         // Fill basic info
         armor_msg.type = ARMOR_TYPE_STR[static_cast<int>(armor.type)];
@@ -148,6 +144,9 @@ void ArmorDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstShared
         armor_msg.pose.position.x = tvec.at<double>(0);
         armor_msg.pose.position.y = tvec.at<double>(1);
         armor_msg.pose.position.z = tvec.at<double>(2);
+        //debug
+        armor_msg.yaw_raw = armor.yaw_raw;
+        armor_msg.yaw_best = armor.best_yaw;
         // rvec to 3x3 rotation matrix
         cv::Mat rotation_matrix;
         cv::Rodrigues(rvec, rotation_matrix);

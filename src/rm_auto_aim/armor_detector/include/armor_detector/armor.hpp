@@ -70,6 +70,9 @@ struct Armor
   std::string number;
   float confidence;
   std::string classfication_result;
+
+  float yaw_raw;
+  float best_yaw;
 };
 
 }  // namespace rm_auto_aim
