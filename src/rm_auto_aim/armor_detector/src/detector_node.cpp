@@ -77,18 +77,19 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
       debug_ ? createDebugPublishers() : destroyDebugPublishers();
     });
 
+  //tf
+  tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
+  tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+
+
   cam_info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
     "/camera_info", rclcpp::SensorDataQoS(),
     [this](sensor_msgs::msg::CameraInfo::ConstSharedPtr camera_info) {
       cam_center_ = cv::Point2f(camera_info->k[2], camera_info->k[5]);
       cam_info_ = std::make_shared<sensor_msgs::msg::CameraInfo>(*camera_info);
-      pnp_solver_ = std::make_unique<PnPSolver>(camera_info->k, camera_info->d);
+      pnp_solver_ = std::make_unique<PnPSolver>(camera_info->k, camera_info->d, tf_buffer_);
       cam_info_sub_.reset();
     });
-
-  //tf
-  tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
-  tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
   std::string transport_ = this->declare_parameter("subscribe_compressed", false) ? "compressed" : "raw";
   img_sub_ = std::make_shared<image_transport::Subscriber>(image_transport::create_subscription(
@@ -129,7 +130,7 @@ void ArmorDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstShared
   if (pnp_solver_ != nullptr) {
     armors_msg_.header = armor_marker_.header = text_marker_.header = img_msg->header;
     //todo:要把时间改回图像时间，使用系统时间仅供调试！！
-    armors_msg_.header.stamp = armor_marker_.header.stamp = text_marker_.header.stamp = this->get_clock()->now();;
+    // armors_msg_.header.stamp = armor_marker_.header.stamp = text_marker_.header.stamp = this->get_clock()->now();;
     armors_msg_.armors.clear();
     marker_array_.markers.clear();
     armor_marker_.id = 0;
@@ -138,7 +139,7 @@ void ArmorDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstShared
     auto_aim_interfaces::msg::Armor armor_msg;
     for (const auto & armor : armors) {
       cv::Mat rvec, tvec;
-      bool success = pnp_solver_->solvePnP(armor, rvec, tvec);
+      bool success = pnp_solver_->solvePnP(armor, rvec, tvec, img_msg->header.stamp);
       if (success) {
         // Fill basic info
         armor_msg.type = ARMOR_TYPE_STR[static_cast<int>(armor.type)];

@@ -26,6 +26,7 @@ if(BUILD_TESTING)
 endif()
 
 add_executable(gimbal_controller src/gimbal_controller_node.cpp src/coordsolver.cpp src/sinScanner.cpp)
+target_link_libraries(gimbal_controller Eigen3::Eigen)
 ament_target_dependencies(gimbal_controller
         rclcpp
         Eigen3
