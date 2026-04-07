@@ -1,6 +1,6 @@
 # HBUT2025视觉代码
 
-## 编译命令
+## 编译
 
 ```shell
 rosdep install --from-paths src --ignore-src -r -y
@@ -67,6 +67,21 @@ sudo systemctl stop rm_vision_launch.service
 ```bash
 journalctl -u rm_vision_launch.service -f
 ```
+
+## 针对远距离观测yaw优化
+
+在8mm镜头，目标距离相机4-5m的时候，灯条在图像中所占的像素已经非常小。
+
+<img src="doc/截图 2026-03-10 12-57-13.png" alt="截图 2026-03-10 12-57-13" style="zoom:150%;" />
+
+PNP在这种尺度下，观测出来的目标tvec和rvec误差和波动非常大。故参考同济大学在2024年的自瞄开源，在当前的自瞄准框架下，采用降维重投影的方法重建yaw。经过测试5m下的观测yaw精度有所提升。
+
+<img src="doc/yaw_optimize_result.png" alt="yaw_optimize_result" style="zoom: 50%;" />
+
+3m目标旋转观测yaw
+
+<img src="doc/yaw_optimize_result_near.png" alt="yaw_optimize_result_near" style="zoom: 50%;" />
+
 
 
 ## 编码规范：
