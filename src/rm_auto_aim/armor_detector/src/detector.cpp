@@ -68,7 +68,11 @@ cv::Mat Detector::preprocessImage(const cv::Mat & rgb_img)
 
   float search_length = length * (SEARCH_END - SEARCH_START);
 
-  std::vector<cv::Point2f> candidates;
+  struct Candidate{
+    cv::Point2f point;
+    float diff;
+  };
+  std::vector<Candidate> candidates;
 
   // 灯条法线方向
   cv::Point2f normal(-axis.y, axis.x);
@@ -114,19 +118,33 @@ cv::Mat Detector::preprocessImage(const cv::Mat & rgb_img)
 
     if(found && max_diff > 10)
     {
-      candidates.push_back(best_point);
+      candidates.push_back({best_point,max_diff});
     }
   }
 
   if(candidates.empty())
     return cv::Point2f(-1,-1);
 
-  cv::Point2f mean(0,0);
+  std::sort(candidates.begin(),candidates.end(),[](const Candidate &a, const Candidate &b){
+    return a.diff > b.diff; });
 
-  for(auto&p:candidates)
-    mean+=p;
+  // 保留前 60%，至少 5 个
+  size_t keep = std::max<size_t>(5, candidates.size() * 6 / 10);
+  keep = std::min(keep, candidates.size());
 
-  return mean*(1.0f/candidates.size());
+  cv::Point2f weighted_sum(0.f, 0.f);
+  float weight_sum = 0.f;
+
+  for (size_t i = 0; i < keep; ++i)
+  {
+    weighted_sum += candidates[i].point * candidates[i].diff;
+    weight_sum += candidates[i].diff;
+  }
+
+  if (weight_sum < 1e-6f)
+    return cv::Point2f(-1, -1);
+
+  return weighted_sum * (1.0f / weight_sum);
 }
 
 std::vector<Light> Detector::findLights(const cv::Mat & rbg_img, const cv::Mat & binary_img, const cv::Mat & gray_img)
@@ -168,8 +186,16 @@ std::vector<Light> Detector::findLights(const cv::Mat & rbg_img, const cv::Mat &
         }
         // Sum of red pixels > sum of blue pixels ?
         light.color = sum_r > sum_b ? RED : BLUE;
-        //PCA优化
-        //构造点云
+        //使用 fitline 进行鲁棒拟合
+        cv::Vec4f line;
+        cv::fitLine(contour, line, cv::DIST_HUBER, 0, 0.01, 0.01);
+          
+        cv::Point2f axis(line[0], line[1]);
+        if (axis.y < 0){
+          axis = -axis;
+        }
+        axis /= cv::norm(axis);
+        //获取中心点（轮廓的质心）
         cv::Mat data(contour.size(), 2, CV_64F);
         for (size_t i = 0; i < contour.size(); i++)
         {
@@ -178,12 +204,6 @@ std::vector<Light> Detector::findLights(const cv::Mat & rbg_img, const cv::Mat &
         }
         cv::PCA pca (data, cv::Mat(), cv::PCA::DATA_AS_ROW);
 
-        cv::Point2f axis(pca.eigenvectors.at<double>(0,0), pca.eigenvectors.at<double>(0,1));
-        if(axis.y < 0)
-        {
-          axis = -axis;
-        }
-        axis /= cv::norm(axis);
         //投影当前边框的所有点到灯条方向上，寻找最大和最小的点
         double min_proj = 1e9;
         double max_proj = -1e9;
@@ -204,9 +224,10 @@ std::vector<Light> Detector::findLights(const cv::Mat & rbg_img, const cv::Mat &
         }
         cv::Point2f center(pca.mean.at<double>(0,0), pca.mean.at<double>(0,1));
         float length = max_proj - min_proj;
+        double center_proj = center.x * axis.x + center.y * axis.y;
 
-        cv::Point2f rough_top = center - axis * length * 0.5;
-        cv::Point2f rough_bottom = center + axis * length * 0.5;
+        cv::Point2f rough_top = center + axis * static_cast<float>(min_proj - center_proj);
+        cv::Point2f rough_bottom = center + axis * static_cast<float>(max_proj - center_proj);
 
         cv::Point2f top = findLightCorner(gray_img, center, axis, length, light.width, -1);
         cv::Point2f bottom = findLightCorner(gray_img, center, axis, length, light.width, 1);
