@@ -9,6 +9,7 @@
 // STL
 #include <algorithm>
 #include <string>
+#include <vector>
 
 namespace rm_auto_aim
 {
@@ -38,6 +39,7 @@ struct Light : public cv::RotatedRect
 
   int color;
   cv::Point2f top, bottom;
+  cv::Point2f pca_top, pca_bottom;
   double length;
   double width;
   float tilt_angle;
@@ -68,6 +70,9 @@ struct Armor
   std::string number;
   float confidence;
   std::string classfication_result;
+
+  float yaw_raw;
+  float best_yaw;
 };
 
 }  // namespace rm_auto_aim

@@ -1,6 +1,6 @@
 # HBUT2025视觉代码
 
-## 编译命令
+## 编译
 
 ```shell
 rosdep install --from-paths src --ignore-src -r -y
@@ -12,10 +12,76 @@ ros2 launch rosbridge_server rosbridge_websocket_launch.xml
 ros2 param load /armor_detector src/bringup/config/params.yaml
 ```
 ### 启动相机节点
-  //相机节点
-  ros2 launch mindvision_camera mv_launch.py
-  //相机标定
-	ros2 run camera_calibration cameracalibrator --size 7x10 --square 0.02000  image:=/image_raw
+相机节点
+
+```bash
+ros2 launch mindvision_camera mv_launch.py
+```
+
+相机标定
+
+```bash
+ros2 run camera_calibration cameracalibrator --size 7x10 --square 0.02000  image:=/image_raw
+```
+
+### 开机自启设置
+
+创建service文件
+
+```bash
+sudo vim /etc/systemd/system/rm_vision_launch.service
+```
+
+每次修改完service文件后需要执行
+
+```bash
+sudo systemctl daemon-reload
+```
+
+启动开机自启动
+
+```bash
+sudo systemctl enable rm_vision_launch.service
+```
+
+关闭开机自启动
+
+```bash
+sudo systemctl disable rm_vision_launch.service
+```
+
+开启服务
+
+```bash
+sudo systemctl start rm_vision_launch.service
+```
+
+停止服务
+
+```
+sudo systemctl stop rm_vision_launch.service
+```
+
+查看日志
+
+```bash
+journalctl -u rm_vision_launch.service -f
+```
+
+## 针对远距离观测yaw优化
+
+在8mm镜头，目标距离相机4-5m的时候，灯条在图像中所占的像素已经非常小。
+
+<img src="doc/截图 2026-03-10 12-57-13.png" alt="截图 2026-03-10 12-57-13" style="zoom:150%;" />
+
+PNP在这种尺度下，观测出来的目标tvec和rvec误差和波动非常大。故参考同济大学在2024年的自瞄开源，在当前的自瞄准框架下，采用降维重投影的方法重建yaw。经过测试5m下的观测yaw精度有所提升。
+
+<img src="doc/yaw_optimize_result.png" alt="yaw_optimize_result" style="zoom: 50%;" />
+
+3m目标旋转观测yaw
+
+<img src="doc/yaw_optimize_result_near.png" alt="yaw_optimize_result_near" style="zoom: 50%;" />
+
 
 
 ## 编码规范：

@@ -9,7 +9,7 @@ LcSerialTestNode::LcSerialTestNode(const rclcpp::NodeOptions & options)
     RCLCPP_INFO(this->get_logger(), "Starting serial node...");
     //subscription
     cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
-        "/red_standard_robot1/cmd_vel", 1, std::bind(&LcSerialTestNode::NavigationCallback, this, std::placeholders::_1));
+        "/cmd_vel", 1, std::bind(&LcSerialTestNode::NavigationCallback, this, std::placeholders::_1));
     gimbal_control_sub_ = this->create_subscription<auto_aim_interfaces::msg::GimbalControl>(
         "control/gimbal_control", 1, std::bind(&LcSerialTestNode::GimbalControlCallback, this, std::placeholders::_1));
     //publisher
@@ -17,6 +17,11 @@ LcSerialTestNode::LcSerialTestNode(const rclcpp::NodeOptions & options)
         this->create_publisher<auto_aim_interfaces::msg::GimbalFeed>("/gimbal_feed", 10);
     joint_state_pub_ =
           this->create_publisher<sensor_msgs::msg::JointState>("/joint_states", rclcpp::QoS(rclcpp::KeepLast(1)));
+    
+    serial_timer_ = this->create_wall_timer(std::chrono::milliseconds(10),
+        std::bind(&LcSerialTestNode::SendData, this));
+
+    
     using FlowControl = drivers::serial_driver::FlowControl;
     using Parity = drivers::serial_driver::Parity;
     using StopBits = drivers::serial_driver::StopBits;
@@ -44,8 +49,8 @@ LcSerialTestNode::LcSerialTestNode(const rclcpp::NodeOptions & options)
 
 void LcSerialTestNode::NavigationCallback(const geometry_msgs::msg::Twist::SharedPtr msg){
     RCLCPP_DEBUG(this->get_logger(), "navigation_msg(%f, %f, %f)", msg->linear.x, msg->linear.y, msg->linear.z);
-    send_data.v_x = msg->linear.x;
-    send_data.v_y = msg->linear.y;
+    send_data.v_x = -msg->linear.y * 10;
+    send_data.v_y = msg->linear.x * 10;
     send_data.w = msg->linear.z;
 }
 
@@ -61,7 +66,7 @@ void LcSerialTestNode::GimbalControlCallback(const auto_aim_interfaces::msg::Gim
     send_data.fire = static_cast<bool>(msg->is_fire);
     send_data.is_fire = msg->is_fire;
     send_data.tracing = static_cast<bool>(msg->tracing);
-    SendData();
+    // SendData();
 }
 
 void LcSerialTestNode::OpenPort(){
@@ -161,16 +166,21 @@ void LcSerialTestNode::receiveLoop()
             float gimbal_pitch = recv_data.pitch * (M_PI / 180.0);
             float gimbal_yaw = recv_data.yaw * (M_PI / 180.0);
 
-            if (recv_reverse_pitch) gimbal_pitch *= -1;
-            if (recv_reverse_yaw) gimbal_yaw *= -1;
+            float gimbal_tf_pitch = gimbal_pitch;
+            float gimbal_tf_yaw = gimbal_yaw;
+            if (recv_tf_reverse_pitch) gimbal_tf_pitch *= -1;
+            if (recv_tf_reverse_yaw) gimbal_tf_yaw *= -1;
 
             sensor_msgs::msg::JointState joint_state;
             joint_state.header.stamp = this->now();
             joint_state.name.push_back("gimbal_pitch_joint");
             joint_state.name.push_back("gimbal_yaw_joint");
-            joint_state.position.push_back(gimbal_pitch);
-            joint_state.position.push_back(gimbal_yaw);
+            joint_state.position.push_back(gimbal_tf_pitch);
+            joint_state.position.push_back(gimbal_tf_yaw);
             joint_state_pub_->publish(joint_state);
+
+            if (recv_reverse_pitch) gimbal_pitch *= -1;
+            if (recv_reverse_yaw) gimbal_yaw *= -1;
 
             auto_aim_interfaces::msg::GimbalFeed gimbal_feed_msg;
             gimbal_feed_msg.pitch = gimbal_pitch;

@@ -218,7 +218,7 @@ void ArmorTrackerNode::armorsCallback(const auto_aim_interfaces::msg::Armors::Sh
     tracker_->lost_thres = static_cast<int>(lost_time_thres_ / dt_);
 
     //自适应半径过程噪声协方差
-    s2qr_ = computeQr(tracker_->target_state(7));
+    // s2qr_ = computeQr(tracker_->target_state(7));
 
     tracker_->update(armors_msg);
     // Publish Info

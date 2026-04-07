@@ -79,6 +79,7 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
     double v_yaw = msg->v_yaw;
     double armor_witch = msg->type == "large" ? 0.225 : 0.135 ;
     size_t a_n = msg->armors_num;
+    // if (!msg->tracking) lock_armor_idx_ = -1;
 
     sentray_mode_ = get_parameter("sentray_mode").as_bool();
     if (a_n > 0)
@@ -171,7 +172,7 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
         }
 
         // 匹配最优装甲板
-        // 按照v_yaw，优先选择最接近面朝摄像头的装甲板，面朝摄像头的装甲板的yaw为0，但需要考虑一定的阈值
+        // 按照v_yaw，优先选择最接近面朝摄像头的装甲板，面朝摄像头的装甲板的yaw为0
         // 如果最接近0的yaw大于另一个阈值，则认为没有最优装甲板，不进行射击
         double target_yaw = yaw;
         if (is_track_)
@@ -199,6 +200,34 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
                 index = i;
             }
         }
+
+        double enter_angle = 40.0 * M_PI / 180.0;
+        double leave_angle = 70.0 * M_PI / 180.0;
+        if (lock_armor_idx_ == -1)
+        {
+            // 未锁定
+            if (min_yaw < enter_angle)
+            {
+                lock_armor_idx_ = index;
+            }
+        }
+        else
+        {
+            // 已锁定
+            double lock_yaw = target_yaw + lock_armor_idx_ * (2 * M_PI / a_n);
+
+            double delta_to_0 = fabs(lock_yaw - c_yaw);
+            double delta_to_2pi = fabs(lock_yaw - (c_yaw + 2 * M_PI));
+            double lock_delta = std::min(delta_to_0, delta_to_2pi);
+
+            if (lock_delta > leave_angle)
+            {
+                lock_armor_idx_ = -1;
+            }
+        }
+
+        if (lock_armor_idx_ != -1)
+            index = lock_armor_idx_;
 
         //击打装甲板的世界坐标
         double x, y, z;
@@ -359,12 +388,12 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
         if (sentray_mode_){
             control_msg.is_fire = 0;
             control_msg.pitch = pitch_scanner_->getValue() + (-5.0 * (M_PI / 180.0));
-            // control_msg.yaw = send_yaw + yaw_scan_speed_ * (M_PI / 180.0) * dt;
+            control_msg.yaw = send_yaw + yaw_scan_speed_ * (M_PI / 180.0) * dt;
             //TODO:这个IMU角度范围是360还是正负180？
-            while (control_msg.yaw > M_PI)
+            while (control_msg.yaw - gimbal_yaw_ > M_PI)
                 control_msg.yaw -= 2.0 * M_PI;
 
-            while (control_msg.yaw < -M_PI)
+            while (control_msg.yaw - gimbal_yaw_ < -M_PI)
                 control_msg.yaw += 2.0 * M_PI;
         }
     }

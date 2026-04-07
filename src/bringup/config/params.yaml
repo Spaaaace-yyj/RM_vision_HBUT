@@ -5,7 +5,7 @@
     camera_name: mv_camera
     frame_id: "camera_optical_frame"
     # exposure_time: 4000
-    exposure_time: 8000
+    exposure_time: 5000
     flip_image: false
     gamma: 100
     rgb_gain:
@@ -28,7 +28,9 @@
     save_video_fps: 100
     save_video_width: 1280
     save_video_height: 1024
-    
+
+    subscribe_compressed: true
+
     light:
       max_angle: 40.0
       max_ratio: 0.8
@@ -43,7 +45,7 @@
     #   min_large_center_distance: 3.2
     #   max_small_center_distance: 3.2
     #   min_small_center_distance: 0.8
-    
+
 /armor_tracker:
   ros__parameters:
     target_frame: odom
@@ -58,12 +60,12 @@
     #   r_yaw: 5e-3
 
     ekf:
-      sigma2_q_xyz: 0.01
-      sigma2_q_yaw: 1.0
-      sigma2_q_r: 20.0
-      sigma2_q_vyaw: 10.0
-      r_xyz_factor: 1e-4
-      r_yaw: 5e-3
+      sigma2_q_xyz: 10.3
+      sigma2_q_yaw: 0.00001
+      sigma2_q_r: 30.0
+      sigma2_q_vyaw: 25.0
+      r_xyz_factor: 0.08
+      r_yaw: 0.08
 
 
     # ekf:
@@ -76,9 +78,9 @@
 
     tracker:
       # max_match_distance: 0.25
-      max_match_distance: 0.35
+      max_match_distance: 0.5
       # max_match_yaw_diff: 0.85
-      max_match_yaw_diff: 0.3
+      max_match_yaw_diff: 0.8
 
       tracking_thres: 5
       lost_time_thres: 1.0
@@ -106,10 +108,10 @@
     model_path: 20230415.trt
     # 0 for blue, 1 for red
     detect_color: 1
-    prob_threshold: 0.25 
+    prob_threshold: 0.25
     nms_threshold: 0.45
 
-/lc_serial_node:
+/lc_serial_driver:
   ros__parameters:
     device_name: /dev/ttyACM0
     baud_rate: 115200
@@ -119,14 +121,14 @@
 
 /gimbal_controller:
   ros__parameters:
-    
+
     is_pitch_gain: true
     is_track: true
-    shoot_delay: 0.0
-    shoot_delay_spin_: 0.1
+    shoot_delay: 0.05
+    shoot_delay_spin_: 0.15
     gimbal_delay: 0.1
     max_move_yaw: 90.0
-    fire_angle_threshold: 2.0
+    fire_angle_threshold: 0.5
     timestamp_offset: 0.005
     # shoot_speed: 14.4
     shoot_speed: 28.5
@@ -134,12 +136,12 @@
     x_gain: 0.0
     y_gain: 0.0
     z_gain: 0.0
-    pitch_gain_factor: 0.0
+    pitch_gain_factor: 0.02
 
-    sentray_mode: true
+    sentray_mode: false
     pitch_scan_range: 10.0
-    pitch_scan_f: 1.0
-    yaw_scan_speed: 30.0
+    pitch_scan_f: 2.0
+    yaw_scan_speed: 70.0
     
     # 龙格库塔法求解落点的迭代次数
     R_K_iter: 50

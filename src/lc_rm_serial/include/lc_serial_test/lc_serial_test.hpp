@@ -93,6 +93,7 @@ private:
 	geometry_msgs::msg::Twist latest_cmd_vel_;
 
 private:
+  	rclcpp::TimerBase::SharedPtr serial_timer_;
 
     std::unique_ptr<IoContext> owned_ctx_;
     std::string device_name_;
@@ -104,8 +105,10 @@ private:
 private:
 	bool send_reverse_pitch = false;
 	bool send_reverse_yaw = true;
-	bool recv_reverse_pitch = true;
-	bool recv_reverse_yaw = false;
+	bool recv_reverse_pitch = false;
+	bool recv_reverse_yaw = true;
+	bool recv_tf_reverse_pitch = true;
+	bool recv_tf_reverse_yaw = false;
 };
 
 #endif

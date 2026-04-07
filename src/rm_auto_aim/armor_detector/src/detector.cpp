@@ -28,7 +28,7 @@ Detector::Detector(
 std::vector<Armor> Detector::detect(const cv::Mat & input)
 {
   binary_img = preprocessImage(input);
-  lights_ = findLights(input, binary_img);
+  lights_ = findLights(input, binary_img, gray_img);
   armors_ = matchLights(lights_);
 
   if (!armors_.empty()) {
@@ -42,7 +42,7 @@ std::vector<Armor> Detector::detect(const cv::Mat & input)
 cv::Mat Detector::preprocessImage(const cv::Mat & rgb_img)
 {
   //转换灰度图
-  cv::Mat gray_img;
+  // cv::Mat gray_img;
   cv::cvtColor(rgb_img, gray_img, cv::COLOR_RGB2GRAY);
 
   //二值化
@@ -52,13 +52,109 @@ cv::Mat Detector::preprocessImage(const cv::Mat & rgb_img)
   return binary_img;
 }
 
-std::vector<Light> Detector::findLights(const cv::Mat & rbg_img, const cv::Mat & binary_img)
+  cv::Point2f Detector::findLightCorner(
+      const cv::Mat& gray_img,
+      const cv::Point2f& center,
+      const cv::Point2f& axis,
+      float length,
+      float width,
+      int direction)
+{
+  const float SEARCH_START = 0.4f;
+  const float SEARCH_END = 0.6f;
+
+  float dx = axis.x * direction;
+  float dy = axis.y * direction;
+
+  float search_length = length * (SEARCH_END - SEARCH_START);
+
+  struct Candidate{
+    cv::Point2f point;
+    float diff;
+  };
+  std::vector<Candidate> candidates;
+
+  // 灯条法线方向
+  cv::Point2f normal(-axis.y, axis.x);
+
+  int half_width = std::max(2, (int)(width * 0.5f));
+
+  for(int offset=-half_width; offset<=half_width; offset++)
+  {
+    cv::Point2f start(
+        center.x + length * SEARCH_START * dx + normal.x * offset,
+        center.y + length * SEARCH_START * dy + normal.y * offset
+    );
+
+    float max_diff = 0;
+    cv::Point2f best_point;
+    bool found = false;
+
+    for(float step=0; step<search_length; step+=1.0f)
+    {
+      cv::Point2f cur = start + cv::Point2f(dx,dy)*step;
+
+      int x = (int)cur.x;
+      int y = (int)cur.y;
+
+      if(x<=1 || y<=1 || x>=gray_img.cols-2 || y>=gray_img.rows-2)
+        break;
+
+      int prev = gray_img.at<uchar>(
+          (int)(cur.y - dy),
+          (int)(cur.x - dx));
+
+      int curv = gray_img.at<uchar>(y,x);
+
+      float diff = prev - curv;
+
+      if(diff > max_diff)
+      {
+        max_diff = diff;
+        best_point = cur - cv::Point2f(dx,dy);
+        found = true;
+      }
+    }
+
+    if(found && max_diff > 10)
+    {
+      candidates.push_back({best_point,max_diff});
+    }
+  }
+
+  if(candidates.empty())
+    return cv::Point2f(-1,-1);
+
+  std::sort(candidates.begin(),candidates.end(),[](const Candidate &a, const Candidate &b){
+    return a.diff > b.diff; });
+
+  // 保留前 60%，至少 5 个
+  size_t keep = std::max<size_t>(5, candidates.size() * 6 / 10);
+  keep = std::min(keep, candidates.size());
+
+  cv::Point2f weighted_sum(0.f, 0.f);
+  float weight_sum = 0.f;
+
+  for (size_t i = 0; i < keep; ++i)
+  {
+    weighted_sum += candidates[i].point * candidates[i].diff;
+    weight_sum += candidates[i].diff;
+  }
+
+  if (weight_sum < 1e-6f)
+    return cv::Point2f(-1, -1);
+
+  return weighted_sum * (1.0f / weight_sum);
+}
+
+std::vector<Light> Detector::findLights(const cv::Mat & rbg_img, const cv::Mat & binary_img, const cv::Mat & gray_img)
 {
   using std::vector;
   vector<vector<cv::Point>> contours;
   vector<cv::Vec4i> hierarchy;
   //根据二值化后图像找边框
-  cv::findContours(binary_img, contours, hierarchy, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+  cv::findContours(binary_img, contours, hierarchy, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
+  cv::GaussianBlur(gray_img, gray_img, cv::Size(3,3), 0);
 
   vector<Light> lights;
   this->debug_lights.data.clear();
@@ -75,8 +171,8 @@ std::vector<Light> Detector::findLights(const cv::Mat & rbg_img, const cv::Mat &
       auto rect = light.boundingRect();
       //防止rect超出图像边界
       if (  // Avoid assertion failed
-        0 <= rect.x && 0 <= rect.width && rect.x + rect.width <= rbg_img.cols && 0 <= rect.y &&
-        0 <= rect.height && rect.y + rect.height <= rbg_img.rows) {
+      0 <= rect.x && 0 <= rect.width && rect.x + rect.width <= rbg_img.cols && 0 <= rect.y &&
+      0 <= rect.height && rect.y + rect.height <= rbg_img.rows) {
         int sum_r = 0, sum_b = 0;
         auto roi = rbg_img(rect);
         // Iterate through the ROI
@@ -91,6 +187,61 @@ std::vector<Light> Detector::findLights(const cv::Mat & rbg_img, const cv::Mat &
         }
         // Sum of red pixels > sum of blue pixels ?
         light.color = sum_r > sum_b ? RED : BLUE;
+        //使用 fitline 进行鲁棒拟合
+        cv::Vec4f line;
+        cv::fitLine(contour, line, cv::DIST_HUBER, 0, 0.01, 0.01);
+          
+        cv::Point2f axis(line[0], line[1]);
+        if (axis.y < 0){
+          axis = -axis;
+        }
+        axis /= cv::norm(axis);
+        //获取中心点（轮廓的质心）
+        cv::Mat data(contour.size(), 2, CV_64F);
+        for (size_t i = 0; i < contour.size(); i++)
+        {
+          data.at<double>(i,0) = contour[i].x;
+          data.at<double>(i,1) = contour[i].y;
+        }
+        cv::PCA pca (data, cv::Mat(), cv::PCA::DATA_AS_ROW);
+
+        //投影当前边框的所有点到灯条方向上，寻找最大和最小的点
+        double min_proj = 1e9;
+        double max_proj = -1e9;
+
+        for(auto &p : contour)
+        {
+          double proj = p.x * axis.x + p.y * axis.y;
+
+          if(proj < min_proj)
+          {
+            min_proj = proj;
+          }
+
+          if(proj > max_proj)
+          {
+            max_proj = proj;
+          }
+        }
+        cv::Point2f center(pca.mean.at<double>(0,0), pca.mean.at<double>(0,1));
+        float length = max_proj - min_proj;
+        double center_proj = center.x * axis.x + center.y * axis.y;
+
+        cv::Point2f rough_top = center + axis * static_cast<float>(min_proj - center_proj);
+        cv::Point2f rough_bottom = center + axis * static_cast<float>(max_proj - center_proj);
+
+        cv::Point2f top = findLightCorner(gray_img, center, axis, length, light.width, -1);
+        cv::Point2f bottom = findLightCorner(gray_img, center, axis, length, light.width, 1);
+
+        if(top.x < 0)
+          top = rough_top;
+        if(bottom.x < 0)
+          bottom = rough_bottom;
+
+        light.top = top;
+        light.bottom = bottom;
+        // light.top = rough_top;
+        // light.bottom = rough_bottom;
         lights.emplace_back(light);
       }
     }
@@ -232,6 +383,9 @@ void Detector::drawResults(cv::Mat & img)
   for (const auto & light : lights_) {
     cv::circle(img, light.top, 3, cv::Scalar(255, 255, 255), 1);
     cv::circle(img, light.bottom, 3, cv::Scalar(255, 255, 255), 1);
+    cv::circle(img, light.pca_top, 2, cv::Scalar(255, 0, 0), 1);
+    cv::circle(img, light.pca_bottom, 2, cv::Scalar(255, 0, 0), 1);
+
     auto line_color = light.color == RED ? cv::Scalar(255, 255, 0) : cv::Scalar(255, 0, 255);
     cv::line(img, light.top, light.bottom, line_color, 1);
   }
