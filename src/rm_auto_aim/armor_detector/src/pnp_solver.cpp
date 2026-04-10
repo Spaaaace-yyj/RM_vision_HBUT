@@ -85,10 +85,14 @@ void PnPSolver::updateTransform(const rclcpp::Time& time)
 
     try
     {
+        // tf = tf_buffer_->lookupTransform(
+        //     "odom",
+        //     "camera_optical_frame",
+        //     time);
         tf = tf_buffer_->lookupTransform(
-            "odom",
-            "camera_optical_frame",
-            time);
+        "odom",
+        "camera_optical_frame",
+        tf2::TimePointZero);
     }
     catch (tf2::TransformException &ex)
     {
@@ -156,6 +160,19 @@ double PnPSolver::computeYawError(double yaw,
     return reprojectionError(object_points, image_points, rvec, tvec);
 }
 
+double PnPSolver::computeDepthError(
+    double depth,
+    double yaw,
+    const Eigen::Vector3d& dir_cam,
+    const std::vector<cv::Point3f>& object_points,
+    const std::vector<cv::Point2f>& image_points)
+{
+    Eigen::Vector3d t_cam = dir_cam * depth;
+    Eigen::Vector3d t_world = R_camera2world_ * t_cam + t_camera2world_;
+
+    return computeYawError(yaw, t_world, object_points, image_points);
+}
+
 //yaw优化
 void PnPSolver::optimizeYaw(
     Armor & armor,
@@ -215,6 +232,32 @@ void PnPSolver::optimizeYaw(
 
     double best_yaw = (left + right) / 2.0;
 
+    //tvec优化
+    double depth_init = t_cam.norm();
+    Eigen::Vector3d dir_cam = t_cam.normalized();
+
+    left = depth_init - 2.0;
+    right = depth_init + 2.0;
+
+    for (int i = 0; i < 20; i++)
+    {
+        double m1 = left + (right - left) / 3.0;
+        double m2 = right - (right - left) / 3.0;
+
+        double e1 = computeDepthError(m1, best_yaw, dir_cam, object_points, image_points);
+        double e2 = computeDepthError(m2, best_yaw, dir_cam, object_points, image_points);
+
+        if (e1 < e2)
+            right = m2;
+        else
+            left = m1;
+    }
+
+    double best_depth = (left + right) / 2.0;
+    // RCLCPP_INFO(rclcpp::Node("debug").get_logger(), "dep_raw = %f, dep_best = %f", depth_init, best_depth);
+
+    Eigen::Vector3d t_cam_new = dir_cam * best_depth;
+
     //用最优 yaw 重建
     double pitch = 15.0 * M_PI / 180.0;
     double cy = cos(best_yaw), sy = sin(best_yaw);
@@ -227,7 +270,8 @@ void PnPSolver::optimizeYaw(
         -sp,     0,  cp;
 
     Eigen::Matrix3d R_ac = R_world2camera_ * R_aw;
-    Eigen::Vector3d t_ac = R_world2camera_ * t_world + t_world2camera_;
+    // Eigen::Vector3d t_ac = R_world2camera_ * t_world + t_world2camera_;
+    Eigen::Vector3d t_ac = t_cam_new;
 
     cv::Mat R_cv_final;
     cv::eigen2cv(R_ac, R_cv_final);

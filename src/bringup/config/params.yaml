@@ -60,10 +60,10 @@
     #   r_yaw: 5e-3
 
     ekf:
-      sigma2_q_xyz: 10.3
+      sigma2_q_xyz: 8.3
       sigma2_q_yaw: 0.00001
-      sigma2_q_r: 30.0
-      sigma2_q_vyaw: 25.0
+      sigma2_q_r: 0.001  # 30
+      sigma2_q_vyaw: 35.0
       r_xyz_factor: 0.08
       r_yaw: 0.08
 

@@ -62,6 +62,13 @@ public:
     const std::vector<cv::Point3f>& object_points,
     const std::vector<cv::Point2f>& image_points);
 
+  double computeDepthError(
+    double depth,
+    double yaw,
+    const Eigen::Vector3d& dir_cam,
+    const std::vector<cv::Point3f>& object_points,
+    const std::vector<cv::Point2f>& image_points);
+
   void updateTransform(const rclcpp::Time& time);
 
   geometry_msgs::msg::PoseStamped TransformToTargetFrame(geometry_msgs::msg::PoseStamped point, std::string target_frame);

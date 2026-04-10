@@ -51,7 +51,7 @@
 // }  // namespace rm_auto_aim
 
 #include "armor_tracker/extended_kalman_filter.hpp"
-
+#include "angles/angles.h"
 namespace rm_auto_aim
 {
   double wrapAngle(double a)
@@ -103,7 +103,10 @@ Eigen::MatrixXd ExtendedKalmanFilter::update(const Eigen::VectorXd & z)
     Eigen::MatrixXd K = P_pri * H.transpose() * qr.solve(Eigen::MatrixXd::Identity(S.rows(), S.rows()));
 
     Eigen::VectorXd innovation = z - h(x_pri);
-    // innovation(3) = wrapAngle(innovation(3));
+    // innovation(3) = angles::shortest_angular_distance(
+    //     h(x_pri)(3), z(3)
+    // );
+
 
     Eigen::VectorXd update_term = K * innovation;
     x_post = x_pri + update_term;

@@ -132,7 +132,7 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
             points_a.push_back(p_a);
         }
 
-        // 子弹飞行速度为 15m/s, 发单延迟为 0.1s
+        // 子弹飞行速度为, 发单延迟为 0.1s
         shoot_speed_ = get_parameter("shoot_speed").as_double();
         shoot_delay_ = get_parameter("shoot_delay").as_double();
         shoot_delay_spin_ = get_parameter("shoot_delay_spin_").as_double();
@@ -201,33 +201,33 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
             }
         }
 
-        double enter_angle = 40.0 * M_PI / 180.0;
-        double leave_angle = 70.0 * M_PI / 180.0;
-        if (lock_armor_idx_ == -1)
-        {
-            // 未锁定
-            if (min_yaw < enter_angle)
-            {
-                lock_armor_idx_ = index;
-            }
-        }
-        else
-        {
-            // 已锁定
-            double lock_yaw = target_yaw + lock_armor_idx_ * (2 * M_PI / a_n);
-
-            double delta_to_0 = fabs(lock_yaw - c_yaw);
-            double delta_to_2pi = fabs(lock_yaw - (c_yaw + 2 * M_PI));
-            double lock_delta = std::min(delta_to_0, delta_to_2pi);
-
-            if (lock_delta > leave_angle)
-            {
-                lock_armor_idx_ = -1;
-            }
-        }
-
-        if (lock_armor_idx_ != -1)
-            index = lock_armor_idx_;
+        // double enter_angle = 40.0 * M_PI / 180.0;
+        // double leave_angle = 70.0 * M_PI / 180.0;
+        // if (lock_armor_idx_ == -1)
+        // {
+        //     // 未锁定
+        //     if (min_yaw < enter_angle)
+        //     {
+        //         lock_armor_idx_ = index;
+        //     }
+        // }
+        // else
+        // {
+        //     // 已锁定
+        //     double lock_yaw = target_yaw + lock_armor_idx_ * (2 * M_PI / a_n);
+        //
+        //     double delta_to_0 = fabs(lock_yaw - c_yaw);
+        //     double delta_to_2pi = fabs(lock_yaw - (c_yaw + 2 * M_PI));
+        //     double lock_delta = std::min(delta_to_0, delta_to_2pi);
+        //
+        //     if (lock_delta > leave_angle)
+        //     {
+        //         lock_armor_idx_ = -1;
+        //     }
+        // }
+        //
+        // if (lock_armor_idx_ != -1)
+        //     index = lock_armor_idx_;
 
         //击打装甲板的世界坐标
         double x, y, z;

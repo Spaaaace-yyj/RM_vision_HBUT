@@ -62,6 +62,7 @@ void Tracker::update(const Armors::SharedPtr & armors_msg)
   // Use KF prediction as default target state if no matched armor is found
   target_state = ekf_prediction;
 
+
   //寻找距离EKF预测的装甲板最近的观测装甲板作为目标进行更新
   if (!armors_msg->armors.empty()) {
     // Find the closest armor with the same id
@@ -83,6 +84,7 @@ void Tracker::update(const Armors::SharedPtr & armors_msg)
           // Find the closest armor
           min_position_diff = position_diff;
           yaw_diff = abs(orientationToYaw(armor.pose.orientation) - ekf_prediction(6));
+          // yaw_diff = abs(angles::shortest_angular_distance(ekf_prediction(6), orientationToYaw(tracked_armor.pose.orientation)));
           tracked_armor = armor;
         }
       }
@@ -231,8 +233,6 @@ double Tracker::orientationToYaw(const geometry_msgs::msg::Quaternion & q)
   tf2::fromMsg(q, tf_q);
   double roll, pitch, yaw;
   tf2::Matrix3x3(tf_q).getRPY(roll, pitch, yaw);
-  //TODO：需要用detector模块调式，看看完整形态是不是这个原因导致的，存疑
-
   // Make yaw change continuous (-pi~pi to -inf~inf)
   yaw = last_yaw_ + angles::shortest_angular_distance(last_yaw_, yaw);
   last_yaw_ = yaw;
