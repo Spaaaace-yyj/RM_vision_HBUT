@@ -63,9 +63,9 @@ SerialDriver::SerialDriver(const rclcpp::NodeOptions& options)
           "/red_standard_robot1/cmd_vel", 1, std::bind(&SerialDriver::NavigationCallback, this, std::placeholders::_1));
 
   //看门狗
-  timer_ = this->create_wall_timer(
-              std::chrono::milliseconds(50),
-              std::bind(&SerialDriver::WatchDog, this));
+  // timer_ = this->create_wall_timer(
+  //             std::chrono::milliseconds(50),
+  //             std::bind(&SerialDriver::WatchDog, this));
 
   auto now = std::chrono::steady_clock::now();
   auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -116,33 +116,33 @@ SerialDriver::~SerialDriver()
     owned_ctx_->waitForExit();
   }
 }
-
-void SerialDriver::WatchDog()
-{
-  RCLCPP_INFO(this->get_logger(), "WatchDog Checking......");
-
-  auto now = std::chrono::steady_clock::now();
-  auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-      now.time_since_epoch()).count();
-
-
-  if (now_ms - last_trigger_time_ < 1000)
-  {
-    RCLCPP_DEBUG(this->get_logger(), "Successfully get imu data!");
-    function_is_trigger = false;
-  }else
-  {
-    RCLCPP_ERROR(this->get_logger(), "Timeout! Try to send enable data! WaitingTime:%ld", now_ms - last_trigger_time_);
-    try
-    {
-      serial_driver_->port()->send(mcu_enable_data);
-    }catch (const std::exception& ex)
-    {
-      RCLCPP_ERROR(rclcpp::get_logger("lc_serial"), "Error while sending data: %s", ex.what());
-      reopenPort();
-    }
-  }
-}
+//
+// void SerialDriver::WatchDog()
+// {
+//   // RCLCPP_INFO(this->get_logger(), "WatchDog Checking......");
+//
+//   auto now = std::chrono::steady_clock::now();
+//   auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+//       now.time_since_epoch()).count();
+//
+//
+//   if (now_ms - last_trigger_time_ < 1000)
+//   {
+//     RCLCPP_DEBUG(this->get_logger(), "Successfully get imu data!");
+//     function_is_trigger = false;
+//   }else
+//   {
+//     RCLCPP_ERROR(this->get_logger(), "Timeout! Try to send enable data! WaitingTime:%ld", now_ms - last_trigger_time_);
+//     try
+//     {
+//       serial_driver_->port()->send(mcu_enable_data);
+//     }catch (const std::exception& ex)
+//     {
+//       RCLCPP_ERROR(rclcpp::get_logger("lc_serial"), "Error while sending data: %s", ex.what());
+//       reopenPort();
+//     }
+//   }
+// }
 
 void SerialDriver::NavigationCallback(const geometry_msgs::msg::Twist::SharedPtr msg)
 {
@@ -265,12 +265,12 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::GimbalControl::SharedPtr m
           }
         }
         // 收到电控数据
-        RCLCPP_DEBUG(rclcpp::get_logger("lc_serial"), "SerialDriver receiving data: %s", data.data());
+        // RCLCPP_INFO(rclcpp::get_logger("lc_serial"), "SerialDriver receiving data: %s", data.data());
         if (std::isnan(imu_yaw) || std::isnan(imu_pitch))
           continue;
         try
         {
-          function_is_trigger = true;
+          // function_is_trigger = true;
           if (reverse_recv_pitch) imu_pitch *= -1;
           if (reverse_recv_yaw) imu_yaw *= -1;
 

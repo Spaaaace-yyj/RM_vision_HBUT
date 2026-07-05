@@ -123,9 +123,9 @@ private:
   //pitch/yaw翻转标志
   bool reverse_send_pitch = false;
   bool reverse_send_yaw = false;
-  bool reverse_recv_pitch = false;
+  bool reverse_recv_pitch = true;
   bool reverse_recv_yaw = false;
-  bool reverse_recv_tf_pitch = false;
+  bool reverse_recv_tf_pitch = true;
   bool reverse_recv_tf_yaw = false;
 
 

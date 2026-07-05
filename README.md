@@ -1,5 +1,13 @@
 # HBUT2025视觉代码
 
+## TODO:
+
+gimbal_control内的弹道解算需要优化
+
+detector层的性能优化，感觉ros2图像消息接受会排队
+
+将detector和solver的debug消息单独拉出来成一个进程
+
 ## 编译
 
 ```shell

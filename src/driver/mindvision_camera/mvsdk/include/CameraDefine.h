@@ -6,7 +6,7 @@
 
 #define MAX_CROSS_LINE 9
 
-//Ïà»úµÄ¾ä±úÀàÐÍ¶¨Òå
+//ï¿½ï¿½ï¿½ï¿½Ä¾ï¿½ï¿½ï¿½ï¿½ï¿½Í¶ï¿½ï¿½ï¿½
 typedef int CameraHandle;
 typedef int INT;
 typedef int LONG;
@@ -33,70 +33,70 @@ typedef void* HMODULE;
 
 #define TRUE 1
 #define FALSE 0
-//Í¼Ïñ²é±í±ä»»µÄ·½Ê½
+//Í¼ï¿½ï¿½ï¿½ï¿½ï¿½ä»»ï¿½Ä·ï¿½Ê½
 typedef enum
 {
-    LUTMODE_PARAM_GEN=0,//Í¨¹ýµ÷½Ú²ÎÊý¶¯Ì¬Éú³ÉLUT±í
-    LUTMODE_PRESET,     //Ê¹ÓÃÔ¤ÉèµÄLUT±í
-    LUTMODE_USER_DEF    //Ê¹ÓÃÓÃ»§×Ô¶¨ÒåµÄLUT±í
+    LUTMODE_PARAM_GEN=0,//Í¨ï¿½ï¿½ï¿½ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½Ì¬ï¿½ï¿½ï¿½ï¿½LUTï¿½ï¿½
+    LUTMODE_PRESET,     //Ê¹ï¿½ï¿½Ô¤ï¿½ï¿½ï¿½LUTï¿½ï¿½
+    LUTMODE_USER_DEF    //Ê¹ï¿½ï¿½ï¿½Ã»ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½ï¿½LUTï¿½ï¿½
 }emSdkLutMode;
 
-//Ïà»úµÄÊÓÆµÁ÷¿ØÖÆ
+//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 typedef enum
 {
-    RUNMODE_PLAY=0,    //Õý³£Ô¤ÀÀ£¬²¶»ñµ½Í¼Ïñ¾ÍÏÔÊ¾¡££¨Èç¹ûÏà»ú´¦ÓÚ´¥·¢Ä£Ê½£¬Ôò»áµÈ´ý´¥·¢Ö¡µÄµ½À´£©
-    RUNMODE_PAUSE,     //ÔÝÍ££¬»áÔÝÍ£Ïà»úµÄÍ¼ÏñÊä³ö£¬Í¬Ê±Ò²²»»áÈ¥²¶»ñÍ¼Ïñ
-    RUNMODE_STOP       //Í£Ö¹Ïà»ú¹¤×÷¡£·´³õÊ¼»¯ºó£¬Ïà»ú¾Í´¦ÓÚÍ£Ö¹Ä£Ê½
+    RUNMODE_PLAY=0,    //ï¿½ï¿½ï¿½ï¿½Ô¤ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¼ï¿½ï¿½ï¿½ï¿½ï¿½Ê¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ú´ï¿½ï¿½ï¿½Ä£Ê½ï¿½ï¿½ï¿½ï¿½ï¿½È´ï¿½ï¿½ï¿½ï¿½ï¿½Ö¡ï¿½Äµï¿½ï¿½ï¿½ï¿½ï¿½
+    RUNMODE_PAUSE,     //ï¿½ï¿½Í£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í£ï¿½ï¿½ï¿½ï¿½ï¿½Í¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¬Ê±Ò²ï¿½ï¿½ï¿½ï¿½È¥ï¿½ï¿½ï¿½ï¿½Í¼ï¿½ï¿½
+    RUNMODE_STOP       //Í£Ö¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í´ï¿½ï¿½ï¿½Í£Ö¹Ä£Ê½
 }emSdkRunMode;
 
-//SDKÄÚ²¿ÏÔÊ¾½Ó¿ÚµÄÏÔÊ¾·½Ê½
+//SDKï¿½Ú²ï¿½ï¿½ï¿½Ê¾ï¿½Ó¿Úµï¿½ï¿½ï¿½Ê¾ï¿½ï¿½Ê½
 typedef enum
 {
-    DISPLAYMODE_SCALE=0, //Ëõ·ÅÏÔÊ¾Ä£Ê½£¬Ëõ·Åµ½ÏÔÊ¾¿Ø¼þµÄ³ß´ç
-    DISPLAYMODE_REAL     //1:1ÏÔÊ¾Ä£Ê½£¬µ±Í¼Ïñ³ß´ç´óÓÚÏÔÊ¾¿Ø¼þµÄ³ß´çÊ±£¬Ö»ÏÔÊ¾¾Ö²¿
+    DISPLAYMODE_SCALE=0, //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê¾Ä£Ê½ï¿½ï¿½ï¿½ï¿½ï¿½Åµï¿½ï¿½ï¿½Ê¾ï¿½Ø¼ï¿½ï¿½Ä³ß´ï¿½
+    DISPLAYMODE_REAL     //1:1ï¿½ï¿½Ê¾Ä£Ê½ï¿½ï¿½ï¿½ï¿½Í¼ï¿½ï¿½ß´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê¾ï¿½Ø¼ï¿½ï¿½Ä³ß´ï¿½Ê±ï¿½ï¿½Ö»ï¿½ï¿½Ê¾ï¿½Ö²ï¿½
 }emSdkDisplayMode;
 
-//Â¼Ïñ×´Ì¬
+//Â¼ï¿½ï¿½×´Ì¬
 typedef enum
 {
   RECORD_STOP = 0,  //Í£Ö¹
-  RECORD_START,     //Â¼ÏñÖÐ
-  RECORD_PAUSE      //ÔÝÍ£
+  RECORD_START,     //Â¼ï¿½ï¿½ï¿½ï¿½
+  RECORD_PAUSE      //ï¿½ï¿½Í£
 }emSdkRecordMode;
 
-//Í¼ÏñµÄ¾µÏñ²Ù×÷
+//Í¼ï¿½ï¿½Ä¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 typedef enum
 {
-    MIRROR_DIRECTION_HORIZONTAL = 0,//Ë®Æ½¾µÏñ
-    MIRROR_DIRECTION_VERTICAL       //´¹Ö±¾µÏñ
+    MIRROR_DIRECTION_HORIZONTAL = 0,//Ë®Æ½ï¿½ï¿½ï¿½ï¿½
+    MIRROR_DIRECTION_VERTICAL       //ï¿½ï¿½Ö±ï¿½ï¿½ï¿½ï¿½
 }emSdkMirrorDirection;
 
 /// @ingroup MV_ENUM_TYPE
-/// \~chinese Í¼ÏñµÄÐý×ª²Ù×÷
+/// \~chinese Í¼ï¿½ï¿½ï¿½ï¿½ï¿½×ªï¿½ï¿½ï¿½ï¿½
 /// \~english Rotation of the image
 typedef enum
 {
-	ROTATE_DIRECTION_0=0,		///< \~chinese ²»Ðý×ª		\~english Do not rotate
-	ROTATE_DIRECTION_90=1,		///< \~chinese ÄæÊ±Õë90¶È	\~english Counterclockwise 90 degrees
-	ROTATE_DIRECTION_180=2,		///< \~chinese ÄæÊ±Õë180¶È	\~english Counterclockwise 180 degrees
-	ROTATE_DIRECTION_270=3,		///< \~chinese ÄæÊ±Õë270¶È	\~english Counterclockwise 270 degrees
+	ROTATE_DIRECTION_0=0,		///< \~chinese ï¿½ï¿½ï¿½ï¿½×ª		\~english Do not rotate
+	ROTATE_DIRECTION_90=1,		///< \~chinese ï¿½ï¿½Ê±ï¿½ï¿½90ï¿½ï¿½	\~english Counterclockwise 90 degrees
+	ROTATE_DIRECTION_180=2,		///< \~chinese ï¿½ï¿½Ê±ï¿½ï¿½180ï¿½ï¿½	\~english Counterclockwise 180 degrees
+	ROTATE_DIRECTION_270=3,		///< \~chinese ï¿½ï¿½Ê±ï¿½ï¿½270ï¿½ï¿½	\~english Counterclockwise 270 degrees
 }emSdkRotateDirection;
 
-//Ïà»úÊÓÆµµÄÖ¡ÂÊ
+//ï¿½ï¿½ï¿½ï¿½ï¿½Æµï¿½ï¿½Ö¡ï¿½ï¿½
 typedef enum
 {
-    FRAME_SPEED_LOW = 0,  //µÍËÙÄ£Ê½
-    FRAME_SPEED_NORMAL,   //ÆÕÍ¨Ä£Ê½
-    FRAME_SPEED_HIGH,     //¸ßËÙÄ£Ê½(ÐèÒª½Ï¸ßµÄ´«Êä´ø¿í,¶àÉè±¸¹²Ïí´«Êä´ø¿íÊ±»á¶ÔÖ¡ÂÊµÄÎÈ¶¨ÐÔÓÐÓ°Ïì)
-    FRAME_SPEED_SUPER     //³¬¸ßËÙÄ£Ê½(ÐèÒª½Ï¸ßµÄ´«Êä´ø¿í,¶àÉè±¸¹²Ïí´«Êä´ø¿íÊ±»á¶ÔÖ¡ÂÊµÄÎÈ¶¨ÐÔÓÐÓ°Ïì)
+    FRAME_SPEED_LOW = 0,  //ï¿½ï¿½ï¿½ï¿½Ä£Ê½
+    FRAME_SPEED_NORMAL,   //ï¿½ï¿½Í¨Ä£Ê½
+    FRAME_SPEED_HIGH,     //ï¿½ï¿½ï¿½ï¿½Ä£Ê½(ï¿½ï¿½Òªï¿½Ï¸ßµÄ´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½,ï¿½ï¿½ï¿½è±¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½Ö¡ï¿½Êµï¿½ï¿½È¶ï¿½ï¿½ï¿½ï¿½ï¿½Ó°ï¿½ï¿½)
+    FRAME_SPEED_SUPER     //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä£Ê½(ï¿½ï¿½Òªï¿½Ï¸ßµÄ´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½,ï¿½ï¿½ï¿½è±¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½Ö¡ï¿½Êµï¿½ï¿½È¶ï¿½ï¿½ï¿½ï¿½ï¿½Ó°ï¿½ï¿½)
 }emSdkFrameSpeed;
 
-//±£´æÎÄ¼þµÄ¸ñÊ½ÀàÐÍ
+//ï¿½ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½Ä¸ï¿½Ê½ï¿½ï¿½ï¿½ï¿½
 typedef enum
 {
     FILE_JPG = 1,//JPG
     FILE_BMP = 2,//BMP
-    FILE_RAW = 4,//Ïà»úÊä³öµÄbayer¸ñÊ½ÎÄ¼þ,¶ÔÓÚ²»Ö§³Öbayer¸ñÊ½Êä³öÏà»ú£¬ÎÞ·¨±£´æÎª¸Ã¸ñÊ½
+    FILE_RAW = 4,//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½bayerï¿½ï¿½Ê½ï¿½Ä¼ï¿½,ï¿½ï¿½ï¿½Ú²ï¿½Ö§ï¿½ï¿½bayerï¿½ï¿½Ê½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Þ·ï¿½ï¿½ï¿½ï¿½ï¿½Îªï¿½Ã¸ï¿½Ê½
     FILE_PNG = 8, //PNG
     FILE_BMP_8BIT = 16,	  ///< \~chinese BMP 8bit		\~english BMP 8bit
     FILE_PNG_8BIT = 32,   ///< \~chinese PNG 8bit		\~english PNG 8bit
@@ -104,39 +104,39 @@ typedef enum
 }emSdkFileType;
 
 /// @ingroup MV_ENUM_TYPE
-/// \~chinese Ïà»úÖÐµÄÍ¼Ïñ´«¸ÐÆ÷µÄ¹¤×÷Ä£Ê½
+/// \~chinese ï¿½ï¿½ï¿½ï¿½Ðµï¿½Í¼ï¿½ñ´«¸ï¿½ï¿½ï¿½ï¿½Ä¹ï¿½ï¿½ï¿½Ä£Ê½
 /// \~english Image Sensor Operation Mode in Camera
 typedef enum 
 {
-    /// \~chinese Á¬Ðø²É¼¯Ä£Ê½
+    /// \~chinese ï¿½ï¿½ï¿½ï¿½ï¿½É¼ï¿½Ä£Ê½
     /// \~english Continuous acquisition mode
     CONTINUATION=0,
 
-    /// \~chinese Èí¼þ´¥·¢Ä£Ê½£¬ÓÉÈí¼þ·¢ËÍÖ¸Áîºó£¬´«¸ÐÆ÷¿ªÊ¼²É¼¯Ö¸¶¨Ö¡ÊýµÄÍ¼Ïñ£¬²É¼¯Íê³Éºó£¬Í£Ö¹Êä³ö
+    /// \~chinese ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä£Ê½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¸ï¿½ï¿½ó£¬´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê¼ï¿½É¼ï¿½Ö¸ï¿½ï¿½Ö¡ï¿½ï¿½ï¿½ï¿½Í¼ï¿½ñ£¬²É¼ï¿½ï¿½ï¿½Éºï¿½Í£Ö¹ï¿½ï¿½ï¿½
     /// \~english Software trigger mode. After the software sends the instruction, the sensor starts to capture the image of the specified frame number. After the acquisition is completed, the output is stopped.
     SOFT_TRIGGER=1,
 
-    /// \~chinese Ó²¼þ´¥·¢Ä£Ê½£¬µ±½ÓÊÕµ½Íâ²¿ÐÅºÅ£¬´«¸ÐÆ÷¿ªÊ¼²É¼¯Ö¸¶¨Ö¡ÊýµÄÍ¼Ïñ£¬²É¼¯Íê³Éºó£¬Í£Ö¹Êä³ö
+    /// \~chinese Ó²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä£Ê½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Õµï¿½ï¿½â²¿ï¿½ÅºÅ£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê¼ï¿½É¼ï¿½Ö¸ï¿½ï¿½Ö¡ï¿½ï¿½ï¿½ï¿½Í¼ï¿½ñ£¬²É¼ï¿½ï¿½ï¿½Éºï¿½Í£Ö¹ï¿½ï¿½ï¿½
     /// \~english In the hardware trigger mode, when receiving an external signal, the sensor starts to capture the image of the specified frame number. After the acquisition is completed, the output is stopped.
     EXTERNAL_TRIGGER=2,
 
-    /// \~chinese ±àÂëÆ÷´¥·¢Ä£Ê½£¨½öÓÃÓÚÏßÕóÏà»ú£©
+    /// \~chinese ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä£Ê½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     /// \~english Encoder trigger mode (only for line scan cameras)
     ROTARYENC_TRIGGER=3,
 
-    /// \~chinese ±àÂëÆ÷Ìõ¼þ´¥·¢Ä£Ê½£¨½öÓÃÓÚÏßÕóÏà»ú£©
+    /// \~chinese ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä£Ê½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     /// \~english Encoder condition trigger mode (only for line scan cameras)
     ROTARYENC_COND_TRIGGER=4,
 } emSdkSnapMode;
 
-//×Ô¶¯ÆØ¹âÊ±¿¹ÆµÉÁµÄÆµÉÁ
+//ï¿½Ô¶ï¿½ï¿½Ø¹ï¿½Ê±ï¿½ï¿½Æµï¿½ï¿½ï¿½ï¿½Æµï¿½ï¿½
 typedef enum
 {
-    LIGHT_FREQUENCY_50HZ = 0,//50HZ,Ò»°ãµÄµÆ¹â¶¼ÊÇ50HZ
-    LIGHT_FREQUENCY_60HZ     //60HZ,Ö÷ÒªÊÇÖ¸ÏÔÊ¾Æ÷µÄ
+    LIGHT_FREQUENCY_50HZ = 0,//50HZ,Ò»ï¿½ï¿½ÄµÆ¹â¶¼ï¿½ï¿½50HZ
+    LIGHT_FREQUENCY_60HZ     //60HZ,ï¿½ï¿½Òªï¿½ï¿½Ö¸ï¿½ï¿½Ê¾ï¿½ï¿½ï¿½ï¿½
 }emSdkLightFrequency;
 
-//Ïà»úµÄÅäÖÃ²ÎÊý£¬·ÖÎªA,B,C,D 4×é½øÐÐ±£´æ¡£
+//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ã²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÎªA,B,C,D 4ï¿½ï¿½ï¿½ï¿½Ð±ï¿½ï¿½æ¡£
 typedef enum
 {
     PARAMETER_TEAM_DEFAULT = 0xff,
@@ -147,40 +147,40 @@ typedef enum
 }emSdkParameterTeam;
 
 
-/*emSdkParameterMode Ïà»ú²ÎÊý¼ÓÔØÄ£Ê½£¬²ÎÊý¼ÓÔØ·ÖÎª´ÓÎÄ¼þºÍ´ÓÉè±¸¼ÓÔØÁ½ÖÖ·½Ê½
+/*emSdkParameterMode ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä£Ê½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ø·ï¿½Îªï¿½ï¿½ï¿½Ä¼ï¿½ï¿½Í´ï¿½ï¿½è±¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö·ï¿½Ê½
 
-PARAM_MODE_BY_MODEL:ËùÓÐÍ¬ÐÍºÅµÄÏà»ú¹²ÓÃABCDËÄ×é²ÎÊýÎÄ¼þ¡£ÐÞ¸Ä
-             Ò»Ì¨Ïà»úµÄ²ÎÊýÎÄ¼þ£¬»áÓ°Ïìµ½Õû¸öÍ¬ÐÍºÅµÄ
-             Ïà»ú²ÎÊý¼ÓÔØ¡£
+PARAM_MODE_BY_MODEL:ï¿½ï¿½ï¿½ï¿½Í¬ï¿½ÍºÅµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ABCDï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½ï¿½Þ¸ï¿½
+             Ò»Ì¨ï¿½ï¿½ï¿½ï¿½Ä²ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½ï¿½ï¿½Ó°ï¿½ìµ½ï¿½ï¿½ï¿½ï¿½Í¬ï¿½ÍºÅµï¿½
+             ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ø¡ï¿½
 
-PARAM_MODE_BY_NAME:ËùÓÐÉè±¸ÃûÏàÍ¬µÄÏà»ú£¬¹²ÓÃABCDËÄ×é²ÎÊýÎÄ¼þ¡£
-         Ä¬ÈÏÇé¿öÏÂ£¬µ±µçÄÔÉÏÖ»½ÓÁËÄ³ÐÍºÅÒ»Ì¨Ïà»úÊ±£¬
-         Éè±¸Ãû¶¼ÊÇÒ»ÑùµÄ£¬¶øÄúÏ£ÍûÄ³Ò»Ì¨Ïà»úÄÜ¹»¼ÓÔØ
-         ²»Í¬µÄ²ÎÊýÎÄ¼þ£¬Ôò¿ÉÒÔÍ¨¹ýÐÞ¸ÄÆäÉè±¸ÃûµÄ·½Ê½
-         À´ÈÃÆä¼ÓÔØÖ¸¶¨µÄ²ÎÊýÎÄ¼þ¡£
+PARAM_MODE_BY_NAME:ï¿½ï¿½ï¿½ï¿½ï¿½è±¸ï¿½ï¿½ï¿½ï¿½Í¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ABCDï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½
+         Ä¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Â£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö»ï¿½ï¿½ï¿½ï¿½Ä³ï¿½Íºï¿½Ò»Ì¨ï¿½ï¿½ï¿½Ê±ï¿½ï¿½
+         ï¿½è±¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ï¿½Ä£ï¿½ï¿½ï¿½ï¿½ï¿½Ï£ï¿½ï¿½Ä³Ò»Ì¨ï¿½ï¿½ï¿½ï¿½Ü¹ï¿½ï¿½ï¿½ï¿½ï¿½
+         ï¿½ï¿½Í¬ï¿½Ä²ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¨ï¿½ï¿½ï¿½Þ¸ï¿½ï¿½ï¿½ï¿½è±¸ï¿½ï¿½ï¿½Ä·ï¿½Ê½
+         ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¸ï¿½ï¿½ï¿½Ä²ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½
 
-PARAM_MODE_BY_SN:Ïà»ú°´ÕÕ×Ô¼ºµÄÎ¨Ò»ÐòÁÐºÅÀ´¼ÓÔØABCDËÄ×é²ÎÊýÎÄ¼þ£¬
-         ÐòÁÐºÅÔÚ³ö³§Ê±ÒÑ¾­¹Ì»¯ÔÚÏà»úÄÚ£¬Ã¿Ì¨Ïà»úµÄÐòÁÐºÅ
-         ¶¼²»ÏàÍ¬£¬Í¨¹ýÕâÖÖ·½Ê½£¬Ã¿Ì¨Ïà»úµÄ²ÎÊýÎÄ¼þ¶¼ÊÇ¶ÀÁ¢µÄ¡£
+PARAM_MODE_BY_SN:ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¼ï¿½ï¿½ï¿½Î¨Ò»ï¿½ï¿½ï¿½Ðºï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ABCDï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½
+         ï¿½ï¿½ï¿½Ðºï¿½ï¿½Ú³ï¿½ï¿½ï¿½Ê±ï¿½Ñ¾ï¿½ï¿½Ì»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ú£ï¿½Ã¿Ì¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ðºï¿½
+         ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¬ï¿½ï¿½Í¨ï¿½ï¿½ï¿½ï¿½ï¿½Ö·ï¿½Ê½ï¿½ï¿½Ã¿Ì¨ï¿½ï¿½ï¿½ï¿½Ä²ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½ï¿½Ç¶ï¿½ï¿½ï¿½ï¿½Ä¡ï¿½
 
-Äú¿ÉÒÔ¸ù¾Ý×Ô¼ºµÄÊ¹ÓÃ»·¾³£¬Áé»îÊ¹ÓÃÒÔÉÏ¼¸ÖÖ·½Ê½¼ÓÔØ²ÎÊý¡£ÀýÈç£¬ÒÔ
-MV-U300ÎªÀý£¬ÄúÏ£Íû¶àÌ¨¸ÃÐÍºÅµÄÏà»úÔÚÄúµÄ µçÄÔÉÏ¶¼¹²ÓÃ4×é²ÎÊý£¬ÄÇÃ´¾Í
-Ê¹ÓÃPARAM_MODE_BY_MODEL·½Ê½;Èç¹ûÄúÏ£ÍûÆäÖÐÄ³Ò»Ì¨»òÕßÄ³¼¸Ì¨MV-U300ÄÜ
-Ê¹ÓÃ×Ô¼º²ÎÊýÎÄ¼þ¶øÆäÓàµÄMV-U300ÓÖÒªÊ¹ÓÃÏàÍ¬µÄ²ÎÊýÎÄ¼þ£¬ÄÇÃ´Ê¹ÓÃ
-PARAM_MODE_BY_NAME·½Ê½;Èç¹ûÄúÏ£ÍûÃ¿Ì¨MV-U300¶¼Ê¹ÓÃ²»Í¬µÄ²ÎÊýÎÄ¼þ£¬ÄÇÃ´
-Ê¹ÓÃPARAM_MODE_BY_SN·½Ê½¡£
-²ÎÊýÎÄ¼þ´æÔÚ°²×°Ä¿Â¼µÄ \Camera\Configs Ä¿Â¼ÏÂ£¬ÒÔconfigÎªºó×ºÃûµÄÎÄ¼þ¡£
+ï¿½ï¿½ï¿½ï¿½ï¿½Ô¸ï¿½ï¿½ï¿½ï¿½Ô¼ï¿½ï¿½ï¿½Ê¹ï¿½Ã»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê¹ï¿½ï¿½ï¿½ï¿½ï¿½Ï¼ï¿½ï¿½Ö·ï¿½Ê½ï¿½ï¿½ï¿½Ø²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ç£¬ï¿½ï¿½
+MV-U300Îªï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï£ï¿½ï¿½ï¿½ï¿½Ì¨ï¿½ï¿½ï¿½ÍºÅµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ï¶ï¿½ï¿½ï¿½ï¿½ï¿½4ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ã´ï¿½ï¿½
+Ê¹ï¿½ï¿½PARAM_MODE_BY_MODELï¿½ï¿½Ê½;ï¿½ï¿½ï¿½ï¿½ï¿½Ï£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä³Ò»Ì¨ï¿½ï¿½ï¿½ï¿½Ä³ï¿½ï¿½Ì¨MV-U300ï¿½ï¿½
+Ê¹ï¿½ï¿½ï¿½Ô¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½MV-U300ï¿½ï¿½ÒªÊ¹ï¿½ï¿½ï¿½ï¿½Í¬ï¿½Ä²ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½ï¿½ï¿½Ã´Ê¹ï¿½ï¿½
+PARAM_MODE_BY_NAMEï¿½ï¿½Ê½;ï¿½ï¿½ï¿½ï¿½ï¿½Ï£ï¿½ï¿½Ã¿Ì¨MV-U300ï¿½ï¿½Ê¹ï¿½Ã²ï¿½Í¬ï¿½Ä²ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½ï¿½ï¿½Ã´
+Ê¹ï¿½ï¿½PARAM_MODE_BY_SNï¿½ï¿½Ê½ï¿½ï¿½
+ï¿½ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½ï¿½Ú°ï¿½×°Ä¿Â¼ï¿½ï¿½ \Camera\Configs Ä¿Â¼ï¿½Â£ï¿½ï¿½ï¿½configÎªï¿½ï¿½×ºï¿½ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½
 */
 typedef enum
 {
-  PARAM_MODE_BY_MODEL = 0,  //¸ù¾ÝÏà»úÐÍºÅÃû´ÓÎÄ¼þÖÐ¼ÓÔØ²ÎÊý£¬ÀýÈçMV-U300
-  PARAM_MODE_BY_NAME,       //¸ù¾ÝÉè±¸êÇ³Æ(tSdkCameraDevInfo.acFriendlyName)´ÓÎÄ¼þÖÐ¼ÓÔØ²ÎÊý£¬ÀýÈçMV-U300,¸ÃêÇ³Æ¿É×Ô¶¨Òå
-  PARAM_MODE_BY_SN,         //¸ù¾ÝÉè±¸µÄÎ¨Ò»ÐòÁÐºÅ´ÓÎÄ¼þÖÐ¼ÓÔØ²ÎÊý£¬ÐòÁÐºÅÔÚ³ö³§Ê±ÒÑ¾­Ð´ÈëÉè±¸£¬Ã¿Ì¨Ïà»úÓµÓÐ²»Í¬µÄÐòÁÐºÅ¡£
-  PARAM_MODE_IN_DEVICE      //´ÓÉè±¸µÄ¹ÌÌ¬´æ´¢Æ÷ÖÐ¼ÓÔØ²ÎÊý¡£²»ÊÇËùÓÐµÄÐÍºÅ¶¼Ö§³Ö´ÓÏà»úÖÐ¶ÁÐ´²ÎÊý×é£¬ÓÉtSdkCameraCapbility.bParamInDevice¾ö¶¨
+  PARAM_MODE_BY_MODEL = 0,  //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Íºï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½Ð¼ï¿½ï¿½Ø²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½MV-U300
+  PARAM_MODE_BY_NAME,       //ï¿½ï¿½ï¿½ï¿½ï¿½è±¸ï¿½Ç³ï¿½(tSdkCameraDevInfo.acFriendlyName)ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½Ð¼ï¿½ï¿½Ø²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½MV-U300,ï¿½ï¿½ï¿½Ç³Æ¿ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½
+  PARAM_MODE_BY_SN,         //ï¿½ï¿½ï¿½ï¿½ï¿½è±¸ï¿½ï¿½Î¨Ò»ï¿½ï¿½ï¿½ÐºÅ´ï¿½ï¿½Ä¼ï¿½ï¿½Ð¼ï¿½ï¿½Ø²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ðºï¿½ï¿½Ú³ï¿½ï¿½ï¿½Ê±ï¿½Ñ¾ï¿½Ð´ï¿½ï¿½ï¿½è±¸ï¿½ï¿½Ã¿Ì¨ï¿½ï¿½ï¿½Óµï¿½Ð²ï¿½Í¬ï¿½ï¿½ï¿½ï¿½ï¿½ÐºÅ¡ï¿½
+  PARAM_MODE_IN_DEVICE      //ï¿½ï¿½ï¿½è±¸ï¿½Ä¹ï¿½Ì¬ï¿½æ´¢ï¿½ï¿½ï¿½Ð¼ï¿½ï¿½Ø²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ðµï¿½ï¿½ÍºÅ¶ï¿½Ö§ï¿½Ö´ï¿½ï¿½ï¿½ï¿½ï¿½Ð¶ï¿½Ð´ï¿½ï¿½ï¿½ï¿½ï¿½é£¬ï¿½ï¿½tSdkCameraCapbility.bParamInDeviceï¿½ï¿½ï¿½ï¿½
 }emSdkParameterMode;
 
 
-//SDKÉú³ÉµÄÏà»úÅäÖÃÒ³ÃæÑÚÂëÖµ
+//SDKï¿½ï¿½ï¿½Éµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµ
 typedef enum
 {
   PROP_SHEET_INDEX_EXPOSURE = 0,
@@ -197,158 +197,158 @@ typedef enum
   PROP_SHEET_INDEX_MULTI_EXPOSURE
 }emSdkPropSheetMask;
 
-//SDKÉú³ÉµÄÏà»úÅäÖÃÒ³ÃæµÄ»Øµ÷ÏûÏ¢ÀàÐÍ
+//SDKï¿½ï¿½ï¿½Éµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò³ï¿½ï¿½Ä»Øµï¿½ï¿½ï¿½Ï¢ï¿½ï¿½ï¿½ï¿½
 typedef enum
 {
-  SHEET_MSG_LOAD_PARAM_DEFAULT = 0, //²ÎÊý±»»Ö¸´³ÉÄ¬ÈÏºó£¬´¥·¢¸ÃÏûÏ¢
-  SHEET_MSG_LOAD_PARAM_GROUP,       //¼ÓÔØÖ¸¶¨²ÎÊý×é£¬´¥·¢¸ÃÏûÏ¢
-  SHEET_MSG_LOAD_PARAM_FROMFILE,    //´ÓÖ¸¶¨ÎÄ¼þ¼ÓÔØ²ÎÊýºó£¬´¥·¢¸ÃÏûÏ¢
-  SHEET_MSG_SAVE_PARAM_GROUP        //µ±Ç°²ÎÊý×é±»±£´æÊ±£¬´¥·¢¸ÃÏûÏ¢
+  SHEET_MSG_LOAD_PARAM_DEFAULT = 0, //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¸ï¿½ï¿½ï¿½Ä¬ï¿½Ïºó£¬´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢
+  SHEET_MSG_LOAD_PARAM_GROUP,       //ï¿½ï¿½ï¿½ï¿½Ö¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½é£¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢
+  SHEET_MSG_LOAD_PARAM_FROMFILE,    //ï¿½ï¿½Ö¸ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½ï¿½Ø²ï¿½ï¿½ï¿½ï¿½ó£¬´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢
+  SHEET_MSG_SAVE_PARAM_GROUP        //ï¿½ï¿½Ç°ï¿½ï¿½ï¿½ï¿½ï¿½é±»ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢
 }emSdkPropSheetMsg;
 
-//¿ÉÊÓ»¯Ñ¡Ôñ²Î¿¼´°¿ÚµÄÀàÐÍ
+//ï¿½ï¿½ï¿½Ó»ï¿½Ñ¡ï¿½ï¿½Î¿ï¿½ï¿½ï¿½ï¿½Úµï¿½ï¿½ï¿½ï¿½ï¿½
 typedef enum
 {
   REF_WIN_AUTO_EXPOSURE = 0,
   REF_WIN_WHITE_BALANCE,
 }emSdkRefWinType;
 
-//¿ÉÊÓ»¯Ñ¡Ôñ²Î¿¼´°¿ÚµÄÀàÐÍ
+//ï¿½ï¿½ï¿½Ó»ï¿½Ñ¡ï¿½ï¿½Î¿ï¿½ï¿½ï¿½ï¿½Úµï¿½ï¿½ï¿½ï¿½ï¿½
 typedef enum
 {
   RES_MODE_PREVIEW = 0,
   RES_MODE_SNAPSHOT,
 }emSdkResolutionMode;
 
-//°×Æ½ºâÊ±É«ÎÂÄ£Ê½
+//ï¿½ï¿½Æ½ï¿½ï¿½Ê±É«ï¿½ï¿½Ä£Ê½
 typedef enum
 {
-  CT_MODE_AUTO = 0, //×Ô¶¯Ê¶±ðÉ«ÎÂ
-  CT_MODE_PRESET,   //Ê¹ÓÃÖ¸¶¨µÄÔ¤ÉèÉ«ÎÂ
-  CT_MODE_USER_DEF  //×Ô¶¨ÒåÉ«ÎÂ(ÔöÒæºÍ¾ØÕó)
+  CT_MODE_AUTO = 0, //ï¿½Ô¶ï¿½Ê¶ï¿½ï¿½É«ï¿½ï¿½
+  CT_MODE_PRESET,   //Ê¹ï¿½ï¿½Ö¸ï¿½ï¿½ï¿½ï¿½Ô¤ï¿½ï¿½É«ï¿½ï¿½
+  CT_MODE_USER_DEF  //ï¿½Ô¶ï¿½ï¿½ï¿½É«ï¿½ï¿½(ï¿½ï¿½ï¿½ï¿½Í¾ï¿½ï¿½ï¿½)
 }emSdkClrTmpMode;
 
-//LUTµÄÑÕÉ«Í¨µÀ
+//LUTï¿½ï¿½ï¿½ï¿½É«Í¨ï¿½ï¿½
 typedef enum
 {
-  LUT_CHANNEL_ALL = 0,//R,B,GÈýÍ¨µÀÍ¬Ê±µ÷½Ú
-  LUT_CHANNEL_RED,    //ºìÉ«Í¨µÀ
-  LUT_CHANNEL_GREEN,  //ÂÌÉ«Í¨µÀ
-  LUT_CHANNEL_BLUE,   //À¶É«Í¨µÀ
+  LUT_CHANNEL_ALL = 0,//R,B,Gï¿½ï¿½Í¨ï¿½ï¿½Í¬Ê±ï¿½ï¿½ï¿½ï¿½
+  LUT_CHANNEL_RED,    //ï¿½ï¿½É«Í¨ï¿½ï¿½
+  LUT_CHANNEL_GREEN,  //ï¿½ï¿½É«Í¨ï¿½ï¿½
+  LUT_CHANNEL_BLUE,   //ï¿½ï¿½É«Í¨ï¿½ï¿½
 }emSdkLutChannel;
 
-//ISP´¦Àíµ¥Ôª
+//ISPï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ôª
 typedef enum
 {
-  ISP_PROCESSSOR_PC = 0,//Ê¹ÓÃPCµÄÈí¼þISPÄ£¿é
-  ISP_PROCESSSOR_DEVICE //Ê¹ÓÃÏà»ú×Ô´øµÄÓ²¼þISPÄ£¿é
+  ISP_PROCESSSOR_PC = 0,//Ê¹ï¿½ï¿½PCï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ISPÄ£ï¿½ï¿½
+  ISP_PROCESSSOR_DEVICE //Ê¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô´ï¿½ï¿½ï¿½Ó²ï¿½ï¿½ISPÄ£ï¿½ï¿½
 }emSdkIspProcessor;
 
-//ÉÁ¹âµÆÐÅºÅ¿ØÖÆ·½Ê½
+//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÅºÅ¿ï¿½ï¿½Æ·ï¿½Ê½
 typedef enum
 {
-  STROBE_SYNC_WITH_TRIG_AUTO = 0,    //ºÍ´¥·¢ÐÅºÅÍ¬²½£¬´¥·¢ºó£¬Ïà»ú½øÐÐÆØ¹âÊ±£¬×Ô¶¯Éú³ÉSTROBEÐÅºÅ¡£´ËÊ±£¬ÓÐÐ§¼«ÐÔ¿ÉÉèÖÃ(CameraSetStrobePolarity)¡£
-  STROBE_SYNC_WITH_TRIG_MANUAL,      //ºÍ´¥·¢ÐÅºÅÍ¬²½£¬´¥·¢ºó£¬STROBEÑÓÊ±Ö¸¶¨µÄÊ±¼äºó(CameraSetStrobeDelayTime)£¬ÔÙ³ÖÐøÖ¸¶¨Ê±¼äµÄÂö³å(CameraSetStrobePulseWidth)£¬ÓÐÐ§¼«ÐÔ¿ÉÉèÖÃ(CameraSetStrobePolarity)¡£
-  STROBE_ALWAYS_HIGH,                //Ê¼ÖÕÎª¸ß£¬ºöÂÔSTROBEÐÅºÅµÄÆäËûÉèÖÃ
-  STROBE_ALWAYS_LOW                  //Ê¼ÖÕÎªµÍ£¬ºöÂÔSTROBEÐÅºÅµÄÆäËûÉèÖÃ
+  STROBE_SYNC_WITH_TRIG_AUTO = 0,    //ï¿½Í´ï¿½ï¿½ï¿½ï¿½Åºï¿½Í¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ø¹ï¿½Ê±ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½ï¿½ï¿½STROBEï¿½ÅºÅ¡ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½Ð§ï¿½ï¿½ï¿½Ô¿ï¿½ï¿½ï¿½ï¿½ï¿½(CameraSetStrobePolarity)ï¿½ï¿½
+  STROBE_SYNC_WITH_TRIG_MANUAL,      //ï¿½Í´ï¿½ï¿½ï¿½ï¿½Åºï¿½Í¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½STROBEï¿½ï¿½Ê±Ö¸ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½(CameraSetStrobeDelayTime)ï¿½ï¿½ï¿½Ù³ï¿½ï¿½ï¿½Ö¸ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½(CameraSetStrobePulseWidth)ï¿½ï¿½ï¿½ï¿½Ð§ï¿½ï¿½ï¿½Ô¿ï¿½ï¿½ï¿½ï¿½ï¿½(CameraSetStrobePolarity)ï¿½ï¿½
+  STROBE_ALWAYS_HIGH,                //Ê¼ï¿½ï¿½Îªï¿½ß£ï¿½ï¿½ï¿½ï¿½ï¿½STROBEï¿½ÅºÅµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+  STROBE_ALWAYS_LOW                  //Ê¼ï¿½ï¿½Îªï¿½Í£ï¿½ï¿½ï¿½ï¿½ï¿½STROBEï¿½ÅºÅµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 }emStrobeControl;
 
-//Ó²¼þÍâ´¥·¢µÄÐÅºÅÖÖÀà
+//Ó²ï¿½ï¿½ï¿½â´¥ï¿½ï¿½ï¿½ï¿½ï¿½Åºï¿½ï¿½ï¿½ï¿½ï¿½
 typedef enum
 {
-  EXT_TRIG_LEADING_EDGE = 0,     //ÉÏÉýÑØ´¥·¢£¬Ä¬ÈÏÎª¸Ã·½Ê½
-  EXT_TRIG_TRAILING_EDGE,        //ÏÂ½µÑØ´¥·¢
-  EXT_TRIG_HIGH_LEVEL,           //¸ßµçÆ½´¥·¢,µçÆ½¿í¶È¾ö¶¨ÆØ¹âÊ±¼ä£¬½ö²¿·ÖÐÍºÅµÄÏà»úÖ§³ÖµçÆ½´¥·¢·½Ê½¡£
-  EXT_TRIG_LOW_LEVEL             //µÍµçÆ½´¥·¢,
+  EXT_TRIG_LEADING_EDGE = 0,     //ï¿½ï¿½ï¿½ï¿½ï¿½Ø´ï¿½ï¿½ï¿½ï¿½ï¿½Ä¬ï¿½ï¿½Îªï¿½Ã·ï¿½Ê½
+  EXT_TRIG_TRAILING_EDGE,        //ï¿½Â½ï¿½ï¿½Ø´ï¿½ï¿½ï¿½
+  EXT_TRIG_HIGH_LEVEL,           //ï¿½ßµï¿½Æ½ï¿½ï¿½ï¿½ï¿½,ï¿½ï¿½Æ½ï¿½ï¿½ï¿½È¾ï¿½ï¿½ï¿½ï¿½Ø¹ï¿½Ê±ï¿½ä£¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÍºÅµï¿½ï¿½ï¿½ï¿½Ö§ï¿½Öµï¿½Æ½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê½ï¿½ï¿½
+  EXT_TRIG_LOW_LEVEL             //ï¿½Íµï¿½Æ½ï¿½ï¿½ï¿½ï¿½,
 }emExtTrigSignal;
 
-//Ó²¼þÍâ´¥·¢Ê±µÄ¿ìÃÅ·½Ê½
+//Ó²ï¿½ï¿½ï¿½â´¥ï¿½ï¿½Ê±ï¿½Ä¿ï¿½ï¿½Å·ï¿½Ê½
 typedef enum
 {
-  EXT_TRIG_EXP_STANDARD = 0,     //±ê×¼·½Ê½£¬Ä¬ÈÏÎª¸Ã·½Ê½¡£
-  EXT_TRIG_EXP_GRR,              //È«¾Ö¸´Î»·½Ê½£¬²¿·Ö¹ö¶¯¿ìÃÅµÄCMOSÐÍºÅµÄÏà»úÖ§³Ö¸Ã·½Ê½£¬ÅäºÏÍâ²¿»úÐµ¿ìÃÅ£¬¿ÉÒÔ´ïµ½È«¾Ö¿ìÃÅµÄÐ§¹û£¬ÊÊºÏÅÄ¸ßËÙÔË¶¯µÄÎïÌå
+  EXT_TRIG_EXP_STANDARD = 0,     //ï¿½ï¿½×¼ï¿½ï¿½Ê½ï¿½ï¿½Ä¬ï¿½ï¿½Îªï¿½Ã·ï¿½Ê½ï¿½ï¿½
+  EXT_TRIG_EXP_GRR,              //È«ï¿½Ö¸ï¿½Î»ï¿½ï¿½Ê½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Åµï¿½CMOSï¿½ÍºÅµï¿½ï¿½ï¿½ï¿½Ö§ï¿½Ö¸Ã·ï¿½Ê½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½â²¿ï¿½ï¿½Ðµï¿½ï¿½ï¿½Å£ï¿½ï¿½ï¿½ï¿½Ô´ïµ½È«ï¿½Ö¿ï¿½ï¿½Åµï¿½Ð§ï¿½ï¿½ï¿½ï¿½ï¿½Êºï¿½ï¿½Ä¸ï¿½ï¿½ï¿½ï¿½Ë¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 }emExtTrigShutterMode;
 
 /// @ingroup MV_ENUM_TYPE
-/// \~chinese ÇåÎú¶ÈÆÀ¹ÀËã·¨
+/// \~chinese ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ã·¨
 /// \~english Sharpness assessment algorithm
 typedef enum
 {
-	EVALUATE_DEFINITION_DEVIATION=0,	///< \~chinese ·½²î·¨ \~english	Variance method
-	EVALUATE_DEFINITION_SMD=1,			///< \~chinese ÏàÁÚÏñËØ»Ò¶È·½²î·¨ \~english Adjacent Pixel Gray Difference Method
-	EVALUATE_DEFINITION_GRADIENT=2,		///< \~chinese ÌÝ¶ÈÍ³¼Æ \~english Gradient statistics
+	EVALUATE_DEFINITION_DEVIATION=0,	///< \~chinese ï¿½ï¿½ï¿½î·¨ \~english	Variance method
+	EVALUATE_DEFINITION_SMD=1,			///< \~chinese ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ø»Ò¶È·ï¿½ï¿½î·¨ \~english Adjacent Pixel Gray Difference Method
+	EVALUATE_DEFINITION_GRADIENT=2,		///< \~chinese ï¿½Ý¶ï¿½Í³ï¿½ï¿½ \~english Gradient statistics
 	EVALUATE_DEFINITION_SOBEL=3,		///< \~chinese Sobel \~english Sobel
 	EVALUATE_DEFINITION_ROBERT=4,		///< \~chinese Robert \~english Robert
 	EVALUATE_DEFINITION_LAPLACE=5,		///< \~chinese Laplace \~english Laplace
 
-	EVALUATE_DEFINITION_ALG_MAX=6,		///< \~chinese Ëã·¨¸öÊý \~english The number of algorithms
+	EVALUATE_DEFINITION_ALG_MAX=6,		///< \~chinese ï¿½ã·¨ï¿½ï¿½ï¿½ï¿½ \~english The number of algorithms
 }emEvaluateDefinitionAlgorith;
 
 // GPIOÄ£Ê½
 typedef enum
 {
-  IOMODE_TRIG_INPUT=0,		    ///< \~chinese ´¥·¢ÊäÈë \~english Trigger input
-  IOMODE_STROBE_OUTPUT=1,		  ///< \~chinese ÉÁ¹âµÆÊä³ö \~english Strobe output
-  IOMODE_GP_INPUT=2,			    ///< \~chinese Í¨ÓÃÐÍÊäÈë \~english Universal input
-  IOMODE_GP_OUTPUT=3,			    ///< \~chinese Í¨ÓÃÐÍÊä³ö \~english Universal output
-  IOMODE_PWM_OUTPUT=4,		    ///< \~chinese PWMÐÍÊä³ö \~english PWM output
-  IOMODE_ROTARYENC_INPUT=5,   ///< \~chinese ±àÂëÆ÷ÊäÈë \~english rotary input
+  IOMODE_TRIG_INPUT=0,		    ///< \~chinese ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ \~english Trigger input
+  IOMODE_STROBE_OUTPUT=1,		  ///< \~chinese ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ \~english Strobe output
+  IOMODE_GP_INPUT=2,			    ///< \~chinese Í¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ \~english Universal input
+  IOMODE_GP_OUTPUT=3,			    ///< \~chinese Í¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ \~english Universal output
+  IOMODE_PWM_OUTPUT=4,		    ///< \~chinese PWMï¿½ï¿½ï¿½ï¿½ï¿½ \~english PWM output
+  IOMODE_ROTARYENC_INPUT=5,   ///< \~chinese ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ \~english rotary input
 }emCameraGPIOMode;
 
 /// @ingroup MV_ENUM_TYPE
-/// \~chinese GPIO ¸ñÊ½
+/// \~chinese GPIO ï¿½ï¿½Ê½
 /// \~english GPIO Format
 typedef enum 
 {
-	IOFORMAT_SINGLE=0,			///< \~chinese µ¥¶Ë  \~english single ended
-	IOFORMAT_RS422=1,			  ///< \~chinese ²î·ÖRS422 \~english Differential RS422
-	IOFORMAT_RS422_TERM=2,	///< \~chinese ²î·ÖRS422´øÖÕ¶Ëµç×è \~english Differential RS422 and Termination Enable
+	IOFORMAT_SINGLE=0,			///< \~chinese ï¿½ï¿½ï¿½ï¿½  \~english single ended
+	IOFORMAT_RS422=1,			  ///< \~chinese ï¿½ï¿½ï¿½RS422 \~english Differential RS422
+	IOFORMAT_RS422_TERM=2,	///< \~chinese ï¿½ï¿½ï¿½RS422ï¿½ï¿½ï¿½Õ¶Ëµï¿½ï¿½ï¿½ \~english Differential RS422 and Termination Enable
 }emCameraGPIOFormat;
 
 /// @ingroup MV_ENUM_TYPE
-/// \~chinese È¡Í¼ÓÅÏÈ¼¶
+/// \~chinese È¡Í¼ï¿½ï¿½ï¿½È¼ï¿½
 /// \~english Get Image priority
 typedef enum
 {
-	CAMERA_GET_IMAGE_PRIORITY_OLDEST=0,		///< \~chinese »ñÈ¡»º´æÖÐ×î¾ÉµÄÒ»Ö¡ \~english	Get the oldest frame in the cache
-	CAMERA_GET_IMAGE_PRIORITY_NEWEST=1,		///< \~chinese »ñÈ¡»º´æÖÐ×îÐÂµÄÒ»Ö¡£¨±È´ËÖ¡¾ÉµÄ½«È«²¿¶ªÆú£© \~english Get the latest frame in the cache (older than this frame will be discarded)
+	CAMERA_GET_IMAGE_PRIORITY_OLDEST=0,		///< \~chinese ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Éµï¿½Ò»Ö¡ \~english	Get the oldest frame in the cache
+	CAMERA_GET_IMAGE_PRIORITY_NEWEST=1,		///< \~chinese ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Âµï¿½Ò»Ö¡ï¿½ï¿½ï¿½È´ï¿½Ö¡ï¿½ÉµÄ½ï¿½È«ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ \~english Get the latest frame in the cache (older than this frame will be discarded)
 
-	/// \~chinese ¶ªÆú»º´æÖÐµÄËùÓÐÖ¡£¬²¢ÇÒÈç¹û´Ë¿ÌÏà»úÕýÔÚÆØ¹â»ò´«Êä½«»á±»Á¢¼´´ò¶Ï£¬µÈ´ý½ÓÊÕÏÂÒ»Ö¡
-	/// \note Ä³Ð©ÐÍºÅµÄÏà»ú²»Ö§³Ö´Ë¹¦ÄÜ£¬¶ÔÓÚ²»Ö§³Ö´Ë¹¦ÄÜµÄÏà»úÕâ¸ö±êÖ¾Ïàµ±ÓÚ@link #CAMERA_GET_IMAGE_PRIORITY_OLDEST @endlink
+	/// \~chinese ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ðµï¿½ï¿½ï¿½ï¿½ï¿½Ö¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ø¹ï¿½ï¿½ï¿½ä½«ï¿½á±»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï£ï¿½ï¿½È´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò»Ö¡
+	/// \note Ä³Ð©ï¿½ÍºÅµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö§ï¿½Ö´Ë¹ï¿½ï¿½Ü£ï¿½ï¿½ï¿½ï¿½Ú²ï¿½Ö§ï¿½Ö´Ë¹ï¿½ï¿½Üµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¾ï¿½àµ±ï¿½ï¿½@link #CAMERA_GET_IMAGE_PRIORITY_OLDEST @endlink
 	/// \~english All frames in the cache are discarded, and if the camera is now being exposed or transmitted it will be immediately interrupted, waiting to receive the next frame
 	/// \note Some models do not support this feature. For cameras that do not support this feature this flag is equivalent to @link #CAMERA_GET_IMAGE_PRIORITY_OLDEST @endlink
 	CAMERA_GET_IMAGE_PRIORITY_NEXT=2,
 }emCameraGetImagePriority;
 
 /// @ingroup MV_ENUM_TYPE
-/// \~chinese Èí´¥·¢¹¦ÄÜ±êÖ¾
+/// \~chinese ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü±ï¿½Ö¾
 /// \~english Soft trigger function flag
 typedef enum
 {
-	CAMERA_ST_CLEAR_BUFFER_BEFORE	= 0x1,	///< \~chinese ÔÚÈí´¥·¢Ö®Ç°ÏÈÇå¿ÕÏà»úÒÑ»º´æµÄÖ¡ \~english Empty camera-cached frames before soft triggering
+	CAMERA_ST_CLEAR_BUFFER_BEFORE	= 0x1,	///< \~chinese ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö®Ç°ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ñ»ï¿½ï¿½ï¿½ï¿½Ö¡ \~english Empty camera-cached frames before soft triggering
 }emCameraSoftTriggerExFlags;
 
-//Ïà»úµÄÉè±¸ÐÅÏ¢
+//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½è±¸ï¿½ï¿½Ï¢
 typedef struct
 {
-    char acProductSeries[32];   // ²úÆ·ÏµÁÐ
-    char acProductName[32];     // ²úÆ·Ãû³Æ
-    char acFriendlyName[32];    // ²úÆ·êÇ³Æ£¬ÓÃ»§¿É×Ô¶¨Òå¸ÄêÇ³Æ£¬±£´æÔÚÏà»úÄÚ£¬ÓÃÓÚÇø·Ö¶à¸öÏà»úÍ¬Ê±Ê¹ÓÃ,¿ÉÒÔÓÃCameraSetFriendlyName½Ó¿Ú¸Ä±ä¸ÃêÇ³Æ£¬Éè±¸ÖØÆôºóÉúÐ§¡£
-    char acLinkName[32];        // ÄÚºË·ûºÅÁ¬½ÓÃû£¬ÄÚ²¿Ê¹ÓÃ
-    char acDriverVersion[32];   // Çý¶¯°æ±¾
-    char acSensorType[32];      // sensorÀàÐÍ
-    char acPortType[32];        // ½Ó¿ÚÀàÐÍ
-    char acSn[32];              // ²úÆ·Î¨Ò»ÐòÁÐºÅ
-    UINT uInstance;             // ¸ÃÐÍºÅÏà»úÔÚ¸ÃµçÄÔÉÏµÄÊµÀýË÷ÒýºÅ£¬ÓÃÓÚÇø·ÖÍ¬ÐÍºÅ¶àÏà»ú
+    char acProductSeries[32];   // ï¿½ï¿½Æ·Ïµï¿½ï¿½
+    char acProductName[32];     // ï¿½ï¿½Æ·ï¿½ï¿½ï¿½ï¿½
+    char acFriendlyName[32];    // ï¿½ï¿½Æ·ï¿½Ç³Æ£ï¿½ï¿½Ã»ï¿½ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½ï¿½ï¿½Ç³Æ£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ú£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¶ï¿½ï¿½ï¿½ï¿½ï¿½Í¬Ê±Ê¹ï¿½ï¿½,ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½CameraSetFriendlyNameï¿½Ó¿Ú¸Ä±ï¿½ï¿½ï¿½Ç³Æ£ï¿½ï¿½è±¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð§ï¿½ï¿½
+    char acLinkName[32];        // ï¿½ÚºË·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ú²ï¿½Ê¹ï¿½ï¿½
+    char acDriverVersion[32];   // ï¿½ï¿½ï¿½ï¿½ï¿½æ±¾
+    char acSensorType[32];      // sensorï¿½ï¿½ï¿½ï¿½
+    char acPortType[32];        // ï¿½Ó¿ï¿½ï¿½ï¿½ï¿½ï¿½
+    char acSn[32];              // ï¿½ï¿½Æ·Î¨Ò»ï¿½ï¿½ï¿½Ðºï¿½
+    UINT uInstance;             // ï¿½ï¿½ï¿½Íºï¿½ï¿½ï¿½ï¿½ï¿½Ú¸Ãµï¿½ï¿½ï¿½ï¿½Ïµï¿½Êµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Å£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¬ï¿½ÍºÅ¶ï¿½ï¿½ï¿½ï¿½
 } tSdkCameraDevInfo;
 
-#define EXT_TRIG_MASK_GRR_SHUTTER  1	///< \~chinese ¿ìÃÅÖ§³ÖGRRÄ£Ê½ \~english Shutter supports GRR mode
-#define EXT_TRIG_MASK_LEVEL_MODE   2	///< \~chinese Ö§³ÖµçÆ½´¥·¢ \~english Support level trigger
-#define EXT_TRIG_MASK_DOUBLE_EDGE  4	///< \~chinese Ö§³ÖË«±ßÑØ´¥·¢ \~english Supports bilateral triggering
-#define EXT_TRIG_MASK_BUFFERED_DELAY 8	///< \~chinese Ö§³ÖÐÅºÅºóÑÓ \~english Supports signal delayed activation
+#define EXT_TRIG_MASK_GRR_SHUTTER  1	///< \~chinese ï¿½ï¿½ï¿½ï¿½Ö§ï¿½ï¿½GRRÄ£Ê½ \~english Shutter supports GRR mode
+#define EXT_TRIG_MASK_LEVEL_MODE   2	///< \~chinese Ö§ï¿½Öµï¿½Æ½ï¿½ï¿½ï¿½ï¿½ \~english Support level trigger
+#define EXT_TRIG_MASK_DOUBLE_EDGE  4	///< \~chinese Ö§ï¿½ï¿½Ë«ï¿½ï¿½ï¿½Ø´ï¿½ï¿½ï¿½ \~english Supports bilateral triggering
+#define EXT_TRIG_MASK_BUFFERED_DELAY 8	///< \~chinese Ö§ï¿½ï¿½ï¿½ÅºÅºï¿½ï¿½ï¿½ \~english Supports signal delayed activation
 
-//tSdkResolutionRange½á¹¹ÌåÖÐSKIP¡¢ BIN¡¢RESAMPLEÄ£Ê½µÄÑÚÂëÖµ
-#define MASK_2X2_HD     (1<<0)    //Ó²¼þSKIP¡¢BIN¡¢ÖØ²ÉÑù 2X2
+//tSdkResolutionRangeï¿½á¹¹ï¿½ï¿½ï¿½ï¿½SKIPï¿½ï¿½ BINï¿½ï¿½RESAMPLEÄ£Ê½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµ
+#define MASK_2X2_HD     (1<<0)    //Ó²ï¿½ï¿½SKIPï¿½ï¿½BINï¿½ï¿½ï¿½Ø²ï¿½ï¿½ï¿½ 2X2
 #define MASK_3X3_HD     (1<<1)
 #define MASK_4X4_HD     (1<<2)
 #define MASK_5X5_HD     (1<<3)
@@ -364,7 +364,7 @@ typedef struct
 #define MASK_15X15_HD   (1<<13)
 #define MASK_16X16_HD   (1<<14)
 #define MASK_17X17_HD   (1<<15)
-#define MASK_2X2_SW     (1<<16)   //Ó²¼þSKIP¡¢BIN¡¢ÖØ²ÉÑù 2X2
+#define MASK_2X2_SW     (1<<16)   //Ó²ï¿½ï¿½SKIPï¿½ï¿½BINï¿½ï¿½ï¿½Ø²ï¿½ï¿½ï¿½ 2X2
 #define MASK_3X3_SW     (1<<17)
 #define MASK_4X4_SW     (1<<18)
 #define MASK_5X5_SW     (1<<19)
@@ -381,292 +381,292 @@ typedef struct
 #define MASK_16X16_SW   (1<<30)
 #define MASK_17X17_SW   (1<<31)
 
-//Ïà»úµÄ·Ö±æÂÊÉè¶¨·¶Î§£¬ÓÃÓÚ¹¹¼þUI
+//ï¿½ï¿½ï¿½ï¿½Ä·Ö±ï¿½ï¿½ï¿½ï¿½è¶¨ï¿½ï¿½Î§ï¿½ï¿½ï¿½ï¿½ï¿½Ú¹ï¿½ï¿½ï¿½UI
 typedef struct
 {
-  INT iHeightMax;             //Í¼Ïñ×î´ó¸ß¶È
-  INT iHeightMin;             //Í¼Ïñ×îÐ¡¸ß¶È
-  INT iWidthMax;              //Í¼Ïñ×î´ó¿í¶È
-  INT iWidthMin;              //Í¼Ïñ×îÐ¡¿í¶È
-  UINT uSkipModeMask;         //SKIPÄ£Ê½ÑÚÂë£¬Îª0£¬±íÊ¾²»Ö§³ÖSKIP ¡£bit0Îª1,±íÊ¾Ö§³ÖSKIP 2x2 ;bit1Îª1£¬±íÊ¾Ö§³ÖSKIP 3x3....
-  UINT uBinSumModeMask;       //BIN(ÇóºÍ)Ä£Ê½ÑÚÂë£¬Îª0£¬±íÊ¾²»Ö§³ÖBIN ¡£bit0Îª1,±íÊ¾Ö§³ÖBIN 2x2 ;bit1Îª1£¬±íÊ¾Ö§³ÖBIN 3x3....
-  UINT uBinAverageModeMask;   //BIN(Çó¾ùÖµ)Ä£Ê½ÑÚÂë£¬Îª0£¬±íÊ¾²»Ö§³ÖBIN ¡£bit0Îª1,±íÊ¾Ö§³ÖBIN 2x2 ;bit1Îª1£¬±íÊ¾Ö§³ÖBIN 3x3....
-  UINT uResampleMask;         //Ó²¼þÖØ²ÉÑùµÄÑÚÂë
+  INT iHeightMax;             //Í¼ï¿½ï¿½ï¿½ï¿½ï¿½ß¶ï¿½
+  INT iHeightMin;             //Í¼ï¿½ï¿½ï¿½ï¿½Ð¡ï¿½ß¶ï¿½
+  INT iWidthMax;              //Í¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+  INT iWidthMin;              //Í¼ï¿½ï¿½ï¿½ï¿½Ð¡ï¿½ï¿½ï¿½ï¿½
+  UINT uSkipModeMask;         //SKIPÄ£Ê½ï¿½ï¿½ï¿½ë£¬Îª0ï¿½ï¿½ï¿½ï¿½Ê¾ï¿½ï¿½Ö§ï¿½ï¿½SKIP ï¿½ï¿½bit0Îª1,ï¿½ï¿½Ê¾Ö§ï¿½ï¿½SKIP 2x2 ;bit1Îª1ï¿½ï¿½ï¿½ï¿½Ê¾Ö§ï¿½ï¿½SKIP 3x3....
+  UINT uBinSumModeMask;       //BIN(ï¿½ï¿½ï¿½)Ä£Ê½ï¿½ï¿½ï¿½ë£¬Îª0ï¿½ï¿½ï¿½ï¿½Ê¾ï¿½ï¿½Ö§ï¿½ï¿½BIN ï¿½ï¿½bit0Îª1,ï¿½ï¿½Ê¾Ö§ï¿½ï¿½BIN 2x2 ;bit1Îª1ï¿½ï¿½ï¿½ï¿½Ê¾Ö§ï¿½ï¿½BIN 3x3....
+  UINT uBinAverageModeMask;   //BIN(ï¿½ï¿½ï¿½Öµ)Ä£Ê½ï¿½ï¿½ï¿½ë£¬Îª0ï¿½ï¿½ï¿½ï¿½Ê¾ï¿½ï¿½Ö§ï¿½ï¿½BIN ï¿½ï¿½bit0Îª1,ï¿½ï¿½Ê¾Ö§ï¿½ï¿½BIN 2x2 ;bit1Îª1ï¿½ï¿½ï¿½ï¿½Ê¾Ö§ï¿½ï¿½BIN 3x3....
+  UINT uResampleMask;         //Ó²ï¿½ï¿½ï¿½Ø²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 } tSdkResolutionRange;
 
 
-//Ïà»úµÄ·Ö±æÂÊÃèÊö
+//ï¿½ï¿½ï¿½ï¿½Ä·Ö±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 typedef struct
 {
-  INT     iIndex;             // Ë÷ÒýºÅ£¬[0,N]±íÊ¾Ô¤ÉèµÄ·Ö±æÂÊ(N ÎªÔ¤Éè·Ö±æÂÊµÄ×î´ó¸öÊý£¬Ò»°ã²»³¬¹ý20),OXFF ±íÊ¾×Ô¶¨Òå·Ö±æÂÊ(ROI)
-  char    acDescription[32];  // ¸Ã·Ö±æÂÊµÄÃèÊöÐÅÏ¢¡£½öÔ¤Éè·Ö±æÂÊÊ±¸ÃÐÅÏ¢ÓÐÐ§¡£×Ô¶¨Òå·Ö±æÂÊ¿ÉºöÂÔ¸ÃÐÅÏ¢
-  UINT    uBinSumMode;        // BIN(ÇóºÍ)µÄÄ£Ê½,·¶Î§²»ÄÜ³¬¹ýtSdkResolutionRangeÖÐuBinSumModeMask
-  UINT    uBinAverageMode;    // BIN(Çó¾ùÖµ)µÄÄ£Ê½,·¶Î§²»ÄÜ³¬¹ýtSdkResolutionRangeÖÐuBinAverageModeMask
-  UINT    uSkipMode;          // ÊÇ·ñSKIPµÄ³ß´ç£¬Îª0±íÊ¾½ûÖ¹SKIPÄ£Ê½£¬·¶Î§²»ÄÜ³¬¹ýtSdkResolutionRangeÖÐuSkipModeMask
-  UINT    uResampleMask;      // Ó²¼þÖØ²ÉÑùµÄÑÚÂë
-  INT     iHOffsetFOV;        // ²É¼¯ÊÓ³¡Ïà¶ÔÓÚSensor×î´óÊÓ³¡×óÉÏ½ÇµÄ´¹Ö±Æ«ÒÆ
-  INT     iVOffsetFOV;        // ²É¼¯ÊÓ³¡Ïà¶ÔÓÚSensor×î´óÊÓ³¡×óÉÏ½ÇµÄË®Æ½Æ«ÒÆ
-  INT     iWidthFOV;          // ²É¼¯ÊÓ³¡µÄ¿í¶È
-  INT     iHeightFOV;         // ²É¼¯ÊÓ³¡µÄ¸ß¶È
-  INT     iWidth;             // Ïà»ú×îÖÕÊä³öµÄÍ¼ÏñµÄ¿í¶È
-  INT     iHeight;            // Ïà»ú×îÖÕÊä³öµÄÍ¼ÏñµÄ¸ß¶È
-  INT     iWidthZoomHd;       // Ó²¼þËõ·ÅµÄ¿í¶È,²»ÐèÒª½øÐÐ´Ë²Ù×÷µÄ·Ö±æÂÊ£¬´Ë±äÁ¿ÉèÖÃÎª0.
-  INT     iHeightZoomHd;      // Ó²¼þËõ·ÅµÄ¸ß¶È,²»ÐèÒª½øÐÐ´Ë²Ù×÷µÄ·Ö±æÂÊ£¬´Ë±äÁ¿ÉèÖÃÎª0.
-  INT     iWidthZoomSw;       // Èí¼þËõ·ÅµÄ¿í¶È,²»ÐèÒª½øÐÐ´Ë²Ù×÷µÄ·Ö±æÂÊ£¬´Ë±äÁ¿ÉèÖÃÎª0.
-  INT     iHeightZoomSw;      // Èí¼þËõ·ÅµÄ¸ß¶È,²»ÐèÒª½øÐÐ´Ë²Ù×÷µÄ·Ö±æÂÊ£¬´Ë±äÁ¿ÉèÖÃÎª0.
+  INT     iIndex;             // ï¿½ï¿½ï¿½ï¿½ï¿½Å£ï¿½[0,N]ï¿½ï¿½Ê¾Ô¤ï¿½ï¿½Ä·Ö±ï¿½ï¿½ï¿½(N ÎªÔ¤ï¿½ï¿½Ö±ï¿½ï¿½Êµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ã²»ï¿½ï¿½ï¿½ï¿½20),OXFF ï¿½ï¿½Ê¾ï¿½Ô¶ï¿½ï¿½ï¿½Ö±ï¿½ï¿½ï¿½(ROI)
+  char    acDescription[32];  // ï¿½Ã·Ö±ï¿½ï¿½Êµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢ï¿½ï¿½ï¿½ï¿½Ô¤ï¿½ï¿½Ö±ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½Ï¢ï¿½ï¿½Ð§ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½Ö±ï¿½ï¿½Ê¿Éºï¿½ï¿½Ô¸ï¿½ï¿½ï¿½Ï¢
+  UINT    uBinSumMode;        // BIN(ï¿½ï¿½ï¿½)ï¿½ï¿½Ä£Ê½,ï¿½ï¿½Î§ï¿½ï¿½ï¿½Ü³ï¿½ï¿½ï¿½tSdkResolutionRangeï¿½ï¿½uBinSumModeMask
+  UINT    uBinAverageMode;    // BIN(ï¿½ï¿½ï¿½Öµ)ï¿½ï¿½Ä£Ê½,ï¿½ï¿½Î§ï¿½ï¿½ï¿½Ü³ï¿½ï¿½ï¿½tSdkResolutionRangeï¿½ï¿½uBinAverageModeMask
+  UINT    uSkipMode;          // ï¿½Ç·ï¿½SKIPï¿½Ä³ß´ç£¬Îª0ï¿½ï¿½Ê¾ï¿½ï¿½Ö¹SKIPÄ£Ê½ï¿½ï¿½ï¿½ï¿½Î§ï¿½ï¿½ï¿½Ü³ï¿½ï¿½ï¿½tSdkResolutionRangeï¿½ï¿½uSkipModeMask
+  UINT    uResampleMask;      // Ó²ï¿½ï¿½ï¿½Ø²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+  INT     iHOffsetFOV;        // ï¿½É¼ï¿½ï¿½Ó³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Sensorï¿½ï¿½ï¿½ï¿½Ó³ï¿½ï¿½ï¿½ï¿½Ï½ÇµÄ´ï¿½Ö±Æ«ï¿½ï¿½
+  INT     iVOffsetFOV;        // ï¿½É¼ï¿½ï¿½Ó³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Sensorï¿½ï¿½ï¿½ï¿½Ó³ï¿½ï¿½ï¿½ï¿½Ï½Çµï¿½Ë®Æ½Æ«ï¿½ï¿½
+  INT     iWidthFOV;          // ï¿½É¼ï¿½ï¿½Ó³ï¿½ï¿½Ä¿ï¿½ï¿½ï¿½
+  INT     iHeightFOV;         // ï¿½É¼ï¿½ï¿½Ó³ï¿½ï¿½Ä¸ß¶ï¿½
+  INT     iWidth;             // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¼ï¿½ï¿½Ä¿ï¿½ï¿½ï¿½
+  INT     iHeight;            // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¼ï¿½ï¿½Ä¸ß¶ï¿½
+  INT     iWidthZoomHd;       // Ó²ï¿½ï¿½ï¿½ï¿½ï¿½ÅµÄ¿ï¿½ï¿½ï¿½,ï¿½ï¿½ï¿½ï¿½Òªï¿½ï¿½ï¿½Ð´Ë²ï¿½ï¿½ï¿½ï¿½Ä·Ö±ï¿½ï¿½Ê£ï¿½ï¿½Ë±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îª0.
+  INT     iHeightZoomHd;      // Ó²ï¿½ï¿½ï¿½ï¿½ï¿½ÅµÄ¸ß¶ï¿½,ï¿½ï¿½ï¿½ï¿½Òªï¿½ï¿½ï¿½Ð´Ë²ï¿½ï¿½ï¿½ï¿½Ä·Ö±ï¿½ï¿½Ê£ï¿½ï¿½Ë±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îª0.
+  INT     iWidthZoomSw;       // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÅµÄ¿ï¿½ï¿½ï¿½,ï¿½ï¿½ï¿½ï¿½Òªï¿½ï¿½ï¿½Ð´Ë²ï¿½ï¿½ï¿½ï¿½Ä·Ö±ï¿½ï¿½Ê£ï¿½ï¿½Ë±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îª0.
+  INT     iHeightZoomSw;      // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÅµÄ¸ß¶ï¿½,ï¿½ï¿½ï¿½ï¿½Òªï¿½ï¿½ï¿½Ð´Ë²ï¿½ï¿½ï¿½ï¿½Ä·Ö±ï¿½ï¿½Ê£ï¿½ï¿½Ë±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îª0.
 } tSdkImageResolution;
 
-//Ïà»ú°×Æ½ºâÉ«ÎÂÄ£Ê½ÃèÊöÐÅÏ¢
+//ï¿½ï¿½ï¿½ï¿½ï¿½Æ½ï¿½ï¿½É«ï¿½ï¿½Ä£Ê½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢
 typedef struct
 {
-    INT  iIndex;            // Ä£Ê½Ë÷ÒýºÅ
-    char acDescription[32]; // ÃèÊöÐÅÏ¢
+    INT  iIndex;            // Ä£Ê½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    char acDescription[32]; // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢
 } tSdkColorTemperatureDes;
 
-//Ïà»úÖ¡ÂÊÃèÊöÐÅÏ¢
+//ï¿½ï¿½ï¿½Ö¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢
 typedef struct
 {
-    INT  iIndex;             // Ö¡ÂÊË÷ÒýºÅ£¬Ò»°ã0¶ÔÓ¦ÓÚµÍËÙÄ£Ê½£¬1¶ÔÓ¦ÓÚÆÕÍ¨Ä£Ê½£¬2¶ÔÓ¦ÓÚ¸ßËÙÄ£Ê½
-    char acDescription[32];  // ÃèÊöÐÅÏ¢
+    INT  iIndex;             // Ö¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Å£ï¿½Ò»ï¿½ï¿½0ï¿½ï¿½Ó¦ï¿½Úµï¿½ï¿½ï¿½Ä£Ê½ï¿½ï¿½1ï¿½ï¿½Ó¦ï¿½ï¿½ï¿½ï¿½Í¨Ä£Ê½ï¿½ï¿½2ï¿½ï¿½Ó¦ï¿½Ú¸ï¿½ï¿½ï¿½Ä£Ê½
+    char acDescription[32];  // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢
 } tSdkFrameSpeed;
 
-//Ïà»úÆØ¹â¹¦ÄÜ·¶Î§¶¨Òå
+//ï¿½ï¿½ï¿½ï¿½Ø¹â¹¦ï¿½Ü·ï¿½Î§ï¿½ï¿½ï¿½ï¿½
 typedef struct
 {
-    UINT  uiTargetMin;      //×Ô¶¯ÆØ¹âÁÁ¶ÈÄ¿±ê×îÐ¡Öµ
-    UINT  uiTargetMax;      //×Ô¶¯ÆØ¹âÁÁ¶ÈÄ¿±ê×î´óÖµ
-    UINT  uiAnalogGainMin;  //Ä£ÄâÔöÒæµÄ×îÐ¡Öµ£¬µ¥Î»ÎªfAnalogGainStepÖÐ¶¨Òå
-    UINT  uiAnalogGainMax;  //Ä£ÄâÔöÒæµÄ×î´óÖµ£¬µ¥Î»ÎªfAnalogGainStepÖÐ¶¨Òå
-    float fAnalogGainStep;  //Ä£ÄâÔöÒæÃ¿Ôö¼Ó1£¬¶ÔÓ¦µÄÔö¼ÓµÄ·Å´ó±¶Êý¡£ÀýÈç£¬uiAnalogGainMinÒ»°ãÎª16£¬fAnalogGainStepÒ»°ãÎª0.125£¬ÄÇÃ´×îÐ¡·Å´ó±¶Êý¾ÍÊÇ16*0.125 = 2±¶
-    UINT  uiExposeTimeMin;  //ÊÖ¶¯Ä£Ê½ÏÂ£¬ÆØ¹âÊ±¼äµÄ×îÐ¡Öµ£¬µ¥Î»:ÐÐ¡£¸ù¾ÝCameraGetExposureLineTime¿ÉÒÔ»ñµÃÒ»ÐÐ¶ÔÓ¦µÄÊ±¼ä(Î¢Ãë),´Ó¶øµÃµ½ÕûÖ¡µÄÆØ¹âÊ±¼ä
-    UINT  uiExposeTimeMax;  //ÊÖ¶¯Ä£Ê½ÏÂ£¬ÆØ¹âÊ±¼äµÄ×î´óÖµ£¬µ¥Î»:ÐÐ
+    UINT  uiTargetMin;      //ï¿½Ô¶ï¿½ï¿½Ø¹ï¿½ï¿½ï¿½ï¿½ï¿½Ä¿ï¿½ï¿½ï¿½ï¿½Ð¡Öµ
+    UINT  uiTargetMax;      //ï¿½Ô¶ï¿½ï¿½Ø¹ï¿½ï¿½ï¿½ï¿½ï¿½Ä¿ï¿½ï¿½ï¿½ï¿½ï¿½Öµ
+    UINT  uiAnalogGainMin;  //Ä£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð¡Öµï¿½ï¿½ï¿½ï¿½Î»ÎªfAnalogGainStepï¿½Ð¶ï¿½ï¿½ï¿½
+    UINT  uiAnalogGainMax;  //Ä£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµï¿½ï¿½ï¿½ï¿½Î»ÎªfAnalogGainStepï¿½Ð¶ï¿½ï¿½ï¿½
+    float fAnalogGainStep;  //Ä£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ã¿ï¿½ï¿½ï¿½ï¿½1ï¿½ï¿½ï¿½ï¿½Ó¦ï¿½ï¿½ï¿½ï¿½ï¿½ÓµÄ·Å´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ç£¬uiAnalogGainMinÒ»ï¿½ï¿½Îª16ï¿½ï¿½fAnalogGainStepÒ»ï¿½ï¿½Îª0.125ï¿½ï¿½ï¿½ï¿½Ã´ï¿½ï¿½Ð¡ï¿½Å´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½16*0.125 = 2ï¿½ï¿½
+    UINT  uiExposeTimeMin;  //ï¿½Ö¶ï¿½Ä£Ê½ï¿½Â£ï¿½ï¿½Ø¹ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½Ð¡Öµï¿½ï¿½ï¿½ï¿½Î»:ï¿½Ð¡ï¿½ï¿½ï¿½ï¿½ï¿½CameraGetExposureLineTimeï¿½ï¿½ï¿½Ô»ï¿½ï¿½Ò»ï¿½Ð¶ï¿½Ó¦ï¿½ï¿½Ê±ï¿½ï¿½(Î¢ï¿½ï¿½),ï¿½Ó¶ï¿½ï¿½Ãµï¿½ï¿½ï¿½Ö¡ï¿½ï¿½ï¿½Ø¹ï¿½Ê±ï¿½ï¿½
+    UINT  uiExposeTimeMax;  //ï¿½Ö¶ï¿½Ä£Ê½ï¿½Â£ï¿½ï¿½Ø¹ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµï¿½ï¿½ï¿½ï¿½Î»:ï¿½ï¿½
 } tSdkExpose;
 
-//´¥·¢Ä£Ê½ÃèÊö
+//ï¿½ï¿½ï¿½ï¿½Ä£Ê½ï¿½ï¿½ï¿½ï¿½
 typedef struct
 {
-  INT   iIndex;            //Ä£Ê½Ë÷ÒýºÅ
-  char  acDescription[32]; //¸ÃÄ£Ê½µÄÃèÊöÐÅÏ¢
+  INT   iIndex;            //Ä£Ê½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+  char  acDescription[32]; //ï¿½ï¿½Ä£Ê½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢
 } tSdkTrigger;
 
-//´«Êä·Ö°ü´óÐ¡ÃèÊö(Ö÷ÒªÊÇÕë¶ÔÍøÂçÏà»úÓÐÐ§)
+//ï¿½ï¿½ï¿½ï¿½Ö°ï¿½ï¿½ï¿½Ð¡ï¿½ï¿½ï¿½ï¿½(ï¿½ï¿½Òªï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð§)
 typedef struct
 {
-    INT  iIndex;              //·Ö°ü´óÐ¡Ë÷ÒýºÅ
-    char acDescription[32];   //¶ÔÓ¦µÄÃèÊöÐÅÏ¢
+    INT  iIndex;              //ï¿½Ö°ï¿½ï¿½ï¿½Ð¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    char acDescription[32];   //ï¿½ï¿½Ó¦ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢
     UINT iPackSize;
 } tSdkPackLength;
 
-//Ô¤ÉèµÄLUT±íÃèÊö
+//Ô¤ï¿½ï¿½ï¿½LUTï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 typedef struct
 {
-    INT  iIndex;                //±àºÅ
-    char acDescription[32];     //ÃèÊöÐÅÏ¢
+    INT  iIndex;                //ï¿½ï¿½ï¿½
+    char acDescription[32];     //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢
 } tSdkPresetLut;
 
-//AEËã·¨ÃèÊö
+//AEï¿½ã·¨ï¿½ï¿½ï¿½ï¿½
 typedef struct
 {
-    INT  iIndex;                //±àºÅ
-    char acDescription[32];     //ÃèÊöÐÅÏ¢
+    INT  iIndex;                //ï¿½ï¿½ï¿½
+    char acDescription[32];     //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢
 } tSdkAeAlgorithm;
 
-//RAW×ªRGBËã·¨ÃèÊö
+//RAW×ªRGBï¿½ã·¨ï¿½ï¿½ï¿½ï¿½
 typedef struct
 {
-    INT  iIndex;                //±àºÅ
-    char acDescription[32];     //ÃèÊöÐÅÏ¢
+    INT  iIndex;                //ï¿½ï¿½ï¿½
+    char acDescription[32];     //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢
 } tSdkBayerDecodeAlgorithm;
 
 
-//Ö¡ÂÊÍ³¼ÆÐÅÏ¢
+//Ö¡ï¿½ï¿½Í³ï¿½ï¿½ï¿½ï¿½Ï¢
 typedef struct
 {
-  INT iTotal;           //µ±Ç°²É¼¯µÄ×ÜÖ¡Êý£¨°üÀ¨´íÎóÖ¡£©
-    INT iCapture;       //µ±Ç°²É¼¯µÄÓÐÐ§Ö¡µÄÊýÁ¿
-    INT iLost;          //µ±Ç°¶ªÖ¡µÄÊýÁ¿
+  INT iTotal;           //ï¿½ï¿½Ç°ï¿½É¼ï¿½ï¿½ï¿½ï¿½ï¿½Ö¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¡ï¿½ï¿½
+    INT iCapture;       //ï¿½ï¿½Ç°ï¿½É¼ï¿½ï¿½ï¿½ï¿½ï¿½Ð§Ö¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    INT iLost;          //ï¿½ï¿½Ç°ï¿½ï¿½Ö¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 } tSdkFrameStatistic;
 
-//Ïà»úÊä³öµÄÍ¼ÏñÊý¾Ý¸ñÊ½
+//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¼ï¿½ï¿½ï¿½ï¿½ï¿½Ý¸ï¿½Ê½
 typedef struct
 {
-  INT     iIndex;             //¸ñÊ½ÖÖÀà±àºÅ
-  char    acDescription[32];  //ÃèÊöÐÅÏ¢
-  UINT    iMediaType;         //¶ÔÓ¦µÄÍ¼Ïñ¸ñÊ½±àÂë£¬ÈçCAMERA_MEDIA_TYPE_BAYGR8£¬ÔÚ±¾ÎÄ¼þÖÐÓÐ¶¨Òå¡£
+  INT     iIndex;             //ï¿½ï¿½Ê½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+  char    acDescription[32];  //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢
+  UINT    iMediaType;         //ï¿½ï¿½Ó¦ï¿½ï¿½Í¼ï¿½ï¿½ï¿½Ê½ï¿½ï¿½ï¿½ë£¬ï¿½ï¿½CAMERA_MEDIA_TYPE_BAYGR8ï¿½ï¿½ï¿½Ú±ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½ï¿½Ð¶ï¿½ï¿½å¡£
 } tSdkMediaType;
 
-//Ù¤ÂíµÄÉè¶¨·¶Î§
+//Ù¤ï¿½ï¿½ï¿½ï¿½ï¿½è¶¨ï¿½ï¿½Î§
 typedef struct
 {
-  INT iMin;       //×îÐ¡Öµ
-  INT iMax;       //×î´óÖµ
+  INT iMin;       //ï¿½ï¿½Ð¡Öµ
+  INT iMax;       //ï¿½ï¿½ï¿½Öµ
 } tGammaRange;
 
-//¶Ô±È¶ÈµÄÉè¶¨·¶Î§
+//ï¿½Ô±È¶Èµï¿½ï¿½è¶¨ï¿½ï¿½Î§
 typedef struct
 {
-    INT iMin;   //×îÐ¡Öµ
-    INT iMax;   //×î´óÖµ
+    INT iMin;   //ï¿½ï¿½Ð¡Öµ
+    INT iMax;   //ï¿½ï¿½ï¿½Öµ
 } tContrastRange;
 
-//RGBÈýÍ¨µÀÊý×ÖÔöÒæµÄÉè¶¨·¶Î§
+//RGBï¿½ï¿½Í¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½è¶¨ï¿½ï¿½Î§
 typedef struct
 {
-    INT iRGainMin;    //ºìÉ«ÔöÒæµÄ×îÐ¡Öµ
-    INT iRGainMax;    //ºìÉ«ÔöÒæµÄ×î´óÖµ
-    INT iGGainMin;    //ÂÌÉ«ÔöÒæµÄ×îÐ¡Öµ
-    INT iGGainMax;    //ÂÌÉ«ÔöÒæµÄ×î´óÖµ
-    INT iBGainMin;    //À¶É«ÔöÒæµÄ×îÐ¡Öµ
-    INT iBGainMax;    //À¶É«ÔöÒæµÄ×î´óÖµ
+    INT iRGainMin;    //ï¿½ï¿½É«ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð¡Öµ
+    INT iRGainMax;    //ï¿½ï¿½É«ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµ
+    INT iGGainMin;    //ï¿½ï¿½É«ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð¡Öµ
+    INT iGGainMax;    //ï¿½ï¿½É«ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµ
+    INT iBGainMin;    //ï¿½ï¿½É«ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð¡Öµ
+    INT iBGainMax;    //ï¿½ï¿½É«ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµ
 } tRgbGainRange;
 
-//±¥ºÍ¶ÈÉè¶¨µÄ·¶Î§
+//ï¿½ï¿½ï¿½Í¶ï¿½ï¿½è¶¨ï¿½Ä·ï¿½Î§
 typedef struct
 {
-    INT iMin;   //×îÐ¡Öµ
-    INT iMax;   //×î´óÖµ
+    INT iMin;   //ï¿½ï¿½Ð¡Öµ
+    INT iMax;   //ï¿½ï¿½ï¿½Öµ
 } tSaturationRange;
 
-//Èñ»¯µÄÉè¶¨·¶Î§
+//ï¿½ñ»¯µï¿½ï¿½è¶¨ï¿½ï¿½Î§
 typedef struct
 {
-  INT iMin;   //×îÐ¡Öµ
-  INT iMax;   //×î´óÖµ
+  INT iMin;   //ï¿½ï¿½Ð¡Öµ
+  INT iMax;   //ï¿½ï¿½ï¿½Öµ
 } tSharpnessRange;
 
-//ISPÄ£¿éµÄÊ¹ÄÜÐÅÏ¢
+//ISPÄ£ï¿½ï¿½ï¿½Ê¹ï¿½ï¿½ï¿½ï¿½Ï¢
 typedef struct
 {
-    BOOL bMonoSensor;       //±íÊ¾¸ÃÐÍºÅÏà»úÊÇ·ñÎªºÚ°×Ïà»ú,Èç¹ûÊÇºÚ°×Ïà»ú£¬ÔòÑÕÉ«Ïà¹ØµÄ¹¦ÄÜ¶¼ÎÞ·¨µ÷½Ú
-    BOOL bWbOnce;           //±íÊ¾¸ÃÐÍºÅÏà»úÊÇ·ñÖ§³ÖÊÖ¶¯°×Æ½ºâ¹¦ÄÜ
-    BOOL bAutoWb;           //±íÊ¾¸ÃÐÍºÅÏà»úÊÇ·ñÖ§³Ö×Ô¶¯°×Æ½ºâ¹¦ÄÜ
-    BOOL bAutoExposure;     //±íÊ¾¸ÃÐÍºÅÏà»úÊÇ·ñÖ§³Ö×Ô¶¯ÆØ¹â¹¦ÄÜ
-    BOOL bManualExposure;   //±íÊ¾¸ÃÐÍºÅÏà»úÊÇ·ñÖ§³ÖÊÖ¶¯ÆØ¹â¹¦ÄÜ
-    BOOL bAntiFlick;        //±íÊ¾¸ÃÐÍºÅÏà»úÊÇ·ñÖ§³Ö¿¹ÆµÉÁ¹¦ÄÜ
-    BOOL bDeviceIsp;        //±íÊ¾¸ÃÐÍºÅÏà»úÊÇ·ñÖ§³ÖÓ²¼þISP¹¦ÄÜ
-    BOOL bForceUseDeviceIsp;//bDeviceIspºÍbForceUseDeviceIspÍ¬Ê±ÎªTRUEÊ±£¬±íÊ¾Ç¿ÖÆÖ»ÓÃÓ²¼þISP£¬²»¿ÉÈ¡Ïû¡£
-    BOOL bZoomHD;           //Ïà»úÓ²¼þÊÇ·ñÖ§³ÖÍ¼ÏñËõ·ÅÊä³ö(Ö»ÄÜÊÇËõÐ¡)¡£
+    BOOL bMonoSensor;       //ï¿½ï¿½Ê¾ï¿½ï¿½ï¿½Íºï¿½ï¿½ï¿½ï¿½ï¿½Ç·ï¿½Îªï¿½Ú°ï¿½ï¿½ï¿½ï¿½,ï¿½ï¿½ï¿½ï¿½ÇºÚ°ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½É«ï¿½ï¿½ØµÄ¹ï¿½ï¿½Ü¶ï¿½ï¿½Þ·ï¿½ï¿½ï¿½ï¿½ï¿½
+    BOOL bWbOnce;           //ï¿½ï¿½Ê¾ï¿½ï¿½ï¿½Íºï¿½ï¿½ï¿½ï¿½ï¿½Ç·ï¿½Ö§ï¿½ï¿½ï¿½Ö¶ï¿½ï¿½ï¿½Æ½ï¿½â¹¦ï¿½ï¿½
+    BOOL bAutoWb;           //ï¿½ï¿½Ê¾ï¿½ï¿½ï¿½Íºï¿½ï¿½ï¿½ï¿½ï¿½Ç·ï¿½Ö§ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½Æ½ï¿½â¹¦ï¿½ï¿½
+    BOOL bAutoExposure;     //ï¿½ï¿½Ê¾ï¿½ï¿½ï¿½Íºï¿½ï¿½ï¿½ï¿½ï¿½Ç·ï¿½Ö§ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½Ø¹â¹¦ï¿½ï¿½
+    BOOL bManualExposure;   //ï¿½ï¿½Ê¾ï¿½ï¿½ï¿½Íºï¿½ï¿½ï¿½ï¿½ï¿½Ç·ï¿½Ö§ï¿½ï¿½ï¿½Ö¶ï¿½ï¿½Ø¹â¹¦ï¿½ï¿½
+    BOOL bAntiFlick;        //ï¿½ï¿½Ê¾ï¿½ï¿½ï¿½Íºï¿½ï¿½ï¿½ï¿½ï¿½Ç·ï¿½Ö§ï¿½Ö¿ï¿½Æµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    BOOL bDeviceIsp;        //ï¿½ï¿½Ê¾ï¿½ï¿½ï¿½Íºï¿½ï¿½ï¿½ï¿½ï¿½Ç·ï¿½Ö§ï¿½ï¿½Ó²ï¿½ï¿½ISPï¿½ï¿½ï¿½ï¿½
+    BOOL bForceUseDeviceIsp;//bDeviceIspï¿½ï¿½bForceUseDeviceIspÍ¬Ê±ÎªTRUEÊ±ï¿½ï¿½ï¿½ï¿½Ê¾Ç¿ï¿½ï¿½Ö»ï¿½ï¿½Ó²ï¿½ï¿½ISPï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½
+    BOOL bZoomHD;           //ï¿½ï¿½ï¿½Ó²ï¿½ï¿½ï¿½Ç·ï¿½Ö§ï¿½ï¿½Í¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½(Ö»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð¡)ï¿½ï¿½
 } tSdkIspCapacity;
 
-/* ¶¨ÒåÕûºÏµÄÉè±¸ÃèÊöÐÅÏ¢£¬ÕâÐ©ÐÅÏ¢¿ÉÒÔÓÃÓÚ¶¯Ì¬¹¹½¨UI */
+/* ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ïµï¿½ï¿½è±¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢ï¿½ï¿½ï¿½ï¿½Ð©ï¿½ï¿½Ï¢ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ú¶ï¿½Ì¬ï¿½ï¿½ï¿½ï¿½UI */
 typedef struct
 {
 
-  tSdkTrigger   *pTriggerDesc;          // ´¥·¢Ä£Ê½
-  INT           iTriggerDesc;           // ´¥·¢Ä£Ê½µÄ¸öÊý£¬¼´pTriggerDescÊý×éµÄ´óÐ¡
+  tSdkTrigger   *pTriggerDesc;          // ï¿½ï¿½ï¿½ï¿½Ä£Ê½
+  INT           iTriggerDesc;           // ï¿½ï¿½ï¿½ï¿½Ä£Ê½ï¿½Ä¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½pTriggerDescï¿½ï¿½ï¿½ï¿½Ä´ï¿½Ð¡
 
-  tSdkImageResolution   *pImageSizeDesc;// Ô¤Éè·Ö±æÂÊÑ¡Ôñ
-  INT                   iImageSizeDesc; // Ô¤Éè·Ö±æÂÊµÄ¸öÊý£¬¼´pImageSizeDescÊý×éµÄ´óÐ¡
+  tSdkImageResolution   *pImageSizeDesc;// Ô¤ï¿½ï¿½Ö±ï¿½ï¿½ï¿½Ñ¡ï¿½ï¿½
+  INT                   iImageSizeDesc; // Ô¤ï¿½ï¿½Ö±ï¿½ï¿½ÊµÄ¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½pImageSizeDescï¿½ï¿½ï¿½ï¿½Ä´ï¿½Ð¡
 
-  tSdkColorTemperatureDes *pClrTempDesc;// Ô¤ÉèÉ«ÎÂÄ£Ê½£¬ÓÃÓÚ°×Æ½ºâ
+  tSdkColorTemperatureDes *pClrTempDesc;// Ô¤ï¿½ï¿½É«ï¿½ï¿½Ä£Ê½ï¿½ï¿½ï¿½ï¿½ï¿½Ú°ï¿½Æ½ï¿½ï¿½
   INT                     iClrTempDesc;
 
-  tSdkMediaType     *pMediaTypeDesc;    // Ïà»úÊä³öÍ¼Ïñ¸ñÊ½
-  INT               iMediaTypdeDesc;    // Ïà»úÊä³öÍ¼Ïñ¸ñÊ½µÄÖÖÀà¸öÊý£¬¼´pMediaTypeDescÊý×éµÄ´óÐ¡¡£
+  tSdkMediaType     *pMediaTypeDesc;    // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¼ï¿½ï¿½ï¿½Ê½
+  INT               iMediaTypdeDesc;    // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¼ï¿½ï¿½ï¿½Ê½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½pMediaTypeDescï¿½ï¿½ï¿½ï¿½Ä´ï¿½Ð¡ï¿½ï¿½
 
-  tSdkFrameSpeed    *pFrameSpeedDesc;   // ¿Éµ÷½ÚÖ¡ËÙÀàÐÍ£¬¶ÔÓ¦½çÃæÉÏÆÕÍ¨ ¸ßËÙ ºÍ³¬¼¶ÈýÖÖËÙ¶ÈÉèÖÃ
-  INT               iFrameSpeedDesc;    // ¿Éµ÷½ÚÖ¡ËÙÀàÐÍµÄ¸öÊý£¬¼´pFrameSpeedDescÊý×éµÄ´óÐ¡¡£
+  tSdkFrameSpeed    *pFrameSpeedDesc;   // ï¿½Éµï¿½ï¿½ï¿½Ö¡ï¿½ï¿½ï¿½ï¿½ï¿½Í£ï¿½ï¿½ï¿½Ó¦ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¨ ï¿½ï¿½ï¿½ï¿½ ï¿½Í³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ù¶ï¿½ï¿½ï¿½ï¿½ï¿½
+  INT               iFrameSpeedDesc;    // ï¿½Éµï¿½ï¿½ï¿½Ö¡ï¿½ï¿½ï¿½ï¿½ï¿½ÍµÄ¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½pFrameSpeedDescï¿½ï¿½ï¿½ï¿½Ä´ï¿½Ð¡ï¿½ï¿½
 
-  tSdkPackLength    *pPackLenDesc;      // ´«Êä°ü³¤¶È£¬Ò»°ãÓÃÓÚÍøÂçÉè±¸
-  INT               iPackLenDesc;       // ¿É¹©Ñ¡ÔñµÄ´«Êä·Ö°ü³¤¶ÈµÄ¸öÊý£¬¼´pPackLenDescÊý×éµÄ´óÐ¡¡£
+  tSdkPackLength    *pPackLenDesc;      // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È£ï¿½Ò»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½è±¸
+  INT               iPackLenDesc;       // ï¿½É¹ï¿½Ñ¡ï¿½ï¿½Ä´ï¿½ï¿½ï¿½Ö°ï¿½ï¿½ï¿½ï¿½ÈµÄ¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½pPackLenDescï¿½ï¿½ï¿½ï¿½Ä´ï¿½Ð¡ï¿½ï¿½
 
-  INT           iOutputIoCounts;        // ¿É±à³ÌÊä³öIOµÄ¸öÊý
-  INT           iInputIoCounts;         // ¿É±à³ÌÊäÈëIOµÄ¸öÊý
+  INT           iOutputIoCounts;        // ï¿½É±ï¿½ï¿½ï¿½ï¿½ï¿½IOï¿½Ä¸ï¿½ï¿½ï¿½
+  INT           iInputIoCounts;         // ï¿½É±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½IOï¿½Ä¸ï¿½ï¿½ï¿½
 
-  tSdkPresetLut  *pPresetLutDesc;       // Ïà»úÔ¤ÉèµÄLUT±í
-  INT            iPresetLut;            // Ïà»úÔ¤ÉèµÄLUT±íµÄ¸öÊý£¬¼´pPresetLutDescÊý×éµÄ´óÐ¡
+  tSdkPresetLut  *pPresetLutDesc;       // ï¿½ï¿½ï¿½Ô¤ï¿½ï¿½ï¿½LUTï¿½ï¿½
+  INT            iPresetLut;            // ï¿½ï¿½ï¿½Ô¤ï¿½ï¿½ï¿½LUTï¿½ï¿½ï¿½Ä¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½pPresetLutDescï¿½ï¿½ï¿½ï¿½Ä´ï¿½Ð¡
 
-  INT           iUserDataMaxLen;        // Ö¸Ê¾¸ÃÏà»úÖÐÓÃÓÚ±£´æÓÃ»§Êý¾ÝÇøµÄ×î´ó³¤¶È¡£Îª0±íÊ¾ÎÞ¡£
-  BOOL          bParamInDevice;         // Ö¸Ê¾¸ÃÉè±¸ÊÇ·ñÖ§³Ö´ÓÉè±¸ÖÐ¶ÁÐ´²ÎÊý×é¡£1ÎªÖ§³Ö£¬0²»Ö§³Ö¡£
+  INT           iUserDataMaxLen;        // Ö¸Ê¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ú±ï¿½ï¿½ï¿½ï¿½Ã»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ó³¤¶È¡ï¿½Îª0ï¿½ï¿½Ê¾ï¿½Þ¡ï¿½
+  BOOL          bParamInDevice;         // Ö¸Ê¾ï¿½ï¿½ï¿½è±¸ï¿½Ç·ï¿½Ö§ï¿½Ö´ï¿½ï¿½è±¸ï¿½Ð¶ï¿½Ð´ï¿½ï¿½ï¿½ï¿½ï¿½é¡£1ÎªÖ§ï¿½Ö£ï¿½0ï¿½ï¿½Ö§ï¿½Ö¡ï¿½
 
-  tSdkAeAlgorithm   *pAeAlmSwDesc;      // Èí¼þ×Ô¶¯ÆØ¹âËã·¨ÃèÊö
-  int                iAeAlmSwDesc;      // Èí¼þ×Ô¶¯ÆØ¹âËã·¨¸öÊý
+  tSdkAeAlgorithm   *pAeAlmSwDesc;      // ï¿½ï¿½ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½Ø¹ï¿½ï¿½ã·¨ï¿½ï¿½ï¿½ï¿½
+  int                iAeAlmSwDesc;      // ï¿½ï¿½ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½Ø¹ï¿½ï¿½ã·¨ï¿½ï¿½ï¿½ï¿½
 
-  tSdkAeAlgorithm    *pAeAlmHdDesc;     // Ó²¼þ×Ô¶¯ÆØ¹âËã·¨ÃèÊö£¬ÎªNULL±íÊ¾²»Ö§³ÖÓ²¼þ×Ô¶¯ÆØ¹â
-  int                iAeAlmHdDesc;      // Ó²¼þ×Ô¶¯ÆØ¹âËã·¨¸öÊý£¬Îª0±íÊ¾²»Ö§³ÖÓ²¼þ×Ô¶¯ÆØ¹â
+  tSdkAeAlgorithm    *pAeAlmHdDesc;     // Ó²ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½Ø¹ï¿½ï¿½ã·¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÎªNULLï¿½ï¿½Ê¾ï¿½ï¿½Ö§ï¿½ï¿½Ó²ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½Ø¹ï¿½
+  int                iAeAlmHdDesc;      // Ó²ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½Ø¹ï¿½ï¿½ã·¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îª0ï¿½ï¿½Ê¾ï¿½ï¿½Ö§ï¿½ï¿½Ó²ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½Ø¹ï¿½
 
-  tSdkBayerDecodeAlgorithm   *pBayerDecAlmSwDesc; // Èí¼þBayer×ª»»ÎªRGBÊý¾ÝµÄËã·¨ÃèÊö
-  int                        iBayerDecAlmSwDesc;  // Èí¼þBayer×ª»»ÎªRGBÊý¾ÝµÄËã·¨¸öÊý
+  tSdkBayerDecodeAlgorithm   *pBayerDecAlmSwDesc; // ï¿½ï¿½ï¿½ï¿½Bayer×ªï¿½ï¿½ÎªRGBï¿½ï¿½ï¿½Ýµï¿½ï¿½ã·¨ï¿½ï¿½ï¿½ï¿½
+  int                        iBayerDecAlmSwDesc;  // ï¿½ï¿½ï¿½ï¿½Bayer×ªï¿½ï¿½ÎªRGBï¿½ï¿½ï¿½Ýµï¿½ï¿½ã·¨ï¿½ï¿½ï¿½ï¿½
 
-  tSdkBayerDecodeAlgorithm   *pBayerDecAlmHdDesc; // Ó²¼þBayer×ª»»ÎªRGBÊý¾ÝµÄËã·¨ÃèÊö£¬ÎªNULL±íÊ¾²»Ö§³Ö
-  int                        iBayerDecAlmHdDesc;  // Ó²¼þBayer×ª»»ÎªRGBÊý¾ÝµÄËã·¨¸öÊý£¬Îª0±íÊ¾²»Ö§³Ö
+  tSdkBayerDecodeAlgorithm   *pBayerDecAlmHdDesc; // Ó²ï¿½ï¿½Bayer×ªï¿½ï¿½ÎªRGBï¿½ï¿½ï¿½Ýµï¿½ï¿½ã·¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÎªNULLï¿½ï¿½Ê¾ï¿½ï¿½Ö§ï¿½ï¿½
+  int                        iBayerDecAlmHdDesc;  // Ó²ï¿½ï¿½Bayer×ªï¿½ï¿½ÎªRGBï¿½ï¿½ï¿½Ýµï¿½ï¿½ã·¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îª0ï¿½ï¿½Ê¾ï¿½ï¿½Ö§ï¿½ï¿½
 
-  /* Í¼Ïñ²ÎÊýµÄµ÷½Ú·¶Î§¶¨Òå,ÓÃÓÚ¶¯Ì¬¹¹½¨UI*/
-  tSdkExpose            sExposeDesc;      // ÆØ¹âµÄ·¶Î§Öµ
-  tSdkResolutionRange   sResolutionRange; // ·Ö±æÂÊ·¶Î§ÃèÊö
-  tRgbGainRange         sRgbGainRange;    // Í¼ÏñÊý×ÖÔöÒæ·¶Î§ÃèÊö
-  tSaturationRange      sSaturationRange; // ±¥ºÍ¶È·¶Î§ÃèÊö
-  tGammaRange           sGammaRange;      // Ù¤Âí·¶Î§ÃèÊö
-  tContrastRange        sContrastRange;   // ¶Ô±È¶È·¶Î§ÃèÊö
-  tSharpnessRange       sSharpnessRange;  // Èñ»¯·¶Î§ÃèÊö
-  tSdkIspCapacity       sIspCapacity;     // ISPÄÜÁ¦ÃèÊö
+  /* Í¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Äµï¿½ï¿½Ú·ï¿½Î§ï¿½ï¿½ï¿½ï¿½,ï¿½ï¿½ï¿½Ú¶ï¿½Ì¬ï¿½ï¿½ï¿½ï¿½UI*/
+  tSdkExpose            sExposeDesc;      // ï¿½Ø¹ï¿½Ä·ï¿½Î§Öµ
+  tSdkResolutionRange   sResolutionRange; // ï¿½Ö±ï¿½ï¿½Ê·ï¿½Î§ï¿½ï¿½ï¿½ï¿½
+  tRgbGainRange         sRgbGainRange;    // Í¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½æ·¶Î§ï¿½ï¿½ï¿½ï¿½
+  tSaturationRange      sSaturationRange; // ï¿½ï¿½ï¿½Í¶È·ï¿½Î§ï¿½ï¿½ï¿½ï¿½
+  tGammaRange           sGammaRange;      // Ù¤ï¿½ï¿½ï¿½ï¿½Î§ï¿½ï¿½ï¿½ï¿½
+  tContrastRange        sContrastRange;   // ï¿½Ô±È¶È·ï¿½Î§ï¿½ï¿½ï¿½ï¿½
+  tSharpnessRange       sSharpnessRange;  // ï¿½ñ»¯·ï¿½Î§ï¿½ï¿½ï¿½ï¿½
+  tSdkIspCapacity       sIspCapacity;     // ISPï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 
 
 } tSdkCameraCapbility;
 
 
-//Í¼ÏñÖ¡Í·ÐÅÏ¢
+//Í¼ï¿½ï¿½Ö¡Í·ï¿½ï¿½Ï¢
 typedef struct
 {
-  UINT    uiMediaType;    // Í¼Ïñ¸ñÊ½,Image Format
-  UINT    uBytes;         // Í¼ÏñÊý¾Ý×Ö½ÚÊý,Total bytes
-  INT     iWidth;         // Í¼ÏñµÄ¿í¶È£¬µ÷ÓÃÍ¼Ïñ´¦Àíº¯Êýºó£¬¸Ã±äÁ¿¿ÉÄÜ±»¶¯Ì¬ÐÞ¸Ä£¬À´Ö¸Ê¾´¦ÀíºóµÄÍ¼Ïñ³ß´ç
-  INT     iHeight;        // Í¼ÏñµÄ¸ß¶È£¬µ÷ÓÃÍ¼Ïñ´¦Àíº¯Êýºó£¬¸Ã±äÁ¿¿ÉÄÜ±»¶¯Ì¬ÐÞ¸Ä£¬À´Ö¸Ê¾´¦ÀíºóµÄÍ¼Ïñ³ß´ç
-  INT     iWidthZoomSw;   // Èí¼þËõ·ÅµÄ¿í¶È,²»ÐèÒª½øÐÐÈí¼þ²Ã¼ôµÄÍ¼Ïñ£¬´Ë±äÁ¿ÉèÖÃÎª0.
-  INT     iHeightZoomSw;  // Èí¼þËõ·ÅµÄ¸ß¶È,²»ÐèÒª½øÐÐÈí¼þ²Ã¼ôµÄÍ¼Ïñ£¬´Ë±äÁ¿ÉèÖÃÎª0.
-  BOOL    bIsTrigger;     // Ö¸Ê¾ÊÇ·ñÎª´¥·¢Ö¡ is trigger
-  UINT    uiTimeStamp;    // ¸ÃÖ¡µÄ²É¼¯Ê±¼ä£¬µ¥Î»0.1ºÁÃë
-  UINT    uiExpTime;      // µ±Ç°Í¼ÏñµÄÆØ¹âÖµ£¬µ¥Î»ÎªÎ¢Ãëus
-  float   fAnalogGain;    // µ±Ç°Í¼ÏñµÄÄ£ÄâÔöÒæ±¶Êý
-  INT     iGamma;         // ¸ÃÖ¡Í¼ÏñµÄÙ¤ÂíÉè¶¨Öµ£¬½öµ±LUTÄ£Ê½Îª¶¯Ì¬²ÎÊýÉú³ÉÊ±ÓÐÐ§£¬ÆäÓàÄ£Ê½ÏÂÎª-1
-  INT     iContrast;      // ¸ÃÖ¡Í¼ÏñµÄ¶Ô±È¶ÈÉè¶¨Öµ£¬½öµ±LUTÄ£Ê½Îª¶¯Ì¬²ÎÊýÉú³ÉÊ±ÓÐÐ§£¬ÆäÓàÄ£Ê½ÏÂÎª-1
-  INT     iSaturation;    // ¸ÃÖ¡Í¼ÏñµÄ±¥ºÍ¶ÈÉè¶¨Öµ£¬¶ÔÓÚºÚ°×Ïà»úÎÞÒâÒå£¬Îª0
-  float   fRgain;         // ¸ÃÖ¡Í¼Ïñ´¦ÀíµÄºìÉ«Êý×ÖÔöÒæ±¶Êý£¬¶ÔÓÚºÚ°×Ïà»úÎÞÒâÒå£¬Îª1
-  float   fGgain;         // ¸ÃÖ¡Í¼Ïñ´¦ÀíµÄÂÌÉ«Êý×ÖÔöÒæ±¶Êý£¬¶ÔÓÚºÚ°×Ïà»úÎÞÒâÒå£¬Îª1
-  float   fBgain;         // ¸ÃÖ¡Í¼Ïñ´¦ÀíµÄÀ¶É«Êý×ÖÔöÒæ±¶Êý£¬¶ÔÓÚºÚ°×Ïà»úÎÞÒâÒå£¬Îª1
+  UINT    uiMediaType;    // Í¼ï¿½ï¿½ï¿½Ê½,Image Format
+  UINT    uBytes;         // Í¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö½ï¿½ï¿½ï¿½,Total bytes
+  INT     iWidth;         // Í¼ï¿½ï¿½Ä¿ï¿½ï¿½È£ï¿½ï¿½ï¿½ï¿½ï¿½Í¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ó£¬¸Ã±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü±ï¿½ï¿½ï¿½Ì¬ï¿½Þ¸Ä£ï¿½ï¿½ï¿½Ö¸Ê¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¼ï¿½ï¿½ß´ï¿½
+  INT     iHeight;        // Í¼ï¿½ï¿½Ä¸ß¶È£ï¿½ï¿½ï¿½ï¿½ï¿½Í¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ó£¬¸Ã±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü±ï¿½ï¿½ï¿½Ì¬ï¿½Þ¸Ä£ï¿½ï¿½ï¿½Ö¸Ê¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¼ï¿½ï¿½ß´ï¿½
+  INT     iWidthZoomSw;   // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÅµÄ¿ï¿½ï¿½ï¿½,ï¿½ï¿½ï¿½ï¿½Òªï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ã¼ï¿½ï¿½ï¿½Í¼ï¿½ñ£¬´Ë±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îª0.
+  INT     iHeightZoomSw;  // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÅµÄ¸ß¶ï¿½,ï¿½ï¿½ï¿½ï¿½Òªï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ã¼ï¿½ï¿½ï¿½Í¼ï¿½ñ£¬´Ë±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îª0.
+  BOOL    bIsTrigger;     // Ö¸Ê¾ï¿½Ç·ï¿½Îªï¿½ï¿½ï¿½ï¿½Ö¡ is trigger
+  UINT    uiTimeStamp;    // ï¿½ï¿½Ö¡ï¿½Ä²É¼ï¿½Ê±ï¿½ä£¬ï¿½ï¿½Î»0.1ï¿½ï¿½ï¿½ï¿½
+  UINT    uiExpTime;      // ï¿½ï¿½Ç°Í¼ï¿½ï¿½ï¿½ï¿½Ø¹ï¿½Öµï¿½ï¿½ï¿½ï¿½Î»ÎªÎ¢ï¿½ï¿½us
+  float   fAnalogGain;    // ï¿½ï¿½Ç°Í¼ï¿½ï¿½ï¿½Ä£ï¿½ï¿½ï¿½ï¿½ï¿½æ±¶ï¿½ï¿½
+  INT     iGamma;         // ï¿½ï¿½Ö¡Í¼ï¿½ï¿½ï¿½Ù¤ï¿½ï¿½ï¿½è¶¨Öµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½LUTÄ£Ê½Îªï¿½ï¿½Ì¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½Ð§ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä£Ê½ï¿½ï¿½Îª-1
+  INT     iContrast;      // ï¿½ï¿½Ö¡Í¼ï¿½ï¿½Ä¶Ô±È¶ï¿½ï¿½è¶¨Öµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½LUTÄ£Ê½Îªï¿½ï¿½Ì¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½Ð§ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä£Ê½ï¿½ï¿½Îª-1
+  INT     iSaturation;    // ï¿½ï¿½Ö¡Í¼ï¿½ï¿½Ä±ï¿½ï¿½Í¶ï¿½ï¿½è¶¨Öµï¿½ï¿½ï¿½ï¿½ï¿½ÚºÚ°ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½å£¬Îª0
+  float   fRgain;         // ï¿½ï¿½Ö¡Í¼ï¿½ï¿½ï¿½ï¿½ï¿½Äºï¿½É«ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½æ±¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÚºÚ°ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½å£¬Îª1
+  float   fGgain;         // ï¿½ï¿½Ö¡Í¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½É«ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½æ±¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÚºÚ°ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½å£¬Îª1
+  float   fBgain;         // ï¿½ï¿½Ö¡Í¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½É«ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½æ±¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÚºÚ°ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½å£¬Îª1
 }tSdkFrameHead;
 
-//Í¼ÏñÖ¡ÃèÊö
+//Í¼ï¿½ï¿½Ö¡ï¿½ï¿½ï¿½ï¿½
 typedef struct sCameraFrame
 {
   tSdkFrameHead   head;     //Ö¡Í·
-  BYTE *          pBuffer;  //Êý¾ÝÇø
+  BYTE *          pBuffer;  //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 }tSdkFrame;
 
-/// \~chinese Ö¡ÊÂ¼þ
+/// \~chinese Ö¡ï¿½Â¼ï¿½
 /// \~english Frame Event
 typedef struct tSdkFrameEvent_
 {
-	UINT 	uType;			///< \~chinese ÊÂ¼þÀàÐÍ(1:Ö¡¿ªÊ¼   2:Ö¡½áÊø) \~english Event type (1:frame start   2:frame end)
-	UINT	uStatus;		///< \~chinese ×´Ì¬(0:³É¹¦  ·Ç0:´íÎó) \~english Status (0:success, non-zero:error)
+	UINT 	uType;			///< \~chinese ï¿½Â¼ï¿½ï¿½ï¿½ï¿½ï¿½(1:Ö¡ï¿½ï¿½Ê¼   2:Ö¡ï¿½ï¿½ï¿½ï¿½) \~english Event type (1:frame start   2:frame end)
+	UINT	uStatus;		///< \~chinese ×´Ì¬(0:ï¿½É¹ï¿½  ï¿½ï¿½0:ï¿½ï¿½ï¿½ï¿½) \~english Status (0:success, non-zero:error)
 	UINT 	uFrameID;		///< \~chinese Ö¡ID \~english Frame ID
-	UINT	uWidth;			///< \~chinese ¿í¶È \~english Width
-	UINT	uHeight;		///< \~chinese ¸ß¶È \~english Height
-	UINT	uPixelFormat;	///< \~chinese Í¼Ïñ¸ñÊ½ \~english Image Format 
-	UINT	TimeStampL;		///< \~chinese Ê±¼ä´ÁµÍ32Î» \~english Lower 32 bits of timestamp
-	UINT	TimeStampH;		///< \~chinese Ê±¼ä´Á¸ß32Î» \~english High 32 bits of timestamp
+	UINT	uWidth;			///< \~chinese ï¿½ï¿½ï¿½ï¿½ \~english Width
+	UINT	uHeight;		///< \~chinese ï¿½ß¶ï¿½ \~english Height
+	UINT	uPixelFormat;	///< \~chinese Í¼ï¿½ï¿½ï¿½Ê½ \~english Image Format 
+	UINT	TimeStampL;		///< \~chinese Ê±ï¿½ï¿½ï¿½ï¿½ï¿½32Î» \~english Lower 32 bits of timestamp
+	UINT	TimeStampH;		///< \~chinese Ê±ï¿½ï¿½ï¿½ï¿½ï¿½32Î» \~english High 32 bits of timestamp
 }tSdkFrameEvent;
 
-//Í¼Ïñ²¶»ñµÄ»Øµ÷º¯Êý¶¨Òå
+//Í¼ï¿½ñ²¶»ï¿½Ä»Øµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 typedef void (*CAMERA_SNAP_PROC)(CameraHandle hCamera, BYTE *pFrameBuffer, tSdkFrameHead* pFrameHead,PVOID pContext);
 
-//SDKÉú³ÉµÄÏà»úÅäÖÃÒ³ÃæµÄÏûÏ¢»Øµ÷º¯Êý¶¨Òå
+//SDKï¿½ï¿½ï¿½Éµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò³ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢ï¿½Øµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 typedef void (*CAMERA_PAGE_MSG_PROC)(CameraHandle hCamera,UINT MSG,UINT uParam,PVOID pContext);
 
 /// @ingroup API_RECONNECT
-/// \~chinese Ïà»úÁ¬½Ó×´Ì¬»Øµ÷
-/// \param [in] hCamera Ïà»ú¾ä±ú
-/// \param [in] MSG ÏûÏ¢£¬0: Ïà»úÁ¬½Ó¶Ï¿ª    1: Ïà»úÁ¬½Ó»Ö¸´
-/// \param [in] uParam ¸½¼ÓÐÅÏ¢
-/// \param [in] pContext ÓÃ»§Êý¾Ý
-/// \return ÎÞ
-/// \note USBÏà»úuParamÈ¡Öµ£º
-/// \note 		Î´¶¨Òå
-/// \note Íø¿ÚÏà»úuParamÈ¡Öµ£º
-/// \note		µ±MSG=0Ê±£ºÎ´¶¨Òå
-/// \note		µ±MSG=1Ê±£º
-/// \note			0£ºÉÏ´ÎµôÏßÔ­Òò£¬ÍøÂçÍ¨Ñ¶Ê§°Ü
-/// \note			1£ºÉÏ´ÎµôÏßÔ­Òò£¬Ïà»úµôµç
+/// \~chinese ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×´Ì¬ï¿½Øµï¿½
+/// \param [in] hCamera ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+/// \param [in] MSG ï¿½ï¿½Ï¢ï¿½ï¿½0: ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó¶Ï¿ï¿½    1: ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó»Ö¸ï¿½
+/// \param [in] uParam ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢
+/// \param [in] pContext ï¿½Ã»ï¿½ï¿½ï¿½ï¿½ï¿½
+/// \return ï¿½ï¿½
+/// \note USBï¿½ï¿½ï¿½uParamÈ¡Öµï¿½ï¿½
+/// \note 		Î´ï¿½ï¿½ï¿½ï¿½
+/// \note ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½uParamÈ¡Öµï¿½ï¿½
+/// \note		ï¿½ï¿½MSG=0Ê±ï¿½ï¿½Î´ï¿½ï¿½ï¿½ï¿½
+/// \note		ï¿½ï¿½MSG=1Ê±ï¿½ï¿½
+/// \note			0ï¿½ï¿½ï¿½Ï´Îµï¿½ï¿½ï¿½Ô­ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¨Ñ¶Ê§ï¿½ï¿½
+/// \note			1ï¿½ï¿½ï¿½Ï´Îµï¿½ï¿½ï¿½Ô­ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 /// \~english Camera connection status callback
 /// \param [in] hCamera Camera handle
 /// \param [in] MSG message, 0: Camera disconnected 1: Camera connection restored
@@ -683,13 +683,13 @@ typedef void (*CAMERA_PAGE_MSG_PROC)(CameraHandle hCamera,UINT MSG,UINT uParam,P
 typedef void (*CAMERA_CONNECTION_STATUS_CALLBACK)(CameraHandle hCamera,UINT MSG,UINT uParam,PVOID pContext);
 
 /// @ingroup API_ADVANCE
-/// \~chinese Ö¡ÊÂ¼þ»Øµ÷º¯Êý¶¨Òå
+/// \~chinese Ö¡ï¿½Â¼ï¿½ï¿½Øµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 /// \~english Callback function definition for frame event
 typedef void (*CAMERA_FRAME_EVENT_CALLBACK)(CameraHandle hCamera, tSdkFrameEvent* pEvent, PVOID pContext);
 
 
 //----------------------------IMAGE FORMAT DEFINE------------------------------------
-//----------------------------Í¼Ïñ¸ñÊ½¶¨Òå-------------------------------------------
+//----------------------------Í¼ï¿½ï¿½ï¿½Ê½ï¿½ï¿½ï¿½ï¿½-------------------------------------------
 #define CAMERA_MEDIA_TYPE_MONO                           0x01000000
 #define CAMERA_MEDIA_TYPE_RGB                            0x02000000
 #define CAMERA_MEDIA_TYPE_COLOR                          0x02000000
