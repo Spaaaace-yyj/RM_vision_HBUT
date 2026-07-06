@@ -29,7 +29,7 @@ public:
   Eigen::MatrixXd predict();
 
   // Update the estimated state based on measurement
-  Eigen::MatrixXd update(const Eigen::VectorXd & z);
+  Eigen::MatrixXd update(const Eigen::VectorXd & z, const Eigen::MatrixXd & R_meas);
 
 private:
   // Process nonlinear vector function

@@ -6,6 +6,7 @@
 
 #include <opencv2/core.hpp>
 
+#include <Eigen/Dense>
 // STL
 #include <algorithm>
 #include <string>
@@ -70,6 +71,9 @@ struct Armor
   std::string number;
   float confidence;
   std::string classfication_result;
+
+  //观测噪声协方差矩阵
+  Eigen::Matrix4d measurement_covariance;
 
   float yaw_raw;
   float best_yaw;

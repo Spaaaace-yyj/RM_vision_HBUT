@@ -94,9 +94,11 @@ Eigen::MatrixXd ExtendedKalmanFilter::predict()
   return x_pri;
 }
 
-Eigen::MatrixXd ExtendedKalmanFilter::update(const Eigen::VectorXd & z)
+Eigen::MatrixXd ExtendedKalmanFilter::update(const Eigen::VectorXd & z, const Eigen::MatrixXd & R_meas)
 {
-    H = jacobian_h(x_pri), R = update_R(z);
+    H = jacobian_h(x_pri);
+    // R = update_R(z);
+    R = R_meas;
 
     Eigen::MatrixXd S = H * P_pri * H.transpose() + R;
     Eigen::ColPivHouseholderQR<Eigen::MatrixXd> qr(S);
