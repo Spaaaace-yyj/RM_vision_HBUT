@@ -5,70 +5,80 @@
 
 #include <Eigen/Dense>
 #include <functional>
+#include <limits>
+#include <angles/angles.h>
 
 namespace rm_auto_aim
 {
+    class ExtendedKalmanFilter
+    {
+    public:
+        ExtendedKalmanFilter() = default;
 
-class ExtendedKalmanFilter
-{
-public:
-  ExtendedKalmanFilter() = default;
+        using VecVecFunc = std::function<Eigen::VectorXd(const Eigen::VectorXd&)>;
+        using VecMatFunc = std::function<Eigen::MatrixXd(const Eigen::VectorXd&)>;
+        using VoidMatFunc = std::function<Eigen::MatrixXd()>;
 
-  using VecVecFunc = std::function<Eigen::VectorXd(const Eigen::VectorXd &)>;
-  using VecMatFunc = std::function<Eigen::MatrixXd(const Eigen::VectorXd &)>;
-  using VoidMatFunc = std::function<Eigen::MatrixXd()>;
+        explicit ExtendedKalmanFilter(
+            const VecVecFunc& f, const VecVecFunc& h, const VecMatFunc& j_f, const VecMatFunc& j_h,
+            const VoidMatFunc& u_q, const VecMatFunc& u_r, const Eigen::MatrixXd& P0);
 
-  explicit ExtendedKalmanFilter(
-    const VecVecFunc & f, const VecVecFunc & h, const VecMatFunc & j_f, const VecMatFunc & j_h,
-    const VoidMatFunc & u_q, const VecMatFunc & u_r, const Eigen::MatrixXd & P0);
+        // Set the initial state
+        void setState(const Eigen::VectorXd& x0);
 
-  // Set the initial state
-  void setState(const Eigen::VectorXd & x0);
+        // Compute a predicted state
+        Eigen::MatrixXd predict();
 
-  // Compute a predicted state
-  Eigen::MatrixXd predict();
+        // Update the estimated state based on measurement
+        Eigen::MatrixXd update(const Eigen::VectorXd& z, const Eigen::MatrixXd& R_meas);
 
-  // Update the estimated state based on measurement
-  Eigen::MatrixXd update(const Eigen::VectorXd & z, const Eigen::MatrixXd & R_meas);
+        double mahalanobisDistance(
+            const Eigen::VectorXd& z,
+            const Eigen::MatrixXd& R_meas);
 
-private:
-  // Process nonlinear vector function
-  VecVecFunc f;   //状态转移函数
-  // Observation nonlinear vector function
-  VecVecFunc h;   //观测函数
-  // Jacobian of f()
-  VecMatFunc jacobian_f;
-  Eigen::MatrixXd F;    //状态函数雅可比矩阵
-  // Jacobian of h()
-  VecMatFunc jacobian_h;
-  Eigen::MatrixXd H;
-  // Process noise covariance matrix
-  VoidMatFunc update_Q;
-  Eigen::MatrixXd Q;
-  // Measurement noise covariance matrix
-  VecMatFunc update_R;
-  Eigen::MatrixXd R;
+        Eigen::VectorXd innovation(
+            const Eigen::VectorXd& z) const;
 
-  // Priori error estimate covariance matrix
-  Eigen::MatrixXd P_pri;
-  // Posteriori error estimate covariance matrix
-  Eigen::MatrixXd P_post;
+        Eigen::MatrixXd innovationCovariance(
+            const Eigen::MatrixXd& R_meas);
 
-  // Kalman gain
-  Eigen::MatrixXd K;
+    private:
+        // Process nonlinear vector function
+        VecVecFunc f; //状态转移函数
+        // Observation nonlinear vector function
+        VecVecFunc h; //观测函数
+        // Jacobian of f()
+        VecMatFunc jacobian_f;
+        Eigen::MatrixXd F; //状态函数雅可比矩阵
+        // Jacobian of h()
+        VecMatFunc jacobian_h;
+        Eigen::MatrixXd H;
+        // Process noise covariance matrix
+        VoidMatFunc update_Q;
+        Eigen::MatrixXd Q;
+        // Measurement noise covariance matrix
+        VecMatFunc update_R;
+        Eigen::MatrixXd R;
 
-  // System dimensions
-  int n;
+        // Priori error estimate covariance matrix
+        Eigen::MatrixXd P_pri;
+        // Posteriori error estimate covariance matrix
+        Eigen::MatrixXd P_post;
 
-  // N-size identity
-  Eigen::MatrixXd I;
+        // Kalman gain
+        Eigen::MatrixXd K;
 
-  // Priori state
-  Eigen::VectorXd x_pri;
-  // Posteriori state
-  Eigen::VectorXd x_post;
-};
+        // System dimensions
+        int n;
 
-}  // namespace rm_auto_aim
+        // N-size identity
+        Eigen::MatrixXd I;
+
+        // Priori state
+        Eigen::VectorXd x_pri;
+        // Posteriori state
+        Eigen::VectorXd x_post;
+    };
+} // namespace rm_auto_aim
 
 #endif  // ARMOR_PROCESSOR__KALMAN_FILTER_HPP_

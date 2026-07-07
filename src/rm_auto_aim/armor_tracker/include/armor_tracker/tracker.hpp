@@ -97,6 +97,10 @@ namespace rm_auto_aim
 
         Eigen::Vector3d getArmorPositionFromState(const Eigen::VectorXd& x);
 
+        double getRawYaw(const geometry_msgs::msg::Quaternion & q);
+
+        double continuousYaw(double raw_yaw, double reference_yaw);
+
         double max_match_distance_;
         double max_match_yaw_diff_;
 
