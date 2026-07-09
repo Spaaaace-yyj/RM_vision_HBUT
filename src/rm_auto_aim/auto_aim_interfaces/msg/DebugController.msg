@@ -5,4 +5,7 @@ float32 pitch_ref
 float32 yaw_ref
 float32 pitch_send
 float32 yaw_send
+float32 yaw_vel
+float32 yaw_acc
+float32 target_yaw2real_error
 float32 send_pitch_gain
