@@ -16,6 +16,7 @@ def generate_launch_description():
     use_serial = LaunchConfiguration('use_serial')
     debug_mode = LaunchConfiguration('debug_mode')
     ros_bag_mode = LaunchConfiguration('ros_bag_mode')
+    tracker_overlay_debug = LaunchConfiguration('tracker_overlay_debug')
     
     declare_use_serial_cmd = DeclareLaunchArgument(
         'use_serial',
@@ -29,6 +30,11 @@ def generate_launch_description():
     declare_ros_bag_cmd = DeclareLaunchArgument(
         'ros_bag_mode',
         default_value='False',
+    )
+    declare_tracker_overlay_debug_cmd = DeclareLaunchArgument(
+        'tracker_overlay_debug',
+        default_value='True',
+        description='Whether start tracker debug overlay node'
     )
 
     # params file path
@@ -108,6 +114,37 @@ def generate_launch_description():
         emulate_tty=True,
         parameters=[processor_params],
         arguments=['--ros-args', '--log-level', 'armor_tracker:=DEBUG'],
+    )
+
+    tracker_overlay_node = Node(
+        package='tracker_debug_overlay',
+        executable='tracker_overlay_node',
+        name='tracker_overlay_node',
+        output='screen',
+        emulate_tty=True,
+        parameters=[{
+            'debug_image_topic': '/detector/result_img',
+            'target_topic': '/tracker/target',
+            'camera_info_topic': '/camera_info',
+            'output_topic': '/debug/tracker_overlay_img',
+
+            # 让节点自动用 camera_info.header.frame_id
+            # 如果投影方向不对，再改成你的 optical frame，比如 camera_optical_frame
+            'camera_frame_id': '',
+
+            'small_armor_width': 0.135,
+            'large_armor_width': 0.23,
+            'armor_height': 0.125,
+
+            'draw_rect': True,
+            'draw_center': True,
+            'draw_text': True,
+
+            'tf_timeout_sec': 0.03,
+            'sync_queue_size': 20,
+        }],
+        condition=IfCondition(tracker_overlay_debug),
+        arguments=['--ros-args', '--log-level', 'tracker_overlay_node:=INFO'],
     )
 
     gimbal_controller_node = Node(
@@ -204,4 +241,7 @@ def generate_launch_description():
         delay_serial_node,
         delay_tracker_node,
         delay_controller_node,
+
+        # debug
+        tracker_overlay_node,
     ])

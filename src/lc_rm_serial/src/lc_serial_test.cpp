@@ -61,11 +61,12 @@ void LcSerialTestNode::GimbalControlCallback(const auto_aim_interfaces::msg::Gim
     if (send_reverse_pitch) send_pitch *= -1;
     if (send_reverse_yaw) send_yaw *= -1;
 
-    send_data.pitch = send_pitch;
+    send_data.pitch = -1.0;
     send_data.yaw = send_yaw;
     send_data.fire = static_cast<bool>(msg->is_fire);
     send_data.is_fire = msg->is_fire;
     send_data.tracing = static_cast<bool>(msg->tracing);
+
     // SendData();
 }
 
@@ -117,7 +118,6 @@ void LcSerialTestNode::SendData(){
     // {
     //     printf("%02X ", send_buffer[i]);
     // }
-    //
     // printf("\n");
     try {
         if(serial_driver_->port()->is_open()){

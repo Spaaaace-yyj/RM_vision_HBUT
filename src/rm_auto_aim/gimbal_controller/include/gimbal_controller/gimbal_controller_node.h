@@ -5,6 +5,11 @@
 #ifndef BUILD_GIMBAL_CONTROLLER_NODE_H
 #define BUILD_GIMBAL_CONTROLLER_NODE_H
 
+#include <algorithm>
+#include <cmath>
+#include <memory>
+#include <vector>
+
 //Ros2
 #include <rclcpp/rclcpp.hpp>
 //Interface
@@ -18,15 +23,66 @@
 #include "coordsolver.h"
 #include "sinScanner.h"
 
+#include "axis_tiny_mpc.h"
+
 class GimbalControllerNode : public rclcpp::Node
 {
 public:
     GimbalControllerNode();
 
 private:
+    struct AimReference
+    {
+        double yaw = 0.0;
+        double pitch = 0.0;
+        double pitch_gain = 0.0;
+        double x = 0.0;
+        double y = 0.0;
+        double z = 0.0;
+        int armor_index = 0;
+        double min_yaw = 0.0;
+    };
+
     void TargetCallback(auto_aim_interfaces::msg::Target::SharedPtr msg);
 
     void GimbalFeedCallback(auto_aim_interfaces::msg::GimbalFeed::SharedPtr msg);
+
+    AimReference calcAimReferenceAtTime(
+        double t,
+        double yaw,
+        double r1,
+        double r2,
+        double xc,
+        double yc,
+        double za,
+        double vx,
+        double vy,
+        double vz,
+        double dz,
+        double v_yaw,
+        size_t a_n,
+        bool apply_pitch_gain);
+
+    bool buildOpenSourceStyleMpcTrajectory(
+        double center_time,
+        double yaw,
+        double r1,
+        double r2,
+        double xc,
+        double yc,
+        double za,
+        double vx,
+        double vy,
+        double vz,
+        double dz,
+        double v_yaw,
+        size_t a_n,
+        std::vector<double> & yaw_ref_relative,
+        std::vector<double> & pitch_ref,
+        double & yaw0,
+        double & yaw_start_vel,
+        double & pitch_start_vel,
+        AimReference & center_ref);
 
     //subscription
     rclcpp::Subscription<auto_aim_interfaces::msg::Target>::SharedPtr target_sub_;
@@ -39,6 +95,15 @@ private:
     //弹道解算器
     std::unique_ptr<CoordSolver> coord_solver_;
     SineScanner* pitch_scanner_;
+
+    //mpc
+    std::unique_ptr<AxisTinyMPC> yaw_mpc_;
+    std::unique_ptr<AxisTinyMPC> pitch_mpc_;
+
+    bool mpc_enable_ = true;
+    int mpc_horizon_ = 100;
+    int mpc_half_horizon_ = 50;
+    double mpc_dt_ = 0.01;
 
     int lock_armor_idx_ = -1;
 
@@ -73,6 +138,9 @@ private:
 
     double send_pitch = 0;
     double send_yaw = 0;
+
+    double pitch_ref_ = 0;
+    double yaw_ref_ = 0;
     double send_is_fire = 0;
 };
 
