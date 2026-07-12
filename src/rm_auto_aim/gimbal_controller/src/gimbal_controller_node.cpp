@@ -47,13 +47,13 @@ GimbalControllerNode::GimbalControllerNode() : Node("GimbalControllerNode")
     yaw_cfg.dt = mpc_dt_;
     yaw_cfg.horizon = mpc_horizon_;
     yaw_cfg.output_index = mpc_half_horizon_;
-    yaw_cfg.max_acc = declare_parameter("mpc.yaw.max_acc", 110.0);
+    yaw_cfg.max_acc = declare_parameter("mpc.yaw.max_acc", 200.0);
     yaw_cfg.max_vel = declare_parameter("mpc.yaw.max_vel", 50.0);
-    yaw_cfg.q_pos = declare_parameter("mpc.yaw.q_pos", 5e6);
+    yaw_cfg.q_pos = declare_parameter("mpc.yaw.q_pos", 1e6);
     yaw_cfg.q_vel = declare_parameter("mpc.yaw.q_vel", 0.0);
-    yaw_cfg.r_acc = declare_parameter("mpc.yaw.r_acc", 15.0);
+    yaw_cfg.r_acc = declare_parameter("mpc.yaw.r_acc", 1.0);
     yaw_cfg.rho = declare_parameter("mpc.yaw.rho", 1.0);
-    yaw_cfg.max_iter = declare_parameter("mpc.yaw.max_iter", 10);
+    yaw_cfg.max_iter = declare_parameter("mpc.yaw.max_iter", 50);
 
     AxisTinyMPC::Config pitch_cfg;
     pitch_cfg.dt = mpc_dt_;
@@ -573,7 +573,16 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
             static_cast<int>(yaw_ref_relative.size()) >= mpc_horizon_ &&
             static_cast<int>(pitch_ref.size()) >= mpc_horizon_)
         {
-            auto yaw_cmd = yaw_mpc_->solve(yaw_ref_relative[0], yaw_start_vel, yaw_ref_relative);
+            auto clampFinite = [](double v, double limit) {
+                if (!std::isfinite(v)) {
+                    return 0.0;
+                }
+                return std::clamp(v, -limit, limit);
+            };
+
+            double safe_yaw_start_vel = clampFinite(yaw_start_vel, 6.0);
+            double safe_pitch_start_vel = clampFinite(pitch_start_vel, 4.0);
+            auto yaw_cmd = yaw_mpc_->solve(yaw_ref_relative[0], safe_yaw_start_vel, yaw_ref_relative);
             auto pitch_cmd = pitch_mpc_->solve(pitch_ref[0], pitch_start_vel, pitch_ref);
 
             if (yaw_cmd.success)
@@ -582,6 +591,8 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
                 mpc_used = true;
                 debug_msg.yaw_vel = yaw_cmd.vel;
                 debug_msg.yaw_acc = yaw_cmd.acc;
+                control_msg.yaw_vel_speed = static_cast<float>(yaw_cmd.vel);
+                control_msg.yaw_acc = static_cast<float>(yaw_cmd.acc);
                 RCLCPP_DEBUG(
                     this->get_logger(),
                     "[MPC yaw] yaw_pos = %f, yaw_vel = %f, yaw_acc = %f",
@@ -673,7 +684,7 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
         max_move_yaw_ = get_parameter("max_move_yaw").as_double();
         if (min_yaw > max_move_yaw_ * M_PI / 180)
         {
-            RCLCPP_WARN(rclcpp::get_logger("lc_serial"), "No optimal armor, now min yaw: %f", min_yaw * 180 / M_PI);
+            // RCLCPP_WARN(rclcpp::get_logger("lc_serial"), "No optimal armor, now min yaw: %f", min_yaw * 180 / M_PI);
             send_is_fire = 0.0;
         }
         control_msg.is_fire = send_is_fire;

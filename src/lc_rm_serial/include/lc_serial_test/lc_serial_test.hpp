@@ -38,6 +38,8 @@ typedef struct
 	float v_y;
 	float w;
 	float nav_state;
+	float yaw_speed;
+	float yaw_acc;
 } Vision_Send_s;
 
 typedef struct

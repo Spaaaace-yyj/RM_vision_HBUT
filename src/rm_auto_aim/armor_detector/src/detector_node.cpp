@@ -132,7 +132,7 @@ namespace rm_auto_aim
         if (pnp_solver_ != nullptr)
         {
             armors_msg_.header = armor_marker_.header = text_marker_.header = img_msg->header;
-            //todo:要把时间改回图像时间，使用系统时间仅供调试！！
+            //todo:要把时间改回图像时间，使用系统时间仅供调试
             // armors_msg_.header.stamp = armor_marker_.header.stamp = text_marker_.header.stamp = this->get_clock()->now();
             armors_msg_.armors.clear();
             marker_array_.markers.clear();

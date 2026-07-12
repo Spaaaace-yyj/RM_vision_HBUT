@@ -49,56 +49,35 @@
 /armor_tracker:
   ros__parameters:
     target_frame: odom
+
+    # 最大装甲板距离，超过这个距离直接滤掉
     max_armor_distance: 10.0
 
-    # ekf:
-    #   sigma2_q_xyz: 0.05
-    #   sigma2_q_yaw: 5.0
-    #   sigma2_q_r: 80.0
+    tracker:
+      # 11D 刚开始跑时不要太小。
+      # 旧的 0.15 对 11D 初期收敛太严格，容易频繁 Reset / Armor jump
+      max_match_distance: 0.5
 
-    #   r_xyz_factor: 5e-3
-    #   r_yaw: 5e-3
+      # 装甲板 yaw 匹配阈值，单位 rad
+      # 1.0 rad ≈ 57.3 deg
+      max_match_yaw_diff: 1.0
+
+      # 连续检测多少帧后进入 TRACKING
+      # 新模型初期建议小一点，先让它稳定进入 tracking
+      tracking_thres: 3
+
+      # 临时丢失时间，单位 s
+      lost_time_thres: 0.3
 
     ekf:
-      sigma2_q_xyz: 8.3
-      sigma2_q_yaw: 0.00001
-      sigma2_q_r: 0.001  # 30
-      sigma2_q_vyaw: 35.0
-      r_xyz_factor: 0.08
-      r_yaw: 0.08
+      # 平移过程噪声：xc/yc/za 的加速度噪声
+      # 越大：响应越快，但中心更抖
+      # 越小：更平滑，但对机动/小陀螺响应慢
+      sigma2_q_xyz: 30.0
 
-
-    # ekf:
-    #   sigma2_q_xyz: 2.0
-    #   sigma2_q_yaw: 5.0
-    #   sigma2_q_r: 80.0
-
-    #   r_xyz_factor: 5e-3
-    #   r_yaw: 5e-3
-
-    tracker:
-      # max_match_distance: 0.25
-      max_match_distance: 0.5
-      # max_match_yaw_diff: 0.85
-      max_match_yaw_diff: 0.8
-
-      tracking_thres: 5
-      lost_time_thres: 1.0
-
-    # ekf:
-    #   sigma2_q_xyz: 0.001
-    #   sigma2_q_yaw: 100.0
-    #   sigma2_q_r: 800.0
-
-    #   r_xyz_factor: 10.0
-    #   r_yaw: 0.02
-
-    # tracker:
-    #   max_match_distance: 0.15
-    #   max_match_yaw_diff: 1.0
-
-    #   tracking_thres: 1
-    #   lost_time_thres: 10.0
+      # yaw 过程噪声：yaw/v_yaw 的角加速度噪声
+      # 小陀螺需要相对大一些
+      sigma2_q_yaw: 10.0
 
 /trt_armor_detector:
   ros__parameters:
@@ -125,10 +104,10 @@
     is_pitch_gain: false
     is_track: true
     shoot_delay: 0.05
-    shoot_delay_spin_: 0.15
-    gimbal_delay: 0.1
-    max_move_yaw: 40.0
-    fire_angle_threshold: 2.0
+    shoot_delay_spin_: 0.10
+    gimbal_delay: 0.01
+    max_move_yaw: 20.0
+    fire_angle_threshold: 0.8
     timestamp_offset: 0.005
     # shoot_speed: 14.4
     shoot_speed: 25.0

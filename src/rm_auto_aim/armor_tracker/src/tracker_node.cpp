@@ -23,94 +23,84 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions & options)
   lost_time_thres_ = this->declare_parameter("tracker.lost_time_thres", 0.3);
 
   // EKF
-  // xa = x_armor, xc = x_robot_center
-  // state: xc, v_xc, yc, v_yc, za, v_za, yaw, v_yaw, r
-  // measurement: xa, ya, za, yaw
+  // 11D whole-robot model
+  // state: xc, v_xc, yc, v_yc, za, v_za, yaw, v_yaw, r, l, h
+  //   l = r2 - r1, h = z2 - z1
+  // measurement is generated per observed armor in Tracker:
+  //   z = [ypd_yaw, ypd_pitch, ypd_distance, armor_yaw]
   // f - Process function
   auto f = [this](const Eigen::VectorXd & x) {
     Eigen::VectorXd x_new = x;
     x_new(0) += x(1) * dt_;
     x_new(2) += x(3) * dt_;
     x_new(4) += x(5) * dt_;
-    x_new(6) += x(7) * dt_;
+    x_new(6) = limitRad(x(6) + x(7) * dt_);
     return x_new;
   };
+
   // J_f - Jacobian of process function
   auto j_f = [this](const Eigen::VectorXd &) {
-    Eigen::MatrixXd f(9, 9);
+    Eigen::MatrixXd f(11, 11);
     // clang-format off
-    f <<  1,   dt_, 0,   0,   0,   0,   0,   0,   0,
-          0,   1,   0,   0,   0,   0,   0,   0,   0,
-          0,   0,   1,   dt_, 0,   0,   0,   0,   0, 
-          0,   0,   0,   1,   0,   0,   0,   0,   0,
-          0,   0,   0,   0,   1,   dt_, 0,   0,   0,
-          0,   0,   0,   0,   0,   1,   0,   0,   0,
-          0,   0,   0,   0,   0,   0,   1,   dt_, 0,
-          0,   0,   0,   0,   0,   0,   0,   1,   0,
-          0,   0,   0,   0,   0,   0,   0,   0,   1;
+    f <<  1,   dt_, 0,   0,   0,   0,   0,   0,   0,   0,   0,
+          0,   1,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+          0,   0,   1,   dt_, 0,   0,   0,   0,   0,   0,   0,
+          0,   0,   0,   1,   0,   0,   0,   0,   0,   0,   0,
+          0,   0,   0,   0,   1,   dt_, 0,   0,   0,   0,   0,
+          0,   0,   0,   0,   0,   1,   0,   0,   0,   0,   0,
+          0,   0,   0,   0,   0,   0,   1,   dt_, 0,   0,   0,
+          0,   0,   0,   0,   0,   0,   0,   1,   0,   0,   0,
+          0,   0,   0,   0,   0,   0,   0,   0,   1,   0,   0,
+          0,   0,   0,   0,   0,   0,   0,   0,   0,   1,   0,
+          0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   1;
     // clang-format on
     return f;
   };
-  // h - Observation function
-  auto h = [](const Eigen::VectorXd & x) {
-    Eigen::VectorXd z(4);
-    double xc = x(0), yc = x(2), yaw = x(6), r = x(8);
-    z(0) = xc - r * cos(yaw);  // xa
-    z(1) = yc - r * sin(yaw);  // ya
-    z(2) = x(4);               // za
-    z(3) = x(6);               // yaw
-    return z;
+
+  // h / J_h are dummies. 11D EKF 的观测函数依赖装甲板 id，实际在 Tracker::updateOneArmor() 中传入。
+  auto h = [](const Eigen::VectorXd &) {
+    return Eigen::VectorXd::Zero(4);
   };
-  // J_h - Jacobian of observation function
-  auto j_h = [](const Eigen::VectorXd & x) {
-    Eigen::MatrixXd h(4, 9);
-    double yaw = x(6), r = x(8);
-    // clang-format off
-    //    xc   v_xc yc   v_yc za   v_za yaw         v_yaw r
-    h <<  1,   0,   0,   0,   0,   0,   r*sin(yaw), 0,   -cos(yaw),
-          0,   0,   1,   0,   0,   0,   -r*cos(yaw),0,   -sin(yaw),
-          0,   0,   0,   0,   1,   0,   0,          0,   0,
-          0,   0,   0,   0,   0,   0,   1,          0,   0;
-    // clang-format on
-    return h;
+  auto j_h = [](const Eigen::VectorXd &) {
+    return Eigen::MatrixXd::Zero(4, 11);
   };
+
   // update_Q - process noise covariance matrix
-  s2qxyz_ = declare_parameter("ekf.sigma2_q_xyz", 20.0);
-  s2qyaw_ = declare_parameter("ekf.sigma2_q_yaw", 100.0);
-  s2q_vyaw_ = declare_parameter("ekf.sigma2_q_vyaw", 100.0);
-  s2qr_ = declare_parameter("ekf.sigma2_q_r", 80.0);
+  s2qxyz_ = declare_parameter("ekf.sigma2_q_xyz", 100.0);
+  s2qyaw_ = declare_parameter("ekf.sigma2_q_yaw", 400.0);
   auto u_q = [this]() {
-    Eigen::MatrixXd q(9, 9);
-    double t = dt_, x = s2qxyz_, y = s2qyaw_, r = s2qr_, wy = s2q_vyaw_;
-    double q_x_x = pow(t, 4) / 4 * x, q_x_vx = pow(t, 3) / 2 * x, q_vx_vx = pow(t, 2) * x;
-    double q_y_y = pow(t, 4) / 4 * y, q_y_vy = pow(t, 3) / 2 * y, q_vy_vy = pow(t, 2) * wy;
-    // double q_r = pow(t, 4) / 4 * r;
-    double q_r = r;
-    // clang-format off
-    //    xc      v_xc    yc      v_yc    za      v_za    yaw     v_yaw   r
-    q <<  q_x_x,  q_x_vx, 0,      0,      0,      0,      0,      0,      0,
-          q_x_vx, q_vx_vx,0,      0,      0,      0,      0,      0,      0,
-          0,      0,      q_x_x,  q_x_vx, 0,      0,      0,      0,      0,
-          0,      0,      q_x_vx, q_vx_vx,0,      0,      0,      0,      0,
-          0,      0,      0,      0,      q_x_x,  q_x_vx, 0,      0,      0,
-          0,      0,      0,      0,      q_x_vx, q_vx_vx,0,      0,      0,
-          0,      0,      0,      0,      0,      0,      q_y_y,  q_y_vy, 0,
-          0,      0,      0,      0,      0,      0,      q_y_vy, q_vy_vy,0,
-          0,      0,      0,      0,      0,      0,      0,      0,      q_r;
-    // clang-format on
+    Eigen::MatrixXd q = Eigen::MatrixXd::Zero(11, 11);
+    const double t = dt_;
+    const double v1 = s2qxyz_;
+    const double v2 = s2qyaw_;
+
+    const double a = std::pow(t, 4) / 4.0;
+    const double b = std::pow(t, 3) / 2.0;
+    const double c = std::pow(t, 2);
+
+    auto fill_cv_noise = [&](int pos, int vel, double var) {
+      q(pos, pos) = a * var;
+      q(pos, vel) = b * var;
+      q(vel, pos) = b * var;
+      q(vel, vel) = c * var;
+    };
+
+    fill_cv_noise(0, 1, v1);  // x / vx
+    fill_cv_noise(2, 3, v1);  // y / vy
+    fill_cv_noise(4, 5, v1);  // z / vz
+    fill_cv_noise(6, 7, v2);  // yaw / v_yaw
+
+    // r, l, h 复刻开源：过程噪声为 0，主要靠观测修正。
     return q;
   };
-  // update_R - measurement noise covariance matrix
-  r_xyz_factor = declare_parameter("ekf.r_xyz_factor", 0.05);
-  r_yaw = declare_parameter("ekf.r_yaw", 0.02);
-  auto u_r = [this](const Eigen::VectorXd & z) {
-    Eigen::DiagonalMatrix<double, 4> r;
-    double x = r_xyz_factor;
-    r.diagonal() << abs(x * z[0]), abs(x * z[1]), abs(x * z[2]), r_yaw;
-    return r;
+
+  // update_R is dummy. 11D EKF 使用 Tracker 内部的 ypda 动态 R。
+  auto u_r = [](const Eigen::VectorXd &) {
+    return Eigen::MatrixXd::Identity(4, 4);
   };
-  // P - error estimate covariance matrix
-  Eigen::DiagonalMatrix<double, 9> p0;
+
+  // P - error estimate covariance matrix. 真正初始化时 Tracker::initEKF() 会按目标类型重置 P。
+  Eigen::DiagonalMatrix<double, 11> p0;
   p0.setIdentity();
   tracker_->ekf = ExtendedKalmanFilter{f, h, j_f, j_h, u_q, u_r, p0};
 
@@ -175,7 +165,7 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions & options)
 void ArmorTrackerNode::armorsCallback(const auto_aim_interfaces::msg::Armors::SharedPtr armors_msg)
 {
   // Tranform armor position from image frame to world coordinate
-  
+
   //debug
   auto_aim_interfaces::msg::DebugTracker debug_msg;
 
@@ -225,10 +215,10 @@ void ArmorTrackerNode::armorsCallback(const auto_aim_interfaces::msg::Armors::Sh
     // Publish Info
     info_msg.position_diff = tracker_->info_position_diff;
     info_msg.yaw_diff = (tracker_->info_yaw_diff) * (180 / M_PI);
-    info_msg.position.x = tracker_->measurement(0);
-    info_msg.position.y = tracker_->measurement(1);
-    info_msg.position.z = tracker_->measurement(2);
-    info_msg.yaw = (tracker_->measurement(3)) * (180 / M_PI);
+    info_msg.position.x = tracker_->tracked_armor.pose.position.x;
+    info_msg.position.y = tracker_->tracked_armor.pose.position.y;
+    info_msg.position.z = tracker_->tracked_armor.pose.position.z;
+    info_msg.yaw = tracker_->measurement.size() >= 4 ? (tracker_->measurement(3)) * (180 / M_PI) : 0.0;
     info_pub_->publish(info_msg);
 
     if (tracker_->tracker_state == Tracker::DETECTING) {
@@ -250,8 +240,8 @@ void ArmorTrackerNode::armorsCallback(const auto_aim_interfaces::msg::Armors::Sh
       target_msg.yaw = state(6);
       target_msg.v_yaw = state(7);
       target_msg.radius_1 = state(8);
-      target_msg.radius_2 = tracker_->another_r;
-      target_msg.dz = tracker_->dz;
+      target_msg.radius_2 = state(8) + state(9);
+      target_msg.dz = state(10);
       target_msg.type = tracker_->tracked_armor.type;
     }
   }

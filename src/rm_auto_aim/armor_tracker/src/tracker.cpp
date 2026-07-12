@@ -11,9 +11,12 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 // STD
+#include <algorithm>
 #include <cfloat>
+#include <cmath>
 #include <memory>
 #include <string>
+#include <utility>
 
 namespace rm_auto_aim
 {
@@ -21,7 +24,7 @@ namespace rm_auto_aim
         : tracker_state(LOST),
           tracked_id(std::string("")),
           measurement(Eigen::VectorXd::Zero(4)),
-          target_state(Eigen::VectorXd::Zero(9)),
+          target_state(Eigen::VectorXd::Zero(11)),
           max_match_distance_(max_match_distance),
           max_match_yaw_diff_(max_match_yaw_diff)
     {
@@ -30,12 +33,8 @@ namespace rm_auto_aim
         r_params.r_distance_base = 1.0;
         r_params.r_yaw_base = 9e-2;
         r_params.yaw_distance_log_div = 200.0;
-        r_params.xyz_scale = 1.0;
+        r_params.distance_scale = 1.0;
         r_params.yaw_scale = 1.0;
-
-        // 先关掉额外模型噪声，尽量复刻开源
-        r_params.model_xy_std = 0.0;
-        r_params.model_z_std = 0.0;
     }
 
     void Tracker::init(const Armors::SharedPtr& armors_msg)
@@ -57,45 +56,25 @@ namespace rm_auto_aim
             }
         }
 
-        initEKF(tracked_armor);
-        RCLCPP_DEBUG(rclcpp::get_logger("armor_tracker"), "Init EKF!");
-
         tracked_id = tracked_armor.number;
-        tracker_state = DETECTING;
-
         updateArmorsNum(tracked_armor);
+        initEKF(tracked_armor);
+        RCLCPP_DEBUG(rclcpp::get_logger("armor_tracker"), "Init 11D EKF!");
+
+        tracker_state = DETECTING;
     }
 
     void Tracker::update(const Armors::SharedPtr& armors_msg)
     {
-        // KF predict
+        // EKF predict
         Eigen::VectorXd ekf_prediction = ekf.predict();
-        // RCLCPP_DEBUG(rclcpp::get_logger("armor_tracker"), "EKF predict");
-
         bool matched = false;
-        // Use KF prediction as default target state if no matched armor is found
         target_state = ekf_prediction;
 
-        //todo:做成参数
-        double max_match_maha_distance_ = 13.28;
-        //todo:修改按照马式距离判断当前追踪的是哪个装甲板
-        //寻找距离EKF预测的装甲板最近的观测装甲板作为目标进行更新
+        int same_id_armors_count = 0;
+
         if (!armors_msg->armors.empty())
         {
-            Armor best_armor;
-            Armor same_id_armor;
-
-            bool has_best_armor = false;
-            int same_id_armors_count = 0;
-
-            double best_maha = DBL_MAX;
-            double best_position_diff = DBL_MAX;
-            double best_yaw_diff = DBL_MAX;
-            double best_measured_yaw = 0.0;
-            Eigen::Matrix4d best_R = Eigen::Matrix4d::Identity();
-
-            auto predicted_position = getArmorPositionFromState(ekf_prediction);
-
             for (const auto& armor : armors_msg->armors)
             {
                 if (armor.number != tracked_id)
@@ -103,131 +82,29 @@ namespace rm_auto_aim
                     continue;
                 }
 
-                same_id_armor = armor;
+                // 尽量保持目标类型一致。若某一帧大小分类抖动，可以先只按 number 匹配。
+                if (!tracked_armor.type.empty() && !armor.type.empty() && armor.type != tracked_armor.type)
+                {
+                    continue;
+                }
+
                 same_id_armors_count++;
-
-                auto p = armor.pose.position;
-                Eigen::Vector3d armor_xyz(p.x, p.y, p.z);
-
-                // 不要在候选循环里调用会修改 last_yaw_ 的 orientationToYaw()
-                double raw_yaw = getRawYaw(armor.pose.orientation);
-                double measured_yaw = continuousYaw(raw_yaw, ekf_prediction(6));
-
-                Eigen::Vector4d z;
-                z << p.x, p.y, p.z, measured_yaw;
-
-                Eigen::Matrix4d R_meas = makeMeasurementNoiseR(
-                    armor_xyz,
-                    measured_yaw,
-                    r_params);
-
-                double maha = ekf.mahalanobisDistance(z, R_meas);
-
-                double position_diff = (predicted_position - armor_xyz).norm();
-                double yaw_diff = std::abs(
-                    angles::shortest_angular_distance(ekf_prediction(6), measured_yaw));
-
-                if (maha < best_maha)
+                if (updateOneArmor(armor))
                 {
-                    best_maha = maha;
-                    best_position_diff = position_diff;
-                    best_yaw_diff = yaw_diff;
-                    best_armor = armor;
-                    best_measured_yaw = measured_yaw;
-                    best_R = R_meas;
-                    has_best_armor = true;
-                }
-            }
-
-            info_position_diff = best_position_diff;
-            info_yaw_diff = best_yaw_diff;
-
-            if (has_best_armor && best_maha < max_match_maha_distance_ && best_yaw_diff < max_match_yaw_diff_)
-            {
-                matched = true;
-                tracked_armor = best_armor;
-
-                auto p = tracked_armor.pose.position;
-                measurement = Eigen::Vector4d(p.x, p.y, p.z, best_measured_yaw);
-
-                target_state = ekf.update(measurement, best_R);
-
-                // 只有真正 update 的 yaw 才更新 last_yaw_
-                last_yaw_ = best_measured_yaw;
-
-                // RCLCPP_DEBUG(
-                //     rclcpp::get_logger("armor_tracker"),
-                //     "[MAHA MATCH] d2=%.3f, pos_diff=%.3f, yaw_diff=%.3f deg",
-                //     best_maha,
-                //     best_position_diff,
-                //     best_yaw_diff * 180.0 / M_PI);
-            }
-            else if (same_id_armors_count == 1 && best_yaw_diff > max_match_yaw_diff_)
-            {
-                // Matched armor not found, but there is only one armor with the same id
-                // and yaw has jumped, take this case as the target is spinning and armor jumped
-                handleArmorJump(same_id_armor);
-            }
-            else if (same_id_armors_count == 1)
-            {
-                auto p = same_id_armor.pose.position;
-                Eigen::Vector3d armor_xyz(p.x, p.y, p.z);
-
-                double raw_yaw = getRawYaw(same_id_armor.pose.orientation);
-                double measured_yaw = continuousYaw(raw_yaw, ekf_prediction(6));
-
-                measurement = Eigen::Vector4d(p.x, p.y, p.z, measured_yaw);
-
-                Eigen::Matrix4d R_meas = makeMeasurementNoiseR(
-                    armor_xyz,
-                    measured_yaw,
-                    r_params);
-
-                // force update 这里建议加一个更宽的 maha 阈值
-                double maha = ekf.mahalanobisDistance(measurement, R_meas);
-
-                if (maha < max_match_maha_distance_ * 2.0)
-                {
-                    target_state = ekf.update(measurement, R_meas);
                     matched = true;
-                    tracked_armor = same_id_armor;
-                    last_yaw_ = measured_yaw;
-
-                    RCLCPP_DEBUG(
-                        rclcpp::get_logger("armor_tracker"),
-                        "[FORCE MAHA UPDATE] d2=%.3f",
-                        maha);
-
-                    handleArmorJump(same_id_armor);
-                }
-                else
-                {
-                    RCLCPP_WARN(
-                        rclcpp::get_logger("armor_tracker"),
-                        "[REJECT SINGLE ARMOR] maha d2=%.3f",
-                        maha);
+                    tracked_armor = armor;
+                    updateArmorsNum(tracked_armor);
                 }
             }
-            else
-            {
-                RCLCPP_WARN(
-                    rclcpp::get_logger("armor_tracker"),
-                    "No matched armor found! Same armor num = %d",
-                    same_id_armors_count);
-            }
         }
 
-        // Prevent radius from spreading
-        if (target_state(8) < 0.12)
+        if (!matched && same_id_armors_count == 0)
         {
-            target_state(8) = 0.12;
-            ekf.setState(target_state);
+            RCLCPP_WARN(rclcpp::get_logger("armor_tracker"), "No matched armor found! Same armor num = 0");
         }
-        else if (target_state(8) > 0.4)
-        {
-            target_state(8) = 0.4;
-            ekf.setState(target_state);
-        }
+
+        clampGeometryState();
+        syncCompatibilityFields();
 
         // Tracking state machine
         if (tracker_state == DETECTING)
@@ -276,22 +153,26 @@ namespace rm_auto_aim
 
     void Tracker::initEKF(const Armor& a)
     {
-        double xa = a.pose.position.x;
-        double ya = a.pose.position.y;
-        double za = a.pose.position.z;
-        last_yaw_ = 0;
-        double yaw = orientationToYaw(a.pose.orientation);
+        const double xa = a.pose.position.x;
+        const double ya = a.pose.position.y;
+        const double za = a.pose.position.z;
 
-        // Set initial position at 0.2m behind the target
-        target_state = Eigen::VectorXd::Zero(9);
-        double r = 0.26; //0.26
-        double xc = xa + r * cos(yaw);
-        double yc = ya + r * sin(yaw);
-        dz = 0, another_r = r;
-        // state: xc, v_xc, yc, v_yc, za, v_za, yaw, v_yaw, r
-        target_state << xc, 0, yc, 0, za, 0, yaw, 0, r;
+        last_yaw_ = 0.0;
+        const double raw_yaw = getRawYaw(a.pose.orientation);
+        const double yaw = continuousYaw(raw_yaw, 0.0);
+        last_yaw_ = yaw;
 
-        ekf.setState(target_state);
+        const double r = initialRadius(a);
+        const double xc = xa + r * std::cos(yaw);
+        const double yc = ya + r * std::sin(yaw);
+
+        // state: xc, v_xc, yc, v_yc, za, v_za, yaw, v_yaw, r, l, h
+        // l = r2 - r1, h = z2 - z1
+        target_state = Eigen::VectorXd::Zero(11);
+        target_state << xc, 0.0, yc, 0.0, za, 0.0, yaw, 0.0, r, 0.0, 0.0;
+
+        ekf.setState(target_state, initialCovariance(a));
+        syncCompatibilityFields();
     }
 
     void Tracker::updateArmorsNum(const Armor& armor)
@@ -310,56 +191,272 @@ namespace rm_auto_aim
         }
     }
 
-    void Tracker::handleArmorJump(const Armor& current_armor)
+    bool Tracker::updateOneArmor(const Armor& a)
     {
-        double yaw = orientationToYaw(current_armor.pose.orientation);
-        target_state(6) = yaw;
-        updateArmorsNum(current_armor);
-        // Only 4 armors has 2 radius and height
-        if (tracked_armors_num == ArmorsNum::NORMAL_4)
+        if (target_state.size() != 11)
         {
-            dz = target_state(4) - current_armor.pose.position.z;
-            target_state(4) = current_armor.pose.position.z;
-            std::swap(target_state(8), another_r);
+            return false;
         }
-        RCLCPP_DEBUG(rclcpp::get_logger("armor_tracker"), "Armor jump!, max_match_distance = [%f]",
-                     max_match_distance_);
 
-        // If position difference is larger than max_match_distance_,
-        // take this case as the ekf diverged, reset the state
-        auto p = current_armor.pose.position;
-        Eigen::Vector3d current_p(p.x, p.y, p.z);
-        Eigen::Vector3d infer_p = getArmorPositionFromState(target_state);
-        if ((current_p - infer_p).norm() > max_match_distance_)
+        const int id = matchArmorId(a, target_state);
+        last_model_id = id;
+
+        const Eigen::Vector4d z = makeArmorYpdaMeasurement(a);
+        const Eigen::Vector3d armor_xyz(a.pose.position.x, a.pose.position.y, a.pose.position.z);
+        const Eigen::Matrix4d R = makeYpdaMeasurementNoiseR(armor_xyz, z[3], r_params);
+        const Eigen::MatrixXd H = hJacobian(target_state, id);
+
+        auto h = [this, id](const Eigen::VectorXd& x) -> Eigen::VectorXd {
+            return hArmorYPDA(x, id);
+        };
+
+        auto z_subtract = [](const Eigen::VectorXd& a, const Eigen::VectorXd& b) -> Eigen::VectorXd {
+            Eigen::VectorXd c = a - b;
+            if (c.size() >= 4)
+            {
+                c[0] = limitRad(c[0]);
+                c[1] = limitRad(c[1]);
+                c[3] = limitRad(c[3]);
+            }
+            return c;
+        };
+
+        // 调试信息：当前观测和选中的模型装甲板之间的差异
+        const Eigen::Vector4d z_pred = hArmorYPDA(target_state, id);
+        const Eigen::Vector3d pred_xyz = hArmorXYZ(target_state, id);
+        info_position_diff = (pred_xyz - armor_xyz).norm();
+        info_yaw_diff = std::abs(angles::shortest_angular_distance(z_pred[3], z[3]));
+
+        measurement = z;
+        R_meas_ = R;
+        target_state = ekf.update(z, H, R, h, z_subtract);
+        target_state(6) = limitRad(target_state(6));
+        ekf.setState(target_state);
+
+        return true;
+    }
+
+    int Tracker::matchArmorId(const Armor& a, const Eigen::VectorXd& x) const
+    {
+        const auto xyza_list = armorXYZAList(x);
+        if (xyza_list.empty())
         {
-            double r = target_state(8);
-            target_state(0) = p.x + r * cos(yaw); // xc
-            target_state(1) = 0; // vxc
-            target_state(2) = p.y + r * sin(yaw); // yc
-            target_state(3) = 0; // vyc
-            target_state(4) = p.z; // za
-            target_state(5) = 0; // vza
-            RCLCPP_ERROR(rclcpp::get_logger("armor_tracker"), "Reset State! Current dis to EKF = [%f]",
-                         (current_p - infer_p).norm());
+            return 0;
         }
+
+        std::vector<std::pair<Eigen::Vector4d, int>> xyza_i_list;
+        xyza_i_list.reserve(xyza_list.size());
+        for (int i = 0; i < static_cast<int>(xyza_list.size()); ++i)
+        {
+            xyza_i_list.push_back({xyza_list[i], i});
+        }
+
+        std::sort(
+            xyza_i_list.begin(), xyza_i_list.end(),
+            [](const auto& lhs, const auto& rhs) {
+                const Eigen::Vector3d lhs_xyz(lhs.first(0), lhs.first(1), lhs.first(2));
+                const Eigen::Vector3d rhs_xyz(rhs.first(0), rhs.first(1), rhs.first(2));
+
+                return lhs_xyz.norm() < rhs_xyz.norm();
+            });
+
+        const Eigen::Vector3d armor_xyz(a.pose.position.x, a.pose.position.y, a.pose.position.z);
+        const Eigen::Vector3d armor_ypd = xyzToYpd(armor_xyz);
+        const double raw_yaw = getRawYaw(a.pose.orientation);
+
+        int best_id = xyza_i_list.front().second;
+        double min_angle_error = DBL_MAX;
+        const int check_num = std::min<int>(3, xyza_i_list.size());
+
+        for (int i = 0; i < check_num; ++i)
+        {
+            const auto& xyza = xyza_i_list[i].first;
+            const Eigen::Vector3d pred_ypd = xyzToYpd(xyza.head<3>());
+
+            const double armor_yaw_error = std::abs(angles::shortest_angular_distance(xyza[3], raw_yaw));
+            const double view_yaw_error = std::abs(angles::shortest_angular_distance(pred_ypd[0], armor_ypd[0]));
+            const double angle_error = armor_yaw_error + view_yaw_error;
+
+            if (angle_error < min_angle_error)
+            {
+                min_angle_error = angle_error;
+                best_id = xyza_i_list[i].second;
+            }
+        }
+
+        return best_id;
+    }
+
+    Eigen::Vector4d Tracker::makeArmorYpdaMeasurement(const Armor& a) const
+    {
+        const Eigen::Vector3d xyz(a.pose.position.x, a.pose.position.y, a.pose.position.z);
+        const Eigen::Vector3d ypd = xyzToYpd(xyz);
+        const double raw_yaw = getRawYaw(a.pose.orientation);
+
+        return Eigen::Vector4d(ypd[0], ypd[1], ypd[2], raw_yaw);
+    }
+
+    Eigen::Vector3d Tracker::hArmorXYZ(const Eigen::VectorXd& x, int id) const
+    {
+        const int n = std::max(1, armorsNum());
+        const double angle = limitRad(x[6] + id * 2.0 * M_PI / static_cast<double>(n));
+        const bool use_l_h = (tracked_armors_num == ArmorsNum::NORMAL_4) && (id == 1 || id == 3);
+
+        const double r = use_l_h ? x[8] + x[9] : x[8];
+        const double armor_x = x[0] - r * std::cos(angle);
+        const double armor_y = x[2] - r * std::sin(angle);
+        const double armor_z = use_l_h ? x[4] + x[10] : x[4];
+
+        return Eigen::Vector3d(armor_x, armor_y, armor_z);
+    }
+
+    Eigen::Vector4d Tracker::hArmorYPDA(const Eigen::VectorXd& x, int id) const
+    {
+        const int n = std::max(1, armorsNum());
+        const Eigen::Vector3d xyz = hArmorXYZ(x, id);
+        const Eigen::Vector3d ypd = xyzToYpd(xyz);
+        const double angle = limitRad(x[6] + id * 2.0 * M_PI / static_cast<double>(n));
+
+        return Eigen::Vector4d(ypd[0], ypd[1], ypd[2], angle);
+    }
+
+    Eigen::MatrixXd Tracker::hJacobian(const Eigen::VectorXd& x, int id) const
+    {
+        const int n = std::max(1, armorsNum());
+        const double angle = limitRad(x[6] + id * 2.0 * M_PI / static_cast<double>(n));
+        const bool use_l_h = (tracked_armors_num == ArmorsNum::NORMAL_4) && (id == 1 || id == 3);
+
+        const double r = use_l_h ? x[8] + x[9] : x[8];
+        const double dx_da = r * std::sin(angle);
+        const double dy_da = -r * std::cos(angle);
+
+        const double dx_dr = -std::cos(angle);
+        const double dy_dr = -std::sin(angle);
+        const double dx_dl = use_l_h ? -std::cos(angle) : 0.0;
+        const double dy_dl = use_l_h ? -std::sin(angle) : 0.0;
+
+        const double dz_dh = use_l_h ? 1.0 : 0.0;
+
+        // ∂[armor_x, armor_y, armor_z, armor_yaw] / ∂state
+        Eigen::MatrixXd H_armor_xyza(4, 11);
+        // clang-format off
+        H_armor_xyza <<
+            1, 0, 0, 0, 0, 0, dx_da, 0, dx_dr, dx_dl,     0,
+            0, 0, 1, 0, 0, 0, dy_da, 0, dy_dr, dy_dl,     0,
+            0, 0, 0, 0, 1, 0,     0, 0,     0,     0, dz_dh,
+            0, 0, 0, 0, 0, 0,     1, 0,     0,     0,     0;
+        // clang-format on
+
+        const Eigen::Vector3d armor_xyz = hArmorXYZ(x, id);
+        const Eigen::Matrix3d H_ypd_xyz = xyzToYpdJacobian(armor_xyz);
+
+        Eigen::MatrixXd H_armor_ypda(4, 4);
+        // clang-format off
+        H_armor_ypda <<
+            H_ypd_xyz(0, 0), H_ypd_xyz(0, 1), H_ypd_xyz(0, 2), 0,
+            H_ypd_xyz(1, 0), H_ypd_xyz(1, 1), H_ypd_xyz(1, 2), 0,
+            H_ypd_xyz(2, 0), H_ypd_xyz(2, 1), H_ypd_xyz(2, 2), 0,
+                         0,              0,              0, 1;
+        // clang-format on
+
+        return H_armor_ypda * H_armor_xyza;
+    }
+
+    std::vector<Eigen::Vector4d> Tracker::armorXYZAList(const Eigen::VectorXd& x) const
+    {
+        std::vector<Eigen::Vector4d> list;
+        const int n = std::max(1, armorsNum());
+        list.reserve(n);
+
+        for (int i = 0; i < n; ++i)
+        {
+            const double angle = limitRad(x[6] + i * 2.0 * M_PI / static_cast<double>(n));
+            const Eigen::Vector3d xyz = hArmorXYZ(x, i);
+            list.emplace_back(xyz[0], xyz[1], xyz[2], angle);
+        }
+        return list;
+    }
+
+    void Tracker::syncCompatibilityFields()
+    {
+        if (target_state.size() < 11)
+        {
+            return;
+        }
+        target_state(6) = limitRad(target_state(6));
+        another_r = target_state(8) + target_state(9);
+        dz = target_state(10);
+    }
+
+    void Tracker::clampGeometryState()
+    {
+        if (target_state.size() < 11)
+        {
+            return;
+        }
+
+        double r1 = target_state(8);
+        double r2 = target_state(8) + target_state(9);
+
+        r1 = std::clamp(r1, 0.05, 0.50);
+        r2 = std::clamp(r2, 0.05, 0.50);
+
+        target_state(8) = r1;
+        target_state(9) = r2 - r1;
+        target_state(10) = std::clamp(target_state(10), -0.50, 0.50);
+        target_state(6) = limitRad(target_state(6));
 
         ekf.setState(target_state);
     }
 
+    double Tracker::initialRadius(const Armor& armor) const
+    {
+        if (armor.number == "outpost")
+        {
+            return 0.2765;
+        }
+        if (armor.number == "base")
+        {
+            return 0.3205;
+        }
+        return 0.20;
+    }
+
+    Eigen::MatrixXd Tracker::initialCovariance(const Armor& armor) const
+    {
+        Eigen::VectorXd p0(11);
+        const bool is_balance = armor.type == "large" &&
+            (armor.number == "3" || armor.number == "4" || armor.number == "5");
+
+        if (is_balance)
+        {
+            p0 << 1, 64, 1, 64, 1, 64, 0.4, 100, 1, 1, 1;
+        }
+        else if (armor.number == "outpost")
+        {
+            p0 << 1, 64, 1, 64, 1, 81, 0.4, 100, 1e-4, 0, 0;
+        }
+        else if (armor.number == "base")
+        {
+            p0 << 1, 64, 1, 64, 1, 64, 0.4, 100, 1e-4, 0, 0;
+        }
+        else
+        {
+            p0 << 1, 64, 1, 64, 1, 64, 0.4, 100, 1, 1, 1;
+        }
+
+        return p0.asDiagonal();
+    }
+
     double Tracker::orientationToYaw(const geometry_msgs::msg::Quaternion& q)
     {
-        // Get armor yaw
-        tf2::Quaternion tf_q;
-        tf2::fromMsg(q, tf_q);
-        double roll, pitch, yaw;
-        tf2::Matrix3x3(tf_q).getRPY(roll, pitch, yaw);
-        // Make yaw change continuous (-pi~pi to -inf~inf)
-        yaw = last_yaw_ + angles::shortest_angular_distance(last_yaw_, yaw);
+        const double raw_yaw = getRawYaw(q);
+        const double yaw = continuousYaw(raw_yaw, last_yaw_);
         last_yaw_ = yaw;
         return yaw;
     }
 
-    double Tracker::getRawYaw(const geometry_msgs::msg::Quaternion& q)
+    double Tracker::getRawYaw(const geometry_msgs::msg::Quaternion& q) const
     {
         tf2::Quaternion tf_q;
         tf2::fromMsg(q, tf_q);
@@ -370,18 +467,8 @@ namespace rm_auto_aim
         return yaw;
     }
 
-    double Tracker::continuousYaw(double raw_yaw, double reference_yaw)
+    double Tracker::continuousYaw(double raw_yaw, double reference_yaw) const
     {
         return reference_yaw + angles::shortest_angular_distance(reference_yaw, raw_yaw);
-    }
-
-    Eigen::Vector3d Tracker::getArmorPositionFromState(const Eigen::VectorXd& x)
-    {
-        // Calculate predicted position of the current armor
-        double xc = x(0), yc = x(2), za = x(4);
-        double yaw = x(6), r = x(8);
-        double xa = xc - r * cos(yaw);
-        double ya = yc - r * sin(yaw);
-        return Eigen::Vector3d(xa, ya, za);
     }
 } // namespace rm_auto_aim

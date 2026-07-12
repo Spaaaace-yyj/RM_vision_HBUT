@@ -18,6 +18,7 @@ namespace rm_auto_aim
         using VecVecFunc = std::function<Eigen::VectorXd(const Eigen::VectorXd&)>;
         using VecMatFunc = std::function<Eigen::MatrixXd(const Eigen::VectorXd&)>;
         using VoidMatFunc = std::function<Eigen::MatrixXd()>;
+        using ResidualFunc = std::function<Eigen::VectorXd(const Eigen::VectorXd&, const Eigen::VectorXd&)>;
 
         explicit ExtendedKalmanFilter(
             const VecVecFunc& f, const VecVecFunc& h, const VecMatFunc& j_f, const VecMatFunc& j_h,
@@ -26,21 +27,42 @@ namespace rm_auto_aim
         // Set the initial state
         void setState(const Eigen::VectorXd& x0);
 
+        // Set the initial state and covariance. Re-init EKF 时建议用这个接口。
+        void setState(const Eigen::VectorXd& x0, const Eigen::MatrixXd& P0);
+
         // Compute a predicted state
         Eigen::MatrixXd predict();
 
-        // Update the estimated state based on measurement
+        // Update the estimated state based on the default measurement model
         Eigen::MatrixXd update(const Eigen::VectorXd& z, const Eigen::MatrixXd& R_meas);
+
+        // Update with a per-measurement nonlinear model. 11D 整车 EKF 使用这个接口。
+        Eigen::MatrixXd update(
+            const Eigen::VectorXd& z,
+            const Eigen::MatrixXd& H_custom,
+            const Eigen::MatrixXd& R_meas,
+            const VecVecFunc& h_custom,
+            const ResidualFunc& z_subtract);
 
         double mahalanobisDistance(
             const Eigen::VectorXd& z,
             const Eigen::MatrixXd& R_meas);
+
+        double mahalanobisDistance(
+            const Eigen::VectorXd& z,
+            const Eigen::MatrixXd& H_custom,
+            const Eigen::MatrixXd& R_meas,
+            const VecVecFunc& h_custom,
+            const ResidualFunc& z_subtract) const;
 
         Eigen::VectorXd innovation(
             const Eigen::VectorXd& z) const;
 
         Eigen::MatrixXd innovationCovariance(
             const Eigen::MatrixXd& R_meas);
+
+        const Eigen::VectorXd& prioriState() const { return x_pri; }
+        const Eigen::VectorXd& posteriorState() const { return x_post; }
 
     private:
         // Process nonlinear vector function
@@ -69,7 +91,7 @@ namespace rm_auto_aim
         Eigen::MatrixXd K;
 
         // System dimensions
-        int n;
+        int n = 0;
 
         // N-size identity
         Eigen::MatrixXd I;
