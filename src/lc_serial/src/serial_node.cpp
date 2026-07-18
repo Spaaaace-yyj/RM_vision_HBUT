@@ -164,6 +164,8 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::GimbalControl::SharedPtr m
     double send_yaw = msg->yaw;
     double send_pitch = msg->pitch;
     double send_is_fire = msg->is_fire;
+    double send_yaw_vel = msg->yaw_vel_speed;
+    double send_yaw_acc = msg->yaw_acc;
 
     if (reverse_send_pitch) send_pitch *= -1;
     if (reverse_send_yaw) send_yaw *= -1;
@@ -176,9 +178,9 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::GimbalControl::SharedPtr m
     cJSON_AddItemToArray(cjson_date, cJSON_CreateNumber(send_yaw));
     cJSON_AddItemToArray(cjson_date, cJSON_CreateNumber(send_pitch));
     cJSON_AddItemToArray(cjson_date, cJSON_CreateNumber(send_is_fire));
-    //烧饼导航消息，其他车可以把这两个删掉
-    cJSON_AddItemToArray(cjson_date, cJSON_CreateNumber(v_x));
-    cJSON_AddItemToArray(cjson_date, cJSON_CreateNumber(v_y));
+    cJSON_AddItemToArray(cjson_date, cJSON_CreateNumber(send_yaw_vel * -1.0));
+    cJSON_AddItemToArray(cjson_date, cJSON_CreateNumber(send_yaw_acc * -1.0));
+
 
     // dat
     cJSON* cjson_dat = cJSON_CreateObject();
@@ -286,8 +288,8 @@ void SerialDriver::sendData(auto_aim_interfaces::msg::GimbalControl::SharedPtr m
             this->now() + rclcpp::Duration::from_seconds(timestamp_offset_);
           joint_state.name.push_back("gimbal_pitch_joint");
           joint_state.name.push_back("gimbal_yaw_joint");
-          joint_state.position.push_back(imu_pitch);
-          joint_state.position.push_back(imu_yaw);
+          joint_state.position.push_back(imu_pitch * -1.0);
+          joint_state.position.push_back(imu_yaw * -1.0);
           joint_state_pub_->publish(joint_state);
 
           //刷新看门狗时间

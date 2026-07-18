@@ -211,7 +211,7 @@ def generate_launch_description():
 
     delay_serial_node = TimerAction(
         period=1.0,
-        actions=[serial_test_node],
+        actions=[serial_node],
     )
 
     delay_tracker_node = TimerAction(

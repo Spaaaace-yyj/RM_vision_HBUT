@@ -114,7 +114,7 @@
 
     x_gain: 0.0
     y_gain: 0.0
-    z_gain: 0.0
+    z_gain: 0.2
     pitch_gain_factor: 0.02
 
     sentray_mode: false

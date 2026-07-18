@@ -95,7 +95,6 @@ GimbalControllerNode::GimbalControllerNode() : Node("GimbalControllerNode")
     RCLCPP_INFO(this->get_logger(), "Gimbal Controller Init!");
 }
 
-
 static double shortestAngularDistance(double from, double to)
 {
     double diff = to - from;

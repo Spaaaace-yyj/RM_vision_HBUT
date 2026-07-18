@@ -16,10 +16,13 @@ sudo apt-get install ros-humble-asio-cmake-module
 ./build.sh
 colcon build --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 ros2 launch bringup armor_launch.py
+#或者
+bash armor_bringup.sh 
+#烧饼多机通讯
 ros2 launch rosbridge_server rosbridge_websocket_launch.xml
 ros2 param load /armor_detector src/bringup/config/params.yaml
 ```
-### 启动相机节点
+### 相机标定
 相机节点
 
 ```bash
@@ -89,8 +92,6 @@ PNP在这种尺度下，观测出来的目标tvec和rvec误差和波动非常大
 3m目标旋转观测yaw
 
 <img src="doc/yaw_optimize_result_near.png" alt="yaw_optimize_result_near" style="zoom: 50%;" />
-
-
 
 ## 编码规范：
 
