@@ -677,6 +677,8 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
                 send_is_fire = 1.0;
         }
         debug_pub_->publish(debug_msg);
+        //todo:写死
+        // RCLCPP_INFO(this->get_logger(), "yaw_deff = %f", std::fabs(yaw_ref_ - gimbal_yaw_));
 
         //开火窗口范围，max_move_yaw_单位度，只有在窗口内的装甲板才开火
         //TODO：是不是可以当超出窗口的时候直接去追下一个装甲板，而不是只不开火

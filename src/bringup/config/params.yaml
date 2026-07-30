@@ -4,8 +4,7 @@
     camera_info_url: package://bringup/config/camera_info.yaml
     camera_name: mv_camera
     frame_id: "camera_optical_frame"
-    # exposure_time: 4000
-    exposure_time: 5000
+    exposure_time: 4000
     flip_image: false
     gamma: 100
     rgb_gain:
@@ -104,17 +103,17 @@
     is_pitch_gain: false
     is_track: true
     shoot_delay: 0.05
-    shoot_delay_spin_: 0.10
+    shoot_delay_spin_: 0.20
     gimbal_delay: 0.01
     max_move_yaw: 20.0
-    fire_angle_threshold: 0.8
+    fire_angle_threshold: 1.8
     timestamp_offset: 0.005
     # shoot_speed: 14.4
     shoot_speed: 25.0
 
     x_gain: 0.0
     y_gain: 0.0
-    z_gain: 0.2
+    z_gain: 0.0
     pitch_gain_factor: 0.02
 
     sentray_mode: false

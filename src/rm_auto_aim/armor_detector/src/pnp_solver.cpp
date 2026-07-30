@@ -36,6 +36,9 @@ namespace rm_auto_aim
 
     bool PnPSolver::solvePnP(Armor& armor, cv::Mat& rvec, cv::Mat& tvec, rclcpp::Time time)
     {
+        //更新TF
+        updateTransform(time);
+
         std::vector<cv::Point2f> image_armor_points;
 
         // Fill in image points
@@ -163,6 +166,30 @@ namespace rm_auto_aim
         return reprojectionError(object_points, image_points, rvec, tvec);
     }
 
+    double PnPSolver::computeYawErrorFast(
+    double yaw,
+    const Eigen::Vector3d& t_cam,
+    const std::vector<cv::Point3f>& object_points,
+    const std::vector<cv::Point2f>& image_points) const
+    {
+        constexpr double pitch = 15.0 * M_PI / 180.0;
+
+        const double cy = std::cos(yaw);
+        const double sy = std::sin(yaw);
+        const double cp = std::cos(pitch);
+        const double sp = std::sin(pitch);
+
+        Eigen::Matrix3d R_aw;
+        R_aw <<
+            cy * cp, -sy, cy * sp,
+            sy * cp,  cy, sy * sp,
+            -sp,      0.0, cp;
+
+        const Eigen::Matrix3d R_ac = R_world2camera_ * R_aw;
+
+        return fastReprojectionError(R_ac, t_cam, object_points, image_points);
+    }
+
     double PnPSolver::computeDepthError(
         double depth,
         double yaw,
@@ -185,9 +212,6 @@ namespace rm_auto_aim
         cv::Mat& tvec,
         rclcpp::Time time)
     {
-        //更新tf
-        updateTransform(time);
-
         //tvec to Eigen
         Eigen::Vector3d t_cam(
             tvec.at<double>(0),
@@ -236,32 +260,6 @@ namespace rm_auto_aim
 
         double best_yaw = (left + right) / 2.0;
 
-        //tvec优化
-        double depth_init = t_cam.norm();
-        Eigen::Vector3d dir_cam = t_cam.normalized();
-
-        left = depth_init - 2.0;
-        right = depth_init + 2.0;
-
-        for (int i = 0; i < 20; i++)
-        {
-            double m1 = left + (right - left) / 3.0;
-            double m2 = right - (right - left) / 3.0;
-
-            double e1 = computeDepthError(m1, best_yaw, dir_cam, object_points, image_points);
-            double e2 = computeDepthError(m2, best_yaw, dir_cam, object_points, image_points);
-
-            if (e1 < e2)
-                right = m2;
-            else
-                left = m1;
-        }
-
-        double best_depth = (left + right) / 2.0;
-        // RCLCPP_INFO(rclcpp::Node("debug").get_logger(), "dep_raw = %f, dep_best = %f", depth_init, best_depth);
-
-        Eigen::Vector3d t_cam_new = dir_cam * best_depth;
-
         //用最优 yaw 重建
         double pitch = 15.0 * M_PI / 180.0;
         double cy = cos(best_yaw), sy = sin(best_yaw);
@@ -274,18 +272,13 @@ namespace rm_auto_aim
             -sp, 0, cp;
 
         Eigen::Matrix3d R_ac = R_world2camera_ * R_aw;
-        // Eigen::Vector3d t_ac = R_world2camera_ * t_world + t_world2camera_;
-        Eigen::Vector3d t_ac = t_cam_new;
 
         cv::Mat R_cv_final;
         cv::eigen2cv(R_ac, R_cv_final);
 
         cv::Rodrigues(R_cv_final, rvec);
 
-        tvec.at<double>(0) = t_ac(0);
-        tvec.at<double>(1) = t_ac(1);
-        tvec.at<double>(2) = t_ac(2);
-        armor.best_yaw = best_yaw;
+        armor.best_yaw = static_cast<float>(best_yaw);
         // RCLCPP_INFO(rclcpp::Node("solver").get_logger(), "init_yaw = %f, best_yaw = %f", yaw_init, best_yaw);
     }
 
@@ -314,4 +307,69 @@ namespace rm_auto_aim
 
         return error;
     }
+
+    double PnPSolver::fastReprojectionError(
+    const Eigen::Matrix3d& R_ac,
+    const Eigen::Vector3d& t_ac,
+    const std::vector<cv::Point3f>& object_points,
+    const std::vector<cv::Point2f>& image_points) const
+{
+    const double fx = camera_matrix_.at<double>(0, 0);
+    const double fy = camera_matrix_.at<double>(1, 1);
+    const double cx = camera_matrix_.at<double>(0, 2);
+    const double cy = camera_matrix_.at<double>(1, 2);
+
+    double k1 = 0.0, k2 = 0.0, p1 = 0.0, p2 = 0.0, k3 = 0.0;
+
+    if (!dist_coeffs_.empty()) {
+        k1 = dist_coeffs_.at<double>(0, 0);
+        if (dist_coeffs_.cols * dist_coeffs_.rows > 1) k2 = dist_coeffs_.at<double>(0, 1);
+        if (dist_coeffs_.cols * dist_coeffs_.rows > 2) p1 = dist_coeffs_.at<double>(0, 2);
+        if (dist_coeffs_.cols * dist_coeffs_.rows > 3) p2 = dist_coeffs_.at<double>(0, 3);
+        if (dist_coeffs_.cols * dist_coeffs_.rows > 4) k3 = dist_coeffs_.at<double>(0, 4);
+    }
+
+    double error = 0.0;
+
+    for (int i = 0; i < 4; ++i)
+    {
+        const auto& p = object_points[i];
+
+        Eigen::Vector3d p_obj(p.x, p.y, p.z);
+        Eigen::Vector3d p_cam = R_ac * p_obj + t_ac;
+
+        const double X = p_cam.x();
+        const double Y = p_cam.y();
+        const double Z = p_cam.z();
+
+        if (Z <= 1e-6 || !std::isfinite(Z)) {
+            return 1e9;
+        }
+
+        const double x = X / Z;
+        const double y = Y / Z;
+
+        const double x2 = x * x;
+        const double y2 = y * y;
+        const double xy = x * y;
+        const double r2 = x2 + y2;
+        const double r4 = r2 * r2;
+        const double r6 = r4 * r2;
+
+        const double radial = 1.0 + k1 * r2 + k2 * r4 + k3 * r6;
+
+        const double x_dist = x * radial + 2.0 * p1 * xy + p2 * (r2 + 2.0 * x2);
+        const double y_dist = y * radial + p1 * (r2 + 2.0 * y2) + 2.0 * p2 * xy;
+
+        const double u = fx * x_dist + cx;
+        const double v = fy * y_dist + cy;
+
+        const double du = u - image_points[i].x;
+        const double dv = v - image_points[i].y;
+
+        error += std::sqrt(du * du + dv * dv);
+    }
+
+    return error;
+}
 } // namespace rm_auto_aim
