@@ -5,3 +5,7 @@ site/*
 Camera/*
 **/video/*.mp4
 **/video/*.avi
+# Claude 本地会话数据
+.claude/
+# buff 检测测试输出视频
+**/model/*.avi

@@ -1,0 +1,89 @@
+%YAML:1.0
+---
+buff_tracker:
+  small_buff_observer:
+    switch_buff_angle: 45.8 # deg
+    R_center_filter_ratio: 0.1
+    kf_roll:
+      process_noise: !!opencv-matrix
+        rows: 2
+        cols: 2
+        dt: f
+        data: [ 1e-1,  0, 
+                0,  1e+0 ]
+      measurement_noise: !!opencv-matrix
+        rows: 1
+        cols: 1
+        dt: f
+        data: [ 1e-1 ]
+    kf_yaw:
+      process_noise: !!opencv-matrix
+        rows: 2
+        cols: 2
+        dt: f
+        data: [ 1e-1,  0, 
+                0,  1e-0 ]
+      measurement_noise: !!opencv-matrix
+        rows: 1
+        cols: 1
+        dt: f
+        data: [ 1e-1 ]
+         
+  big_buff_observer:
+    switch_buff_angle: 45.8 # deg
+    R_center_filter_ratio: 0.1
+    ransac:
+      max_iterations: 200
+      threshold: 0.5
+      min_omega: 1.884
+      max_omega: 2.0
+      min_amplitude: 0.780
+      max_amplitude: 1.045
+      min_inliers: 100
+      max_abs_speed: 2.090
+    ekf_roll:
+      process_noise: !!opencv-matrix
+        rows: 4
+        cols: 4
+        dt: f
+        data: [ 1e-2,  0,  0,  0,
+                0,  1e-2,  0,  0,
+                0,  0,  1e-4,  0,
+                0,  0,  0,  1e-4 ]
+      initial_covariance: !!opencv-matrix
+        rows: 4
+        cols: 4
+        dt: f
+        data: [ 1e-2,  0,  0,  0,
+                0,  1e-2,  0,  0,
+                0,  0,  1e-4,  0,
+                0,  0,  0,  1e-4 ]
+      measurement_noise: !!opencv-matrix
+        rows: 1
+        cols: 1
+        dt: f
+        data: [ 1e-1 ]
+    kf_yaw:
+      process_noise: !!opencv-matrix
+        rows: 2
+        cols: 2
+        dt: f
+        data: [ 1e-1,  0, 
+                0,  1e-0 ]
+      measurement_noise: !!opencv-matrix
+        rows: 1
+        cols: 1
+        dt: f
+        data: [ 1e-1 ]
+  
+  small_buff_status:
+    max_temp_lost_frames: 20
+    max_converging_frames: 20
+
+  big_buff_status:
+    max_temp_lost_frames: 20
+    max_converging_frames: 300
+
+  temp_lost_return_frames: 5
+  err_queue_size: 0
+  approximate_framerate: 0
