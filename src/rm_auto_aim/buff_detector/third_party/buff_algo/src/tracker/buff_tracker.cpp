@@ -127,6 +127,10 @@ BigBuffObserver::BigBuffObserver(const cv::FileNode& fn) {
     const double max_omega = static_cast<double>(ransac_fn["max_omega"]);
     const double min_amplitude = static_cast<double>(ransac_fn["min_amplitude"]);
     const double max_amplitude = static_cast<double>(ransac_fn["max_amplitude"]);
+    // 没配 fit_interval 时用默认 5
+    if (!ransac_fn["fit_interval"].empty()) {
+        ransac_fit_interval_ = static_cast<int>(ransac_fn["fit_interval"]);
+    }
     ransac_ = std::make_unique<RansacSineFitter>(
         max_iterations,
         threshold,
@@ -147,6 +151,7 @@ void BigBuffObserver::reset() {
     has_prev_roll_ = false;
     current_roll_ = 0.0f;
     current_roll_velocity_ = 0.0f;
+    fit_frames_since_last_ = 0;
 }
 
 void BigBuffObserver::initialize(const std::vector<Buff>& buffs) {
@@ -200,7 +205,11 @@ void BigBuffObserver::update(const std::vector<Buff>& buffs, const double timest
                 current_roll_velocity_ = roll_diff / dt;
                 if (std::abs(current_roll_velocity_) <= ransac_max_abs_speed_) {
                     ransac_->add_data(timestamp, current_roll_velocity_);
-                    ransac_->fit();
+                    // 正弦参数变化很慢，隔几帧拟合一次，不用每帧都跑 200 次迭代
+                    if (++fit_frames_since_last_ >= ransac_fit_interval_) {
+                        fit_frames_since_last_ = 0;
+                        ransac_->fit();
+                    }
                 }
             }
         }

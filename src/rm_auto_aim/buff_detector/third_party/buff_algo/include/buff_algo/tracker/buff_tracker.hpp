@@ -69,6 +69,10 @@ private:
     double ransac_max_abs_speed_;
     std::unique_ptr<RansacSineFitter> ransac_;
 
+    // RANSAC 不是每帧都重拟合，隔几帧跑一次能省不少 CPU
+    int ransac_fit_interval_ = 5;
+    int fit_frames_since_last_ = 0;
+
     // 差分速度计算
     float prev_roll_ = 0.0f;
     double prev_timestamp_ = 0.0;

@@ -91,10 +91,12 @@ void BuffDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedP
 
     // 回放图像没有时间戳时用节点时钟兜底
     double timestamp = msg->header.stamp.sec + msg->header.stamp.nanosec * 1e-9;
-    if (timestamp < 1e-6) {
+    const bool has_stamp = timestamp >= 1e-6;
+    if (!has_stamp) {
         timestamp = this->now().seconds();
     }
-    const rclcpp::Time stamp = this->now();
+    // 用图像采集时刻查 tf，云台转的时候相机位姿才是当时的
+    const rclcpp::Time stamp = has_stamp ? rclcpp::Time(msg->header.stamp) : this->now();
 
     // 1. 检测
     const std::vector<buff_algo::DetectedBuff> detected =
@@ -137,23 +139,30 @@ void BuffDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedP
     auto_aim_interfaces::msg::Target target_msg;
     target_msg.header.stamp = msg->header.stamp;
     target_msg.header.frame_id = target_frame_;
+    // TEMP_LOST 时跟踪器还在往外推，预测点依然有效，和装甲板链路的习惯一致
     const bool tracking =
-        tracker_->status() == buff_algo::StatusType::TRACKING;
+        tracker_->status() == buff_algo::StatusType::TRACKING ||
+        tracker_->status() == buff_algo::StatusType::TEMP_LOST;
     target_msg.tracking = tracking;
     target_msg.id = "buff";
-    target_msg.armors_num = 1;   // gimbal 中 r=0，打击点即 position 本身
+    // armors_num 置 0 表示丢失，云台按丢目标处理；
+    // 发 1 加零位置会把云台引到原点
+    target_msg.armors_num = tracking ? 1 : 0;
     target_msg.type = "buff";
-    target_msg.position.x = aim_point.x();
-    target_msg.position.y = aim_point.y();
-    target_msg.position.z = aim_point.z();
-    // 打击点的切向线速度 (0, R*sin(roll)*ω, R*cos(roll)*ω)
-    const float omega = state.roll_velocity;
-    const float radius = buff_algo::consts::BUFF_RADIUS;
-    target_msg.velocity.x = 0.0;
-    target_msg.velocity.y = radius * std::sin(state.roll) * omega;
-    target_msg.velocity.z = radius * std::cos(state.roll) * omega;
-    target_msg.yaw = state.roll;
-    target_msg.v_yaw = state.roll_velocity;
+    if (tracking) {
+        target_msg.position.x = aim_point.x();
+        target_msg.position.y = aim_point.y();
+        target_msg.position.z = aim_point.z();
+        // 打击点的切向线速度 (0, R*sin(roll)*ω, R*cos(roll)*ω)
+        const float omega = state.roll_velocity;
+        const float radius = buff_algo::consts::BUFF_RADIUS;
+        target_msg.velocity.x = 0.0;
+        target_msg.velocity.y = radius * std::sin(state.roll) * omega;
+        target_msg.velocity.z = radius * std::cos(state.roll) * omega;
+        target_msg.yaw = state.roll;
+        target_msg.v_yaw = state.roll_velocity;
+    }
+    // 丢了就清零，别把 (0, -R, 0) 这种垃圾点发给云台
     target_msg.radius_1 = 0.0;
     target_msg.radius_2 = 0.0;
     target_msg.dz = 0.0;
@@ -284,6 +293,7 @@ std::string BuffDetectorNode::make_tracker_yaml() {
     oss << "      max_amplitude: " << this->declare_parameter("ransac_max_amplitude", 1.045) << "\n";
     oss << "      min_inliers: " << this->declare_parameter("ransac_min_inliers", 100) << "\n";
     oss << "      max_abs_speed: " << this->declare_parameter("ransac_max_abs_speed", 2.09) << "\n";
+    oss << "      fit_interval: " << this->declare_parameter("ransac_fit_interval", 5) << "\n";
     oss << "    kf_yaw:\n";
     oss << "      process_noise: !!opencv-matrix\n";
     oss << "        rows: 2\n        cols: 2\n        dt: f\n";
