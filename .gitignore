@@ -3,9 +3,16 @@ install/*
 log/*
 site/*
 Camera/*
+# 测试视频和模型输出，都从开源仓库拷，不进 git
 **/video/*.mp4
 **/video/*.avi
+**/model/*.mp4
+**/model/*.avi
+# Python 缓存
+__pycache__/
+*.pyc
+# 编辑器杂项
+.DS_Store
+*.swp
 # Claude 本地会话数据
 .claude/
-# buff 检测测试输出视频
-**/model/*.avi
