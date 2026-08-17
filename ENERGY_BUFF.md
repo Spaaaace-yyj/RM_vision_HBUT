@@ -69,7 +69,7 @@ video_pub 与 buff_detector 放进同一个组件容器，图像进程内零拷�
 
 ## 四、上实车还需要做什么
 
-1. **安装串口驱动**：`sudo apt install ros-humble-serial-driver`，然后编译 lc_serial 包。
+1. **launch 实车化**：把 energy_launch.py 中的 video_pub 换成真实相机节点，加入 lc_serial、gimbal_controller 与 tf 广播，target_frame 改为 odom，buff_color 改为 1。当前 launch 只包含离线链路，实车链路需要新写一个 launch 或改造现有文件。串口依赖（ros-humble-serial-driver、asio-cmake-module）2026-08-15 已装好，lc_serial 可正常编译。
 2. **launch 实车化**：把 energy_launch.py 中的 video_pub 换成真实相机节点，加入 lc_serial、gimbal_controller 与 tf 广播，target_frame 改为 odom，buff_color 改为 1。当前 launch 只包含离线链路，实车链路需要新写一个 launch 或改造现有文件。
 3. **相机标定**：用真实标定结果替换假内参 camera_info_buff.yaml，确认内参格式和发布方式。
 4. **真机环境测试**：模型按浙大场地与相机拍摄条件训练，实车光线、距离、视角不同，需要先用真实场地视频验证检出率，必要时调低置信度阈值或重新训练。
@@ -87,3 +87,59 @@ video_pub 与 buff_detector 放进同一个组件容器，图像进程内零拷�
 3. **RANSAC 降频**：大符 RANSAC 原来每帧跑 200 次迭代拟合正弦参数，
    参数变化很慢没必要；新增 ransac_fit_interval 参数（默认 5 帧拟合一次），
    降低 CPU 占用，收敛速度不受影响（离线 695 帧回归测试通过）。
+
+## 六、目前用法（2026-08-15）
+
+### 离线调试（本机）
+
+一条命令启动全链路（video_pub 回放 buff.mp4）：
+
+    ros2 launch bringup energy_launch.py
+
+launch 参数可覆盖：
+
+    ros2 launch bringup energy_launch.py buff_mode:=2 buff_color:=0 video_path:=buff.mp4
+
+- buff_mode：1=小符（固定转速 KF），2=大符（RANSAC 正弦拟合）
+- buff_color：0=打蓝符（离线视频是蓝符），1=打红符（实车蓝队用）
+- video_path：回放视频文件名，放 video_pub/video/ 下
+
+看调试图像（节点 debug_image:=true 时发布 /buff/debug_image，按 q 退出）：
+
+    /usr/bin/python3 src/rm_auto_aim/buff_detector/scripts/view_debug.py
+
+算法回归测试（不依赖 ROS2，大符模式跑完整视频）：
+
+    cd src/rm_auto_aim/buff_detector
+    ../../install/buff_detector/lib/buff_detector/test_buff_pipeline model/buff.mp4 2 0 /tmp/out.avi
+
+### buff_detector_node 参数
+
+| 参数 | 默认值 | 说明 |
+| --- | --- | --- |
+| model_path | buff.onnx | onnx 模型路径，launch 里用 share 目录绝对路径 |
+| confidence_threshold | 0.5 | 检测置信度，真机检出率低可调低 |
+| nms_threshold | 0.4 | NMS 阈值 |
+| buff_mode | 2 | 1=小符 2=大符 |
+| buff_color | 1 | 0=打蓝符 1=打红符 |
+| target_frame | odom | 离线调试用 camera_optical_frame 跳过 tf，实车 odom |
+| camera_frame | camera_optical_frame | 相机坐标系 |
+| debug_image | false | 发布 /buff/debug_image |
+| subscribe_compressed | false | 订阅压缩图像 |
+| switch_buff_angle | 45.8 | 扇叶 roll 跳变判定阈值（度） |
+| kf_q_pos / kf_q_vel / kf_r_meas | 0.1 / 1.0 / 0.1 | 小符 roll/yaw 卡尔曼噪声 |
+| small/big_max_temp_lost_frames | 20 | 临时丢失帧数上限 |
+| big_max_converging_frames | 300 | 大符收敛兜底帧数 |
+| ransac_max_iterations | 200 | RANSAC 迭代次数 |
+| ransac_min/max_omega | 1.884 / 2.0 | 大符角速度搜索范围 |
+| ransac_min/max_amplitude | 0.78 / 1.045 | 正弦幅值范围 |
+| ransac_min_inliers | 100 | 达到该内点数即进 TRACKING |
+| ransac_fit_interval | 5 | 每隔几帧拟合一次 RANSAC，2026-08-15 新增 |
+
+### 实车改动清单
+
+1. launch 里 video_pub 换成真实相机节点（mv_camera / dji_Action4），内参换真实标定
+2. target_frame 改 odom，配好 tf 树 odom←gimbal←camera
+3. buff_color 改 1（蓝队打红符）
+4. 加入 lc_serial、gimbal_controller（组装方式参考 armor_launch.py）
+5. 无弹联调：不开火验证云台角度收敛与开火区间，确认 shoot_speed 后再实弹

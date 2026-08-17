@@ -44,7 +44,38 @@
 video_pub + armor_detector + outpost_target_node 一个容器跑，离线调试用。
 实车把 video_pub 换成真实相机节点，target_frame 改 odom 并配好 tf 树。
 
-### 3. 关键参数
+### 3. 目前用法
+
+离线启动（video_pub 回放 + 检测 + 前哨站节点）：
+
+    ros2 launch bringup outpost_launch.py video_path:=outpost.mp4
+
+launch 参数：video_path（回放视频，放 video_pub/video/ 下）、outpost_x / outpost_y（位置门）。
+
+手动三终端启动（不依赖 launch，方便调试）：
+
+    # 终端 1：视频回放
+    ros2 run video_pub video_pub_node --ros-args \
+      -p video_path:=outpost.mp4 -p fps:=30 \
+      -p camera_info_url:=package://video_pub/config/camera_info_buff.yaml \
+      -p use_sensor_data_qos:=True
+    # 终端 2：装甲板检测 + 前哨站节点
+    ros2 run armor_detector armor_detector_node
+    ros2 run outpost_detector outpost_target_node --ros-args \
+      -p target_frame:=odom -p camera_frame:=odom
+
+合成数据测试（没有真实视频时验证逻辑）：
+
+    ros2 run outpost_detector outpost_target_node --ros-args \
+      -p target_frame:=odom -p camera_frame:=odom
+    # 另开终端
+    python3 install/outpost_detector/lib/outpost_detector/fake_outpost.py
+    # 再开终端看输出
+    ros2 topic echo /tracker/target
+
+注意：调试时只跑一个 outpost_target_node，多开实例会互相抢 /tracker/target。
+
+### 4. 关键参数
 
 | 参数 | 默认值 | 说明 |
 | --- | --- | --- |
