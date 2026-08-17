@@ -16,3 +16,7 @@ __pycache__/
 *.swp
 # Claude 本地会话数据
 .claude/
+# 本地教学文档，不上传
+teach.md
+# vscode 本地路径配置
+.vscode/c_cpp_properties.json
