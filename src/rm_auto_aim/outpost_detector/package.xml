@@ -3,7 +3,7 @@
 <package format="3">
   <name>outpost_detector</name>
   <version>0.1.0</version>
-  <description>前哨站目标选择：高低三块旋转装甲板中锁定一块，输出 Target 给云台</description>
+  <description>前哨站目标：共享圆周运动 EKF 预测三块高低旋转装甲板轨迹，输出 Target 给云台</description>
   <maintainer email="rm@hbut.edu.cn">RM_vision_HBUT</maintainer>
   <license>MIT</license>
 
@@ -16,6 +16,7 @@
   <depend>tf2_ros</depend>
   <depend>tf2_geometry_msgs</depend>
   <depend>auto_aim_interfaces</depend>
+  <depend>armor_tracker</depend>
 
   <export>
     <build_type>ament_cmake</build_type>

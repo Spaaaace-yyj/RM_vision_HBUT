@@ -17,6 +17,11 @@ target_include_directories(${THIS_LIBRARY} PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
+# EKF 直接复用 armor_tracker 的 ExtendedKalmanFilter
+ament_target_dependencies(${THIS_LIBRARY}
+  armor_tracker
+)
+
 rclcpp_components_register_node(${THIS_LIBRARY}
   PLUGIN outpost_auto_aim::OutpostTargetNode
   EXECUTABLE outpost_target_node

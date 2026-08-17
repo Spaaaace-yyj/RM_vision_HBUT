@@ -43,11 +43,13 @@ def generate_launch_description():
             # 三块板离地高度，实车按场地实测改
             'slot_z': [1.10, 1.27, 1.45],
             'z_tol': 0.08,
-            # 优先打低板，弹道最平
-            'slot_priority': [0, 1, 2],
-            'hold_time': 3.0,
+            # 旋转半径，模块机械尺寸，实车按实测改
+            'r_initial': 0.28,
+            # 旋转方向：0=第一窗口自动测，1/-1=手动指定（每局固定随机）
+            'rotate_direction': 0,
+            'temp_lost_time': 1.5,
             'lost_time': 5.0,
-            'min_sightings': 2,
+            'tracking_thres': 5,
             'outpost_x': outpost_x,
             'outpost_y': outpost_y,
             'debug': True,
