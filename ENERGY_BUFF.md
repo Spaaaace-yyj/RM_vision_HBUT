@@ -91,12 +91,21 @@ cd src/rm_auto_aim/buff_detector
 ../../install/buff_detector/lib/buff_detector/test_buff_detector model/buff.mp4
 ```
 
-### 3. 实车
+### 3. 实车（一条命令）
 
-1. launch 里 video_pub 换成真实相机节点（mv_camera / dji_Action4），内参换真实标定
-2. `target_frame` 改 odom，配好 tf 树 odom←gimbal←camera
-3. `buff_color` 改 1（蓝队打红符）
-4. 加 lc_serial、gimbal_controller（组装方式参考 armor_launch.py）
+```bash
+ros2 launch bringup energy_real_launch.py
+# 切换大小符
+ros2 launch bringup energy_real_launch.py buff_mode:=1
+```
+
+energy_real_launch.py 组装了：mv_camera + buff_detector（同容器零拷贝）+
+gimbal_controller + lc_serial + robot_state_publisher（tf）。
+前置条件：
+1. 相机标定内参在 params.yaml 的 /mv_camera 里（camera_info_url 指向真实标定文件）
+2. tf 树 odom←gimbal←camera 完整（URDF 已带，云台角度来自电控反馈）
+3. 串口设备名 /dev/ttyACM0 和电控对好（params.yaml 的 /lc_serial_driver）
+4. 哨兵用二进制协议的话把 serial_node 换成 lc_rm_serial 的节点
 5. 无弹联调：不开火验证云台角度收敛与开火区间，确认 shoot_speed 后再实弹
 
 ## 四、参数表

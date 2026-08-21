@@ -42,7 +42,9 @@
 路径：`src/bringup/launch/outpost_launch.py`
 
 video_pub + armor_detector + outpost_target_node 一个容器跑，离线调试用。
-实车把 video_pub 换成真实相机节点，target_frame 改 odom 并配好 tf 树。
+实车一条命令：`ros2 launch bringup outpost_real_launch.py`（mv_camera + armor_detector +
+outpost_target_node + gimbal_controller + lc_serial + tf），
+前哨站位置门：`ros2 launch bringup outpost_real_launch.py outpost_x:=3.0 outpost_y:=0.0`。
 
 ### 3. 目前用法
 
