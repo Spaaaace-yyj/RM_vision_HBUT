@@ -18,20 +18,26 @@ BuffDetectorNode::BuffDetectorNode(const rclcpp::NodeOptions& options)
       tf2_listener_(tf2_buffer_) {
     // ---- 参数 ----
     const std::string model_path = this->declare_parameter("model_path", "buff.onnx");
+    // 模型格式：zju=浙大原版，szu=深大 5 点模型（CPU 推理约快一倍）
+    const std::string detector_format = this->declare_parameter("detector_format", "zju");
     const float confidence_threshold =
         static_cast<float>(this->declare_parameter("confidence_threshold", 0.5));
     const float nms_threshold =
         static_cast<float>(this->declare_parameter("nms_threshold", 0.4));
     buff_mode_ = this->declare_parameter("buff_mode", 2);   // 默认大符
     buff_color_ = this->declare_parameter("buff_color", 1); // 蓝队打红符
+    buff_radius_ = this->declare_parameter("buff_radius", 0.7);
     target_frame_ = this->declare_parameter("target_frame", "odom");
     camera_frame_ = this->declare_parameter("camera_frame", "camera_optical_frame");
     debug_image_ = this->declare_parameter("debug_image", false);
     const bool subscribe_compressed = this->declare_parameter("subscribe_compressed", false);
 
     // ---- 算法模块 ----
+    const buff_detector::DetectorFormat format =
+        detector_format == "szu" ? buff_detector::DetectorFormat::SZU
+                                 : buff_detector::DetectorFormat::ZJU;
     detector_ = std::make_unique<buff_detector::OnnxBuffDetector>(
-        model_path, buff_algo::BuffDetectorConfig{confidence_threshold, nms_threshold});
+        model_path, buff_algo::BuffDetectorConfig{confidence_threshold, nms_threshold}, format);
 
     selector_ = std::make_unique<buff_algo::BuffSelector>(buff_color_);
 
@@ -111,9 +117,19 @@ void BuffDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedP
         std::vector<buff_algo::BuffDetection> selected;
         selector_->select_buffs(detections, selected);
         poses = pnp_solver_->solve_pnp(selected);
+
+        // 过滤异常位姿，NaN 会永久污染跟踪器
+        poses.erase(
+            std::remove_if(
+                poses.begin(), poses.end(),
+                [](const buff_algo::Pose3f& p) {
+                    return !p.translation.allFinite() ||
+                           !p.rotation.coeffs().allFinite();
+                }),
+            poses.end());
     }
 
-    // 3. 变换到静止参考系，否则分不清目标运动和云台运动
+    // 4. 变换到静止参考系，否则分不清目标运动和云台运动
     for (auto& pose : poses) {
         buff_algo::Pose3f transformed;
         if (transformPose(pose, transformed, stamp)) {
@@ -124,16 +140,24 @@ void BuffDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedP
         }
     }
 
-    // 4. 跟踪
+    // 5. 跟踪
     if (!poses.empty()) {
         tracker_->push(buff_algo::Buff(poses[0]));
     }
     tracker_->update(timestamp);
 
-    // 5. 预测当前时刻打击点，弹道提前量由 gimbal_controller 统一做
+    // 6. 预测当前时刻打击点，弹道提前量由 gimbal_controller 统一做。
+    //    打击点是扇叶上距 R 中心 BUFF_RADIUS 处的装甲模块位置，
+    //    R 字只是标志，打 R 中心无效。
     const buff_algo::BuffState state = tracker_->get_state();
     predictor_->set_state(state, timestamp, timestamp);
-    const Eigen::Vector3f aim_point = predictor_->predict_position(0.0f);
+    Eigen::Vector3f aim_point = predictor_->predict_position(0.0f);
+    // 实车 R 中心到打击点的距离和浙大写死的 0.7m 可能不同，
+    // 按 buff_radius 参数等比缩放偏移量，默认 0.7 与原行为一致
+    if (buff_radius_ != buff_algo::consts::BUFF_RADIUS) {
+        const float k = static_cast<float>(buff_radius_ / buff_algo::consts::BUFF_RADIUS);
+        aim_point = state.r_center + (aim_point - state.r_center) * k;
+    }
 
     // 6. 发布目标消息，gimbal_controller 可以直接使用
     auto_aim_interfaces::msg::Target target_msg;

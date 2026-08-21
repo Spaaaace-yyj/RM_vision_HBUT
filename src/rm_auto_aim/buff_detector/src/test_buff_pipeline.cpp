@@ -58,9 +58,13 @@ int main(int argc, char** argv) {
     const int mode = argc >= 3 ? std::stoi(argv[2]) : 1;        // 1 小符 2 大符
     const int color = argc >= 4 ? std::stoi(argv[3]) : 0;       // 视频里是蓝符
     const std::string output_path = argc >= 5 ? argv[4] : "model/buff_pipeline.avi";
+    const std::string format = argc >= 6 ? argv[5] : "zju";    // zju 浙大 / szu 深大
+    const std::string model_path = argc >= 7 ? argv[6] : "model/buff.onnx";
 
     // ---- 链路搭建，和 ROS 节点里完全一样的 5 个模块 ----
-    buff_detector::OnnxBuffDetector detector("model/buff.onnx", {0.5f, 0.4f});
+    const auto det_format = format == "szu"
+        ? buff_detector::DetectorFormat::SZU : buff_detector::DetectorFormat::ZJU;
+    buff_detector::OnnxBuffDetector detector(model_path, {0.5f, 0.4f}, det_format);
 
     buff_algo::BuffSelector selector(color);
     selector.set_camera_matrix(kCameraMatrix, kDistortion);
@@ -109,7 +113,9 @@ int main(int argc, char** argv) {
 
         // 3. PnP 解位姿，IPPE 双解消歧
         const std::vector<buff_algo::Pose3f> poses = solver.solve_pnp(selected);
-        if (!poses.empty()) {
+        // 过滤异常位姿，NaN 会永久污染跟踪器
+        if (!poses.empty() && poses[0].translation.allFinite() &&
+            poses[0].rotation.coeffs().allFinite()) {
             tracker.push(buff_algo::Buff(poses[0]));
         }
 
@@ -121,6 +127,10 @@ int main(int argc, char** argv) {
         const buff_algo::BuffState state = tracker.get_state();
         predictor.set_state(state, timestamp, timestamp);
         const Eigen::Vector3f aim_point = predictor.predict_position(0.0f);
+        if (!aim_point.allFinite()) {
+            std::printf("NaN: frame=%d state.r_center=(%f,%f,%f) roll=%f\n",
+                frame_index, state.r_center.x(), state.r_center.y(), state.r_center.z(), state.roll);
+        }
 
         // ---- 可视化与打印 ----
         if (tracker.status() != last_status || frame_index % 30 == 0) {
