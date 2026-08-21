@@ -1,0 +1,15 @@
+%YAML:1.0
+---
+# 能量机关检测与模式参数
+buff_detector:
+  # TensorRT 序列化模型路径
+  buff_model_name: "buff.engine"
+  buff_confidence_threshold: 0.5
+  buff_nms_threshold: 0.4
+  # 能量机关类型：模型本身无法区分大小符，需在此配置
+  #   1 = 小符（固定角速度模型 + roll/yaw 卡尔曼）
+  #   2 = 大符（RANSAC 正弦转速模型 + yaw 卡尔曼）
+  buff_mode: 2
+  # 要打的能量机关颜色：蓝队打红符传 1，红队打蓝符传 0
+  #   0 = BLUE, 1 = RED
+  buff_color: 0
