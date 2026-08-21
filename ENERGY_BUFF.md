@@ -77,6 +77,13 @@ ros2 launch bringup energy_launch.py buff_mode:=1          # 小符
 /usr/bin/python3 src/rm_auto_aim/buff_detector/scripts/view_debug.py
 ```
 
+**离线参数默认值**：buff_mode=2（大符）、buff_color=0（打蓝符，
+因为 buff.mp4 里是蓝符）、video_path=buff.mp4。
+
+**离线换测试视频**：把视频文件放到 `src/video_pub/video/` 目录下
+（mp4/avi 已被 gitignore，本地放不会提交），然后：
+`ros2 launch bringup energy_launch.py video_path:=你自己的视频.mp4`
+
 ### 2. 算法回归测试（不依赖 ROS2，改代码后必跑）
 
 ```bash
@@ -94,10 +101,16 @@ cd src/rm_auto_aim/buff_detector
 ### 3. 实车（一条命令）
 
 ```bash
+# 默认大符 + 打红符（buff_color=1，蓝队打红符）
 ros2 launch bringup energy_real_launch.py
 # 切换大小符
 ros2 launch bringup energy_real_launch.py buff_mode:=1
+# 切换颜色（红方队伍打蓝符时用 0）
+ros2 launch bringup energy_real_launch.py buff_color:=0
 ```
+
+**实车和离线默认颜色不一样**：实车默认 buff_color=1（打红），
+离线默认 buff_color=0（打蓝，视频是蓝符），别搞混。
 
 energy_real_launch.py 组装了：mv_camera + buff_detector（同容器零拷贝）+
 gimbal_controller + lc_serial + robot_state_publisher（tf）。

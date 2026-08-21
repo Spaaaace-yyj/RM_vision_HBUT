@@ -43,8 +43,15 @@
 
 video_pub + armor_detector + outpost_target_node 一个容器跑，离线调试用。
 实车一条命令：`ros2 launch bringup outpost_real_launch.py`（mv_camera + armor_detector +
-outpost_target_node + gimbal_controller + lc_serial + tf），
-前哨站位置门：`ros2 launch bringup outpost_real_launch.py outpost_x:=3.0 outpost_y:=0.0`。
+outpost_target_node + gimbal_controller + lc_serial + tf）。
+
+**位置门是什么**：前哨站装甲板在场地固定位置，位置门只接受
+离 (outpost_x, outpost_y) 半径 outpost_radius 以内的检测，
+防止把场地别处的装甲板（比如敌方机器人）误当前哨站板。
+默认 outpost_radius=0 表示**关闭**。要开需要三个参数一起给：
+`ros2 launch bringup outpost_real_launch.py outpost_x:=3.0 outpost_y:=0.0 outpost_radius:=2.0`
+（outpost_x/y 是前哨站轴心在 odom 系的坐标，outpost_radius 是半径，
+只有 x/y 没有半径时门还是关的）。
 
 ### 3. 目前用法
 
@@ -52,7 +59,11 @@ outpost_target_node + gimbal_controller + lc_serial + tf），
 
     ros2 launch bringup outpost_launch.py video_path:=outpost.mp4
 
-launch 参数：video_path（回放视频，放 video_pub/video/ 下）、outpost_x / outpost_y（位置门）。
+launch 参数：video_path（回放视频文件名）、outpost_x / outpost_y / outpost_radius（位置门）。
+
+**离线换测试视频**：把视频放到 `src/video_pub/video/` 下，
+`ros2 launch bringup outpost_launch.py video_path:=你的视频.mp4`。
+注意 video_pub 按 30fps 回放，视频编码要能被 OpenCV 读（mp4/h264 最稳）。
 
 手动三终端启动（不依赖 launch，方便调试）：
 
