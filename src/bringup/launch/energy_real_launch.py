@@ -1,6 +1,8 @@
 from launch_ros.descriptions import ComposableNode
 from launch_ros.actions import ComposableNodeContainer, Node
 from launch.actions import DeclareLaunchArgument, TimerAction
+from launch.conditions import IfCondition
+from launch.substitutions import PythonExpression
 from launch.substitutions import Command, LaunchConfiguration
 from launch import LaunchDescription
 from ament_index_python.packages import get_package_share_directory
@@ -18,6 +20,10 @@ def generate_launch_description():
         'buff_mode', default_value='2', description='1=小符 2=大符')
     declare_buff_color_cmd = DeclareLaunchArgument(
         'buff_color', default_value='1', description='蓝队打红符')
+    serial_protocol = LaunchConfiguration('serial_protocol')
+    declare_serial_protocol_cmd = DeclareLaunchArgument(
+        'serial_protocol', default_value='cjson',
+        description='cjson=普通兵种(lc_serial) binary=哨兵(lc_rm_serial)')
 
     params_file = os.path.join(
         get_package_share_directory('bringup'), 'config', 'params.yaml')
@@ -87,16 +93,29 @@ def generate_launch_description():
         output='screen',
         emulate_tty=True,
         parameters=[serial_params],
+        condition=IfCondition(PythonExpression(["'", serial_protocol, "' == 'cjson'"])),
+    )
+    # 哨兵：二进制帧协议（921600，CRC16），和电控烧的协议必须一致
+    rm_serial_node = Node(
+        package='lc_serial_test',
+        executable='lc_serial_test',
+        namespace='',
+        output='screen',
+        emulate_tty=True,
+        condition=IfCondition(PythonExpression(["'", serial_protocol, "' == 'binary'"])),
     )
 
     delay_serial_node = TimerAction(period=1.0, actions=[serial_node])
+    delay_rm_serial_node = TimerAction(period=1.0, actions=[rm_serial_node])
     delay_controller_node = TimerAction(period=1.0, actions=[gimbal_controller_node])
 
     return LaunchDescription([
         declare_buff_mode_cmd,
         declare_buff_color_cmd,
+        declare_serial_protocol_cmd,
         camera_buff_container,
         robot_state_publisher,
         delay_serial_node,
+        delay_rm_serial_node,
         delay_controller_node,
     ])
