@@ -27,6 +27,8 @@ BuffDetectorNode::BuffDetectorNode(const rclcpp::NodeOptions& options)
     buff_mode_ = this->declare_parameter("buff_mode", 2);   // 默认大符
     buff_color_ = this->declare_parameter("buff_color", 1); // 蓝队打红符
     buff_radius_ = this->declare_parameter("buff_radius", 0.7);
+    shoot_speed_ = this->declare_parameter("shoot_speed", 25.0);
+    shoot_delay_ = this->declare_parameter("shoot_delay", 0.05);
     target_frame_ = this->declare_parameter("target_frame", "odom");
     camera_frame_ = this->declare_parameter("camera_frame", "camera_optical_frame");
     debug_image_ = this->declare_parameter("debug_image", false);
@@ -146,9 +148,11 @@ void BuffDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedP
     }
     tracker_->update(timestamp);
 
-    // 6. 预测当前时刻打击点，弹道提前量由 gimbal_controller 统一做。
-    //    打击点是扇叶上距 R 中心 BUFF_RADIUS 处的装甲模块位置，
-    //    R 字只是标志，打 R 中心无效。
+    // 6. 预测目标打击点和预测击打点。
+    //    目标打击点：当前时刻扇叶上装甲模块位置（推送 gimbal 跟踪用，弹道提前量
+    //    由云台统一做，保持浙大原版语义）。
+    //    预测击打点：子弹到达时刻的同一位置（离线模拟弹着点用；实车验证准了
+    //    之后可以再回去给云台做修正）。
     const buff_algo::BuffState state = tracker_->get_state();
     predictor_->set_state(state, timestamp, timestamp);
     Eigen::Vector3f aim_point = predictor_->predict_position(0.0f);
@@ -158,8 +162,18 @@ void BuffDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedP
         const float k = static_cast<float>(buff_radius_ / buff_algo::consts::BUFF_RADIUS);
         aim_point = state.r_center + (aim_point - state.r_center) * k;
     }
+    // 预测击打点：外推到子弹到达时刻，弹速/延迟用和云台一致的参数估算。
+    // 注意这里是估算（距离/弹速近似），离线模拟足够，实车修正需要和
+    // 云台弹道解算的飞行时间保持同源。
+    const float fly_time = static_cast<float>(
+        aim_point.norm() / shoot_speed_ + shoot_delay_);
+    Eigen::Vector3f predict_point = predictor_->predict_position(fly_time);
+    if (buff_radius_ != buff_algo::consts::BUFF_RADIUS) {
+        const float k = static_cast<float>(buff_radius_ / buff_algo::consts::BUFF_RADIUS);
+        predict_point = state.r_center + (predict_point - state.r_center) * k;
+    }
 
-    // 6. 发布目标消息，gimbal_controller 可以直接使用
+    // 7. 发布目标消息，gimbal_controller 可以直接使用
     auto_aim_interfaces::msg::Target target_msg;
     target_msg.header.stamp = msg->header.stamp;
     target_msg.header.frame_id = target_frame_;
@@ -177,6 +191,10 @@ void BuffDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedP
         target_msg.position.x = aim_point.x();
         target_msg.position.y = aim_point.y();
         target_msg.position.z = aim_point.z();
+        // 预测击打点字段只有能量机关填，其他目标是 0
+        target_msg.predictive_point.x = predict_point.x();
+        target_msg.predictive_point.y = predict_point.y();
+        target_msg.predictive_point.z = predict_point.z();
         // 打击点的切向线速度 (0, R*sin(roll)*ω, R*cos(roll)*ω)
         const float omega = state.roll_velocity;
         const float radius = buff_algo::consts::BUFF_RADIUS;
@@ -207,7 +225,7 @@ void BuffDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedP
         last_status = tracker_->status();
     }
 
-    // 调试图像：画关键点和预测点
+    // 调试图像：关键点 + 绿色十字（目标打击点）+ 黄圈（预测击打点）
     if (debug_image_) {
         cv::Mat debug_img = img.clone();
         for (const auto& item : detected) {
@@ -218,15 +236,26 @@ void BuffDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedP
                     4, cv::Scalar(0, 255, 0), cv::FILLED);
             }
         }
-        if (has_camera_info_ && aim_point.x() > 0.1f) {
+        const auto project = [&](const Eigen::Vector3f& p) {
             // 相机系「前x 左y 上z」→ 像素: u = cx + fx*(-y)/x, v = cy + fy*(-z)/x
             const double fx = camera_matrix_.at<double>(0, 0);
             const double fy = camera_matrix_.at<double>(1, 1);
             const double cx = camera_matrix_.at<double>(0, 2);
             const double cy = camera_matrix_.at<double>(1, 2);
-            const int px = cvRound(-aim_point.y() / aim_point.x() * fx + cx);
-            const int py = cvRound(-aim_point.z() / aim_point.x() * fy + cy);
-            cv::circle(debug_img, {px, py}, 12, cv::Scalar(0, 255, 255), 3);
+            return cv::Point(
+                cvRound(-p.y() / p.x() * fx + cx),
+                cvRound(-p.z() / p.x() * fy + cy));
+        };
+        if (has_camera_info_ && aim_point.x() > 0.1f) {
+            // 目标打击点：绿色十字
+            const cv::Point p0 = project(aim_point);
+            cv::drawMarker(debug_img, p0, cv::Scalar(0, 255, 0),
+                           cv::MARKER_CROSS, 25, 3);
+        }
+        if (has_camera_info_ && predict_point.x() > 0.1f) {
+            // 预测击打点：黄圈
+            const cv::Point p1 = project(predict_point);
+            cv::circle(debug_img, p1, 12, cv::Scalar(0, 255, 255), 3);
         }
         debug_pub_->publish(cv_bridge::CvImage(msg->header, "bgr8", debug_img).toImageMsg());
     }
