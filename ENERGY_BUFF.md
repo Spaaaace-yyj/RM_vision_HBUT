@@ -1,199 +1,183 @@
 # 能量机关自动瞄准说明
 
-## 一、背景
+## 一、背景与规则理解
 
-本工程原有装甲板自动瞄准链路，能量机关（大符+小符）检测与打击基于浙江大学开源代码
-HWauto_buff2026 融合实现：算法模块 vendor 进 `src/rm_auto_aim/buff_detector/third_party/buff_algo/`，
-推理改用 onnxruntime CPU（本机无 NVIDIA GPU，TensorRT 不可用），
-新增一个 ROS2 节点完成 检测→筛选→PnP→tf→跟踪→预测→发布目标 全链路，
-输出复用装甲板的 `Target.msg`，云台侧零改动。
+本工程原有装甲板自动瞄准链路，能量机关检测与打击基于浙江大学开源代码
+HWauto_buff2026 融合实现，推理用 onnxruntime CPU（本机无 NVIDIA GPU），
+新增 buff_detector 节点完成全链路，输出复用装甲板 Target.msg，云台侧零改动。
 
-## 二、目前代码状态（2026-08-15）
+**2026 规则的正确理解（打之前要懂）**：
+- 能量机关中心是 **R 字标志**（只用于观测定位，**不是打击目标**）
+- **5 个发光靶子（装甲模块）绕 R 旋转**，打靶子（靶心 = 装甲模块中心），R 只是参照物
+- 浙大 0.7m 的思路：从 R 中心沿半径延伸 0.7m，正好到靶子附近
+- 大符是正弦变速旋转（速度 = A·sin(ωt+φ)+C），不是匀速
 
-### 1. 包结构
+## 二、链路结构
 
 ```
-src/rm_auto_aim/buff_detector/
-├── third_party/buff_algo/          # 浙大算法库（筛选/PnP/跟踪/预测，只去掉 TensorRT 检测）
-├── third_party/onnxruntime/        # onnxruntime CPU 推理库（随仓库分发）
-├── model/
-│   ├── buff.onnx                   # 浙大模型（默认，640x384 输入，9 关键点 4 类）
-│   └── buff.mp4                    # 浙大测试视频（gitignore，不提交）
-├── src/
-│   ├── onnx_buff_detector.cpp      # 推理类，支持 zju/szu 两种模型格式
-│   ├── buff_detector_node.cpp      # ROS2 节点，全链路
-│   ├── test_buff_detector.cpp      # 检测器回归测试
-│   └── test_buff_pipeline.cpp      # 算法全链路回归测试
-└── scripts/view_debug.py           # 调试图像查看器
+相机/video_pub → buff_detector（检测→筛选→PnP→tf→跟踪→预测）
+                → /tracker/target（position=目标打击点 + predictive_point=预测击打点）
+                → gimbal_controller（弹道解算+提前量+开火判定）
+                → control/gimbal_control → lc_serial → 电控
 ```
 
-### 2. 支持两种检测模型（detector_format 参数切换）
+**两个打击点的区别（看调试图必懂）**：
 
-| 格式 | 模型 | 输入 | CPU 实测 | 类别 | 说明 |
-| --- | --- | --- | --- | --- | --- |
-| zju（默认） | buff.onnx | 640x384 | 约 38ms（26FPS） | 4 类（蓝/红×未激活/激活） | 浙大原版，全链路验证过 |
-| szu | 深大 model-0624.onnx | 640x480 | 约 19-24ms（42-51FPS） | 3 类（未激活/小符激活/大符激活） | 深大开源，快一倍，需实车验证 |
+| 点 | 含义 | 用途 |
+| --- | --- | --- |
+| **绿色十字 = 目标打击点** | 当前时刻靶子位置 | gimbal 跟踪用的瞄准点（position 字段），和浙大原版语义一致 |
+| **黄圈 = 预测击打点** | 子弹到达时刻靶子位置 | 离线模拟弹着点；实车验证算得准后可反馈云台修正（predictive_point 字段，云台暂未消费） |
 
-szu 模式会自动做：
-- 关键点格式转换：深大 5 点（R 字四角 + R 中心）按象限排序后取四边中点，
-  转成浙大的 上/左/下/右 方向点
-- 颜色判定：深大模型没有颜色类别，用检测框 ROI 内红蓝像素统计补上
-- 类别映射：深大"未激活"→浙大 INACTIVATE（要打的），激活态→ACTIVATE（被筛掉）
+## 三、离线使用（本机）
 
-**szu 模型是深大自己场地数据训练的（14k 张，分区赛到国赛验证），
-在浙大场地视频（buff.mp4）上能检出但关键点不稳定，离线测试进不了 TRACKING。
-真实场地效果必须实车验证。**
-
-### 3. 近期改动记录
-
-2026-08-15 一批改动（已提交）：
-- **tf 查询时间戳**：用图像采集时刻查 tf（原来用 now()，云台转动时会偏）
-- **丢失输出清零**：LOST 时 armors_num 置 0，不再发 (0,-R,0) 垃圾点
-- **RANSAC 降频**：大符 RANSAC 每 5 帧拟合一次（参数 ransac_fit_interval），
-  原每帧 200 次迭代，省 CPU，收敛不受影响（695 帧回归通过）
-- **深大模型支持**：detector_format 参数切换（见上表）
-- **PnP 异常位姿过滤**：非有限值（NaN）位姿直接丢弃，防止污染跟踪器
-- **buff_radius 参数化**：R 中心到打击点的距离，浙大写死 0.7m，
-  现改为参数（默认 0.7，行为不变），实车按机械尺寸标定
-
-**已回退/放弃的尝试（记录防止重复踩坑）**：
-- R 中心关键点修正 PnP 平移：实测把黄圈拉飞，已删除
-- onnxruntime 多线程/图优化配置：A/B 实测比默认慢（47ms vs 38ms），保持默认
-- 打击点改为 R 中心（靶心）：R 字只是标志，不是打击目标，已恢复浙大原逻辑
-
-## 三、怎么启用
-
-### 1. 离线调试（本机）
+### 1. 一条命令启动
 
 ```bash
-# 一条命令全链路（video_pub 回放 buff.mp4 + 检测 + 跟踪 + 发布目标）
 ros2 launch bringup energy_launch.py
+# 常用参数
+ros2 launch bringup energy_launch.py buff_mode:=1        # 切小符
+ros2 launch bringup energy_launch.py detector_format:=szu  # 切深大模型
+ros2 launch bringup energy_launch.py buff_color:=0       # 打蓝符（视频是蓝符）
+```
 
-# 常用参数覆盖
-ros2 launch bringup energy_launch.py buff_mode:=2 buff_color:=0
-ros2 launch bringup energy_launch.py buff_mode:=1          # 小符
+**离线默认**：大符（buff_mode=2）、打蓝符（buff_color=0，buff.mp4 里是蓝符）、浙大模型（zju）。
 
-# 看调试图像（黄圈=打击点，绿点=关键点），按 q 退出
+### 2. 看调试图像
+
+```bash
 /usr/bin/python3 src/rm_auto_aim/buff_detector/scripts/view_debug.py
 ```
 
-**离线参数默认值**：buff_mode=2（大符）、buff_color=0（打蓝符，
-因为 buff.mp4 里是蓝符）、video_path=buff.mp4。
+图上：**绿色小点** = 模型关键点，**绿色十字** = 目标打击点，**黄圈** = 预测击打点。
 
-**离线换测试视频**：把视频文件放到 `src/video_pub/video/` 目录下
-（mp4/avi 已被 gitignore，本地放不会提交），然后：
-`ros2 launch bringup energy_launch.py video_path:=你自己的视频.mp4`
+⚠️ **只在 TRACKING 状态才画十字和黄圈**——视频要跑 20 秒左右才进 TRACKING（日志打印 status: TRACKING），别在 CONVERGING 阶段看。
 
-### 2. 算法回归测试（不依赖 ROS2，改代码后必跑）
+### 3. 模型切换（zju / szu）
+
+| 格式 | 模型 | CPU 实测 | 说明 |
+| --- | --- | --- | --- |
+| zju（默认） | model/buff.onnx（浙大 640×384） | 约 38ms / 26FPS | 全链路验证过，离线就它 |
+| szu | 深大 model-0624.onnx（640×480） | 约 20ms / 50FPS | 快一倍，但**只在它训练过的场地稳**，浙大视频上关键点不稳，需实车验证 |
+
+szu 用法：`detector_format:=szu` 且 `model_path` 指向深大 onnx（如 `/home/twy/RuneDetectionModel/model/model-0624.onnx`）。
+
+### 4. 算法回归测试（改代码后必跑）
 
 ```bash
 cd src/rm_auto_aim/buff_detector
-# 浙大模型全链路（大符）：正常应 TRACKING in ~393 frames
+# 浙大模型全链路（大符），正常应 TRACKING in ~393 frames
 ../../install/buff_detector/lib/buff_detector/test_buff_pipeline model/buff.mp4 2 0 /tmp/out.avi
-
-# 深大模型（szu 模式，第 6 个参数是模型路径）
+# 深大模型
 ../../install/buff_detector/lib/buff_detector/test_buff_pipeline model/buff.mp4 2 0 /tmp/out.avi szu /path/to/model-0624.onnx
-
-# 检测器单独测试（画关键点）
-../../install/buff_detector/lib/buff_detector/test_buff_detector model/buff.mp4
 ```
 
-### 3. 实车（一条命令）
+### 5. 换测试视频
+
+视频文件放 `src/video_pub/video/` 下（mp4/avi 已被 gitignore），然后：
+`ros2 launch bringup energy_launch.py video_path:=你的视频.mp4`
+
+## 四、实车使用
+
+### 1. 一条命令
 
 ```bash
-# 默认大符 + 打红符（buff_color=1，蓝队打红符）
 ros2 launch bringup energy_real_launch.py
-# 切换大小符
-ros2 launch bringup energy_real_launch.py buff_mode:=1
-# 切换颜色（红方队伍打蓝符时用 0）
-ros2 launch bringup energy_real_launch.py buff_color:=0
+# 小符                ros2 launch bringup energy_real_launch.py buff_mode:=1
+# 哨兵（二进制协议）    ros2 launch bringup energy_real_launch.py serial_protocol:=binary
 ```
 
-**实车和离线默认颜色不一样**：实车默认 buff_color=1（打红），
-离线默认 buff_color=0（打蓝，视频是蓝符），别搞混。
+energy_real_launch.py 自动组装：mv_camera + buff_detector（零拷贝）+ gimbal_controller + lc_serial + tf。
+**实车默认**：大符、打红符（buff_color=1，蓝队打红符）、浙大模型、odom 系跟踪。
 
-energy_real_launch.py 组装了：mv_camera + buff_detector（同容器零拷贝）+
-gimbal_controller + lc_serial + robot_state_publisher（tf）。
-前置条件：
-1. 相机标定内参在 params.yaml 的 /mv_camera 里（camera_info_url 指向真实标定文件）
-2. tf 树 odom←gimbal←camera 完整（URDF 已带，云台角度来自电控反馈）
-3. 串口设备名 /dev/ttyACM0 和电控对好（params.yaml 的 /lc_serial_driver）
-4. 哨兵用二进制协议的话把 serial_node 换成 lc_rm_serial 的节点
-5. 无弹联调：不开火验证云台角度收敛与开火区间，确认 shoot_speed 后再实弹
+### 2. 上车前改 3 处参数（params.yaml）
 
-## 四、参数表
-
-### buff_detector_node
-
-| 参数 | 默认值 | 说明 |
+| 参数 | 改成 | 为什么 |
 | --- | --- | --- |
-| model_path | buff.onnx | 模型路径，launch 里用 share 目录绝对路径 |
-| detector_format | zju | 模型格式：zju=浙大原版，szu=深大 5 点模型（快一倍） |
-| confidence_threshold | 0.5 | 检测置信度，真机检出率低可调低 |
-| nms_threshold | 0.4 | NMS 阈值 |
-| buff_mode | 2 | 1=小符（固定转速 KF） 2=大符（RANSAC 正弦拟合） |
-| buff_color | 1 | 0=打蓝符 1=打红符（蓝队打红符） |
-| buff_radius | 0.7 | R 中心到打击点的距离（米），实车按机械尺寸标定 |
-| target_frame | odom | 离线调试用 camera_optical_frame 跳过 tf，实车 odom |
-| camera_frame | camera_optical_frame | 相机坐标系 |
-| debug_image | false | 发布 /buff/debug_image |
-| subscribe_compressed | false | 订阅压缩图像 |
-| switch_buff_angle | 45.8 | 扇叶 roll 跳变判定阈值（度） |
-| kf_q_pos / kf_q_vel / kf_r_meas | 0.1 / 1.0 / 0.1 | 小符 roll/yaw 卡尔曼噪声 |
-| small/big_max_temp_lost_frames | 20 | 临时丢失帧数上限 |
-| big_max_converging_frames | 300 | 大符收敛兜底帧数 |
-| ransac_max_iterations | 200 | RANSAC 迭代次数 |
-| ransac_min/max_omega | 1.884 / 2.0 | 大符角速度搜索范围（rad/s） |
-| ransac_min/max_amplitude | 0.78 / 1.045 | 正弦幅值范围 |
-| ransac_min_inliers | 100 | 达到该内点数即进 TRACKING |
-| ransac_fit_interval | 5 | 每隔几帧拟合一次 RANSAC（性能优化） |
+| /mv_camera.camera_info_url | 你们相机+镜头的标定文件 | 内参错 PnP 全错，不可能是浙大给的 |
+| /lc_serial_driver.device_name | 实际串口（ls /dev/ttyACM*） | 串口不通云台不动 |
+| /gimbal_controller.shoot_speed | 实车弹速（打靶标定） | 弹速错打偏 |
 
-### launch（energy_launch.py）
+### 3. 兵种协议（serial_protocol）
 
-| launch 参数 | 默认值 | 说明 |
+- `cjson`（默认）：普通兵种，lc_serial，CJSON 文本 115200
+- `binary`：哨兵，lc_rm_serial，二进制帧 921600+CRC16
+**必须和电控烧的程序一致**，问电控组长，别猜。
+
+### 4. 无弹联调 → 实弹（顺序不能乱）
+
+1. 电控侧关发射（拔发射机构/保险）
+2. 启动后依次验证：
+   - `ros2 topic echo /gimbal_feed` 有数据且在变（电控在回角度，串口双向通）
+   - `ros2 run tf2_tools view_frames` 树完整；手转云台 rviz 里相机系跟着动
+   - 云台自动跟符、`/debug/controller` 里 target_yaw2real_error 趋近 0、is_fire 变 1
+3. 全链路正常后实弹：先单发打点 → 调 shoot_speed / buff_radius → 再连发
+
+## 五、参数表（buff_detector_node）
+
+| 参数 | 默认 | 说明 |
 | --- | --- | --- |
+| model_path | buff.onnx | 模型路径 |
+| detector_format | zju | zju=浙大 szu=深大（快一倍） |
+| confidence_threshold | 0.5 | 检出率低调低 |
+| nms_threshold | 0.4 | NMS |
 | buff_mode | 2 | 1=小符 2=大符 |
-| buff_color | 0 | 离线视频是蓝符用 0，实车蓝队打红符用 1 |
-| video_path | buff.mp4 | 回放视频文件名（放 video_pub/video/ 下） |
+| buff_color | 1 | 0=蓝 1=红（离线视频是蓝符用 0） |
+| buff_radius | 0.7 | R 中心到靶子距离，实车量实际值 |
+| shoot_speed | 25.0 | 弹速，算预测击打点用（和 gimbal 一致） |
+| shoot_delay | 0.05 | 发射延迟，同上 |
+| target_frame | odom | 离线 camera_optical_frame 跳过 tf |
+| camera_frame | camera_optical_frame | 相机系 |
+| debug_image | false | 发 /buff/debug_image |
+| subscribe_compressed | false | 压图订阅 |
+| switch_buff_angle | 45.8 | 扇叶 roll 跳变阈值（度） |
+| kf_q_pos / kf_q_vel / kf_r_meas | 0.1 / 1.0 / 0.1 | 小符卡尔曼噪声 |
+| small/big_max_temp_lost_frames | 20 | 临时丢失帧上限 |
+| big_max_converging_frames | 300 | 大符收敛兜底帧 |
+| ransac_max_iterations | 200 | RANSAC 迭代 |
+| ransac_min/max_omega | 1.884 / 2.0 | 大符角速度范围（rad/s） |
+| ransac_min/max_amplitude | 0.78 / 1.045 | 正弦幅值范围 |
+| ransac_min_inliers | 100 | 内点数达标进 TRACKING |
+| ransac_fit_interval | 5 | 每几帧拟合一次（省 CPU） |
 
-## 五、后续怎么调整
+## 六、怎么调车（症状 → 对应参数）
 
-### 1. 黄圈（打击点）位置标定（优先级最高）
+| 症状 | 先调什么 |
+| --- | --- |
+| 黄圈固定偏一个方向 | buff_radius（量实际半径） |
+| 黄圈乱跳 | RANSAC 拟合抖动：看 ransac_max_iterations / min_inliers；跳得厉害先降 ransac_fit_interval 观察 |
+| 绿十字偏出靶子 | 检查内参/模型关键点精度；离线先确认假内参是否匹配视频 |
+| 十字和黄圈偏离大 | shoot_speed/shoot_delay 与实际不符（正常时偏差≈一个提前量的弧线距离） |
+| 进不了 TRACKING | confidence_threshold 调低；视频跑够 20 秒；颜色 buff_color 对不对 |
+| 卡（帧率低） | detector_format:=szu（快一倍，需验证）；相机分辨率降一档；GPU 上换 CUDA/TensorRT |
+| 打偏（左右） | shoot_speed、shoot_delay 标定 |
+| 打偏（上下） | 相机标定/安装角度、弹道参数 |
 
-黄圈偏的常见原因和对应调整：
-- **固定方向偏**：`buff_radius` 和实车实际距离不符。
-  在场地量一下 R 中心到打击点的真实距离，改参数：
-  `ros2 param set /buff_detector_node buff_radius 0.65`（试到黄圈贴靶）
-- **转动中偏**：roll 角速度预测误差（RANSAC 拟合初期正常，稳定后应收敛），
-  可调 ransac_min_inliers / ransac_max_iterations 让拟合更快更稳
-- **Pitch 偏高/偏低**：检查相机安装角度和 tf 树
+## 七、代码状态与近期改动（2026-08）
 
-### 2. 帧率提升（按顺序试）
+**当前为主**：
+- 全链路：检测（zju/szu 可选）→ 筛选 → PnP → tf → 跟踪（小符 KF/大符 RANSAC）→ 预测 → 发布 Target
+- 双点：position=目标打击点（gimbal 用），predictive_point=预测击打点（新字段，云台暂未消费）
+- 主链路提前量：**保持浙大原版**（buff 发当前点+切向速度，云台弹道解算+直线外推统一算）——别改回"buff 外推弹道"，飞行时间两处不一致会引入误差（试过已回退）
 
-1. **实车试 szu 模型**（最快路径）：`detector_format:=szu` + model_path 指向深大 onnx。
-   帧率从 26FPS 提到 50FPS。检测稳就用，不稳切回 zju（一行参数）。
-   深大 onnx 从 https://github.com/SZURPVision/RuneDetectionModel 下载
-   （model/model-0624.onnx），放到 buff_detector/model/ 下。
-2. 实车计算平台如果有 NVIDIA GPU：onnxruntime 换 CUDA EP 或浙大原版 TensorRT 推理
-3. 相机分辨率降一档（如果相机支持），letterbox resize 开销会小一些
+**近期改动**：
+- tf 查询用图像时间戳（云台转动时位姿正确）
+- 丢失输出清零（armors_num=0）
+- RANSAC 降频（每 5 帧拟合，省 CPU）
+- 深大模型支持（detector_format 切换）
+- PnP 异常位姿过滤（NaN 不污染跟踪器）
+- buff_radius / shoot_speed / shoot_delay 参数化
+- Target.msg 增加 predictive_point 字段
+- 四个 launch 支持 detector_format 切换、实车支持 serial_protocol
 
-### 3. 打击策略调整
+**已放弃的（别重复踩）**：
+- R 中心关键点逐帧修正位姿（把黄圈拉飞，已删除）
+- 打击点改为 R 中心（R 只是标志，不是靶心，用户确认）
+- onnxruntime 多线程/图优化（实测更慢）
+- buff 侧正弦外推弹道提前量（飞行时间两处不一致，已回退）
 
-- 小符/大符切换：buff_mode 参数
-- 想打环区（高环）：需要改 predictor 的打击点模型（当前打装甲模块中心位置），
-  浙大 predictor 的 roll 外推逻辑保留着，可以在 predict_position 基础上扩展
-- 串口/云台侧：shoot_speed、shoot_delay 按实车弹道标定（gimbal_controller 参数）
+## 八、已知问题
 
-### 4. 换/加数据集重训
-
-- 浙大模型和深大模型都是各自场地训练的，实车场地不同检出率会变。
-- 检出率低：先调 confidence_threshold（0.5 → 0.3 试），再考虑采集本场地数据重训
-- 重训需要 YOLO 关键点标注（9 点：八边形顶点 + R 中心），训练脚本不在此仓库
-
-## 六、已知问题
-
-1. **szu 模型在浙大视频上关键点不稳**（场景差异），离线无法验证，必须实车
-2. CPU 推理是瓶颈（zju 38ms），onnxruntime 配置优化实测无效
-3. video_pub 回放 30fps 是帧率上限，实测帧率看检测耗时
-4. debug 图像里黄圈是当前时刻打击点投影，弹道提前量在云台侧，
-   黄圈和实际弹着点之间还有弹道修正，无弹联调时以云台输出角度为准
+1. **szu 模型离线验证不了**（只在训练过的场地稳，浙大视频上关键点跳动；调曝光实验证明与亮度无关），必须实车
+2. CPU 推理是瓶颈（zju 38ms），配置优化实测无效
+3. 离线严格对齐验证做不了（假内参、无真实 tf/云台反馈），对齐要到实车做
+4. 黄圈是"预测弹着点"的模拟值（fly_time 用距离/弹速估算），和云台精确弹道时间有差异——趋势可参考，精确修正等实车
