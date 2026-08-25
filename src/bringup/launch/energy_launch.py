@@ -14,6 +14,10 @@ def generate_launch_description():
     buff_color = LaunchConfiguration('buff_color')
     video_path = LaunchConfiguration('video_path')
 
+    detector_format = LaunchConfiguration('detector_format')
+    declare_detector_format_cmd = DeclareLaunchArgument(
+        'detector_format', default_value='zju',
+        description='检测模型格式：zju=浙大原版 szu=深大5点模型(快一倍)')
     declare_buff_mode_cmd = DeclareLaunchArgument(
         'buff_mode', default_value='2',
         description='1=小符(固定转速KF) 2=大符(RANSAC正弦拟合)')
@@ -34,7 +38,8 @@ def generate_launch_description():
         plugin='buff_auto_aim::BuffDetectorNode',
         name='buff_detector_node',
         parameters=[{
-            'model_path': model_path,
+            'detector_format': detector_format,
+                    'model_path': model_path,
             'buff_mode': buff_mode,
             'buff_color': buff_color,
             # 离线调试：相机系就是目标系，跳过 tf 变换
@@ -71,6 +76,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        declare_detector_format_cmd,
         declare_buff_mode_cmd,
         declare_buff_color_cmd,
         declare_video_path_cmd,

@@ -11,6 +11,10 @@ def generate_launch_description():
     outpost_x = LaunchConfiguration('outpost_x')
     outpost_y = LaunchConfiguration('outpost_y')
 
+    detector_format = LaunchConfiguration('detector_format')
+    declare_detector_format_cmd = DeclareLaunchArgument(
+        'detector_format', default_value='zju',
+        description='检测模型格式：zju=浙大原版 szu=深大5点模型(快一倍)')
     declare_video_path_cmd = DeclareLaunchArgument(
         'video_path', default_value='outpost.mp4',
         description='video_pub 回放的视频文件名（放 video_pub/video/ 下）')
@@ -83,6 +87,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        declare_detector_format_cmd,
         declare_video_path_cmd,
         declare_outpost_x_cmd,
         declare_outpost_y_cmd,

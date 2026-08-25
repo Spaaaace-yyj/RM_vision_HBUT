@@ -20,6 +20,10 @@ def generate_launch_description():
         'buff_mode', default_value='2', description='1=小符 2=大符')
     declare_buff_color_cmd = DeclareLaunchArgument(
         'buff_color', default_value='1', description='蓝队打红符')
+    detector_format = LaunchConfiguration('detector_format')
+    declare_detector_format_cmd = DeclareLaunchArgument(
+        'detector_format', default_value='zju',
+        description='检测模型格式：zju=浙大原版 szu=深大5点模型(快一倍)')
     serial_protocol = LaunchConfiguration('serial_protocol')
     declare_serial_protocol_cmd = DeclareLaunchArgument(
         'serial_protocol', default_value='cjson',
@@ -58,7 +62,7 @@ def generate_launch_description():
                 parameters=[{
                     'model_path': os.path.join(
                         get_package_share_directory('buff_detector'), 'model', 'buff.onnx'),
-                    'detector_format': 'zju',
+                    'detector_format': detector_format,
                     'buff_mode': buff_mode,
                     'buff_color': buff_color,
                     # 实车在 odom 系跟踪，需要 tf 树 odom←gimbal←camera
@@ -112,6 +116,7 @@ def generate_launch_description():
     return LaunchDescription([
         declare_buff_mode_cmd,
         declare_buff_color_cmd,
+        declare_detector_format_cmd,
         declare_serial_protocol_cmd,
         camera_buff_container,
         robot_state_publisher,
