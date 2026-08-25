@@ -27,8 +27,6 @@ BuffDetectorNode::BuffDetectorNode(const rclcpp::NodeOptions& options)
     buff_mode_ = this->declare_parameter("buff_mode", 2);   // 默认大符
     buff_color_ = this->declare_parameter("buff_color", 1); // 蓝队打红符
     buff_radius_ = this->declare_parameter("buff_radius", 0.7);
-    shoot_speed_ = this->declare_parameter("shoot_speed", 25.0);
-    shoot_delay_ = this->declare_parameter("shoot_delay", 0.05);
     target_frame_ = this->declare_parameter("target_frame", "odom");
     camera_frame_ = this->declare_parameter("camera_frame", "camera_optical_frame");
     debug_image_ = this->declare_parameter("debug_image", false);
@@ -148,16 +146,12 @@ void BuffDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedP
     }
     tracker_->update(timestamp);
 
-    // 6. 预测打击点。大符是正弦变速，云台的一级直线外推在加减速段会偏，
-    //    这里用正弦模型把打击点直接外推到"子弹到达时刻"，
-    //    发布速度置 0 避免云台再叠加一层直线外推。
+    // 6. 预测当前时刻打击点，弹道提前量由 gimbal_controller 统一做。
+    //    打击点是扇叶上距 R 中心 BUFF_RADIUS 处的装甲模块位置，
+    //    R 字只是标志，打 R 中心无效。
     const buff_algo::BuffState state = tracker_->get_state();
     predictor_->set_state(state, timestamp, timestamp);
-    // 子弹飞行时间用距离/弹速估计，和云台的弹道时间保持一致来源
-    const Eigen::Vector3f current_leaf = predictor_->predict_position(0.0f);
-    const float fly_time = static_cast<float>(
-        current_leaf.norm() / shoot_speed_ + shoot_delay_);
-    Eigen::Vector3f aim_point = predictor_->predict_position(fly_time);
+    Eigen::Vector3f aim_point = predictor_->predict_position(0.0f);
     // 实车 R 中心到打击点的距离和浙大写死的 0.7m 可能不同，
     // 按 buff_radius 参数等比缩放偏移量，默认 0.7 与原行为一致
     if (buff_radius_ != buff_algo::consts::BUFF_RADIUS) {
@@ -183,11 +177,12 @@ void BuffDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedP
         target_msg.position.x = aim_point.x();
         target_msg.position.y = aim_point.y();
         target_msg.position.z = aim_point.z();
-        // 位置已外推到子弹到达时刻，速度置 0 防云台叠加直线外推；
-        // roll 信息保留供调试查看
+        // 打击点的切向线速度 (0, R*sin(roll)*ω, R*cos(roll)*ω)
+        const float omega = state.roll_velocity;
+        const float radius = buff_algo::consts::BUFF_RADIUS;
         target_msg.velocity.x = 0.0;
-        target_msg.velocity.y = 0.0;
-        target_msg.velocity.z = 0.0;
+        target_msg.velocity.y = radius * std::sin(state.roll) * omega;
+        target_msg.velocity.z = radius * std::cos(state.roll) * omega;
         target_msg.yaw = state.roll;
         target_msg.v_yaw = state.roll_velocity;
     }

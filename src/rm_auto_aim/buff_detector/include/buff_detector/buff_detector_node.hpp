@@ -64,8 +64,6 @@ private:
     int buff_mode_ = 1;    // 1=小符 2=大符
     int buff_color_ = 1;   // 蓝队打红符
     double buff_radius_ = 0.7;  // R 中心到打击点的距离，实车按机械尺寸改
-    double shoot_speed_ = 25.0; // 子弹初速度，和 gimbal_controller 保持一致
-    double shoot_delay_ = 0.05; // 发射延迟，和 gimbal_controller 保持一致
     bool debug_image_ = false;
     bool has_camera_info_ = false;
     cv::Mat camera_matrix_;
