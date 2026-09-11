@@ -21,11 +21,13 @@
 #include <tf2_ros/transform_listener.h>
 
 // STD
+#include <atomic>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "armor_detector/detector.hpp"
+#include "armor_detector/neural_detector.hpp"
 #include "armor_detector/number_classifier.hpp"
 #include "armor_detector/pnp_solver.hpp"
 #include "auto_aim_interfaces/msg/armors.hpp"
@@ -44,6 +46,12 @@ private:
   std::unique_ptr<Detector> initDetector();
   std::vector<Armor> detectArmors(const sensor_msgs::msg::Image::ConstSharedPtr & img_msg);
 
+  // 神经网络模式相关（detector_mode = neural 时才会用到）
+  void initNeuralParams();
+  bool setDetectorMode(const std::string & mode);
+  bool ensureNeuralDetector();
+  std::vector<Armor> detectArmorsByNeural(const cv::Mat & img, bool & traditional_ran);
+
   void createDebugPublishers();
   void destroyDebugPublishers();
 
@@ -53,8 +61,23 @@ private:
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
-  // Armor Detector
+  // Armor Detector（传统视觉模式，保持原有实现不动）
   std::unique_ptr<Detector> detector_;
+
+  // 检测模式：traditional=传统识别（默认，行为与以前完全一致），neural=神经网络模式。
+  // 只用一个原子标志控制，图像回调里读，参数回调里写，避免两个线程抢对象。
+  std::atomic<bool> neural_mode_{false};
+  std::string detector_mode_str_ = "traditional";
+  std::shared_ptr<rclcpp::ParameterCallbackHandle> mode_cb_handle_;
+  // 神经网络检测器，切到 neural 模式后第一次用到时才加载模型
+  std::unique_ptr<NeuralDetector> neural_detector_;
+  std::atomic<bool> neural_load_failed_{false};
+  NeuralDetectorParams neural_params_;
+  bool neural_refine_ = true;      // 用传统灯条微调 CNN 角点
+  bool neural_fallback_ = true;    // CNN 没检出时退回传统流程
+  std::string neural_model_path_;
+  // 本帧是否跑过传统流程（决定 debug 里的二值图/灯条信息是不是这一帧的）
+  bool traditional_ran_ = false;
 
   // Detected armors publisher
   auto_aim_interfaces::msg::Armors armors_msg_;

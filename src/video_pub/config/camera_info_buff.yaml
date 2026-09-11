@@ -1,0 +1,21 @@
+# 离线测试用假内参：匹配 buff.mp4 分辨率 1280x768（与 buff_detector 测试程序一致）
+image_width: 1280
+image_height: 768
+camera_name: buff_test
+camera_matrix:
+  rows: 3
+  cols: 3
+  data: [800.0, 0.000000, 640.0, 0.000000, 800.0, 384.0, 0.000000, 0.000000, 1.000000]
+distortion_model: plumb_bob
+distortion_coefficients:
+  rows: 1
+  cols: 5
+  data: [0.0, 0.0, 0.0, 0.0, 0.0]
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+projection_matrix:
+  rows: 3
+  cols: 4
+  data: [800.0, 0.0, 640.0, 0.0, 0.0, 800.0, 384.0, 0.0, 0.0, 0.0, 1.0, 0.0]

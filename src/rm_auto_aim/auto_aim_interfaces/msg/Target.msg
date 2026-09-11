@@ -10,3 +10,6 @@ float64 v_yaw
 float64 radius_1
 float64 radius_2
 float64 dz
+
+# 弹丸到达时刻的预测打击点（仅能量机关填写，其他目标为 0）
+geometry_msgs/Point predictive_point

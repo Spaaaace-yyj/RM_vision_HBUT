@@ -14,12 +14,17 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 ## Find dependencies by ament_cmake_auto
 find_package(ament_cmake_auto REQUIRED)
+## cv_bridge 只传递 core/imgproc/imgcodecs，cv::VideoCapture 需要 videoio，
+## 必须显式链接 OpenCV
+find_package(OpenCV REQUIRED)
 ament_auto_find_build_dependencies()
 
-## 
+##
 ament_auto_add_library(${PROJECT_NAME} SHARED
   DIRECTORY src
 )
+
+target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})
 
 rclcpp_components_register_node(${PROJECT_NAME}
   PLUGIN video_pub::VideoPub

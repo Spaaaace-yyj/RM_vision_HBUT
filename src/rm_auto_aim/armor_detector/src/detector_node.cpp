@@ -16,6 +16,8 @@
 
 // STD
 #include <algorithm>
+#include <atomic>
+#include <exception>
 #include <map>
 #include <memory>
 #include <string>
@@ -33,6 +35,9 @@ namespace rm_auto_aim
 
         // Detector
         detector_ = initDetector();
+
+        // 神经网络模式的参数，默认还是传统模式，行为保持不变
+        initNeuralParams();
 
         // Armors Publisher
         armors_pub_ = this->create_publisher<auto_aim_interfaces::msg::Armors>(
@@ -77,6 +82,16 @@ namespace rm_auto_aim
             {
                 debug_ = p.as_bool();
                 debug_ ? createDebugPublishers() : destroyDebugPublishers();
+            });
+
+        // 检测模式可以在线切换：
+        //   ros2 param set /armor_detector detector_mode neural
+        //   ros2 param set /armor_detector detector_mode traditional
+        // 参数回调里只改标志位，模型在图像回调线程里懒加载，避免两个线程同时碰检测器。
+        mode_cb_handle_ = debug_param_sub_->add_parameter_callback(
+            "detector_mode", [this](const rclcpp::Parameter& p)
+            {
+                setDetectorMode(p.as_string());
             });
 
         //tf
@@ -246,6 +261,167 @@ namespace rm_auto_aim
         return detector;
     }
 
+    void ArmorDetectorNode::initNeuralParams()
+    {
+        rcl_interfaces::msg::ParameterDescriptor mode_desc;
+        mode_desc.description =
+            "检测模式：traditional=传统识别（默认，原有流程），neural=神经网络（深大模型）+传统融合";
+        detector_mode_str_ = declare_parameter("detector_mode", std::string("traditional"), mode_desc);
+
+        rcl_interfaces::msg::ParameterDescriptor model_desc;
+        model_desc.description = "神经网络模型路径，留空则用 share/armor_detector/model/shenzhen-0526.onnx";
+        neural_model_path_ = declare_parameter("neural_model_path", std::string(""), model_desc);
+        if (neural_model_path_.empty())
+        {
+            neural_model_path_ = ament_index_cpp::get_package_share_directory("armor_detector") +
+                                 "/model/shenzhen-0526.onnx";
+        }
+
+        rcl_interfaces::msg::ParameterDescriptor conf_desc;
+        conf_desc.description = "神经网络置信度阈值";
+        conf_desc.floating_point_range.resize(1);
+        conf_desc.floating_point_range[0].from_value = 0.0;
+        conf_desc.floating_point_range[0].to_value = 1.0;
+
+        neural_params_.conf_threshold =
+            static_cast<float>(declare_parameter("neural_conf_threshold", 0.65, conf_desc));
+        neural_params_.nms_threshold =
+            static_cast<float>(declare_parameter("neural_nms_threshold", 0.45, conf_desc));
+        neural_params_.swap_color = declare_parameter("neural_swap_color", false);
+        neural_refine_ = declare_parameter("neural_refine_with_traditional", true);
+        neural_fallback_ = declare_parameter("neural_fallback_traditional", true);
+
+        RCLCPP_INFO(
+            this->get_logger(), "检测模式: %s（切到神经网络: ros2 param set %s detector_mode neural）",
+            detector_mode_str_.c_str(), this->get_name());
+        RCLCPP_INFO(this->get_logger(), "神经网络模型: %s", neural_model_path_.c_str());
+
+        setDetectorMode(detector_mode_str_);
+    }
+
+    bool ArmorDetectorNode::setDetectorMode(const std::string& mode)
+    {
+        if (mode != "traditional" && mode != "neural")
+        {
+            RCLCPP_WARN(
+                this->get_logger(), "detector_mode 只支持 traditional / neural，收到 '%s'，忽略",
+                mode.c_str());
+            return false;
+        }
+        detector_mode_str_ = mode;
+        neural_mode_ = (mode == "neural");
+        if (neural_mode_)
+        {
+            // 允许切模式后重新尝试加载模型
+            neural_load_failed_ = false;
+        }
+        RCLCPP_INFO(
+            this->get_logger(), "检测模式已切换: %s", neural_mode_ ? "neural（神经网络）" : "traditional（传统识别）");
+        return true;
+    }
+
+    bool ArmorDetectorNode::ensureNeuralDetector()
+    {
+        if (neural_detector_)
+        {
+            return true;
+        }
+        if (neural_load_failed_)
+        {
+            return false;
+        }
+        if (!NeuralDetector::available())
+        {
+            neural_load_failed_ = true;
+            RCLCPP_ERROR(
+                this->get_logger(), "编译时没有链接 onnxruntime，神经网络模式不可用，继续用传统识别");
+            return false;
+        }
+
+        try
+        {
+            neural_detector_ = std::make_unique<NeuralDetector>(neural_model_path_, neural_params_);
+            RCLCPP_INFO(this->get_logger(), "神经网络模型加载完成，进入神经网络模式");
+            return true;
+        }
+        catch (const std::exception& e)
+        {
+            neural_load_failed_ = true;
+            RCLCPP_ERROR(
+                this->get_logger(), "神经网络模型加载失败：%s（本帧起自动退回传统识别）", e.what());
+            return false;
+        }
+    }
+
+    std::vector<Armor> ArmorDetectorNode::detectArmorsByNeural(const cv::Mat& img, bool& traditional_ran)
+    {
+        // 模型用不了就直接走传统流程，保证车还能打
+        if (!ensureNeuralDetector())
+        {
+            traditional_ran = true;
+            return detector_->detect(img);
+        }
+
+        // 传统流程这一帧也跑一遍：一是给融合提供亚像素灯条角点，
+        // 二是神经网络漏检时可以整帧退回传统结果
+        std::vector<Light> lights;
+        if (neural_refine_ || neural_fallback_)
+        {
+            auto binary_img = detector_->preprocessImage(img);
+            lights = detector_->findLights(img, binary_img, detector_->gray_img);
+            detector_->debug_armors.data.clear();
+            traditional_ran = true;
+        }
+
+        // 同步一次可以在线改的参数
+        neural_params_.detect_color = detector_->detect_color;
+        neural_params_.ignore_classes = get_parameter("ignore_classes").as_string_array();
+        neural_params_.conf_threshold =
+            static_cast<float>(get_parameter("neural_conf_threshold").as_double());
+        neural_params_.nms_threshold =
+            static_cast<float>(get_parameter("neural_nms_threshold").as_double());
+        neural_params_.swap_color = get_parameter("neural_swap_color").as_bool();
+        neural_detector_->setParams(neural_params_);
+
+        std::vector<Armor> armors;
+        try
+        {
+            armors = neural_detector_->detect(img);
+        }
+        catch (const std::exception& e)
+        {
+            RCLCPP_ERROR_THROTTLE(
+                this->get_logger(), *this->get_clock(), 2000, "神经网络推理异常：%s", e.what());
+            traditional_ran = true;
+            return detector_->detect(img);
+        }
+
+        // 融合：神经网络负责“是什么”（类别、颜色、候选框），
+        // 传统视觉负责“在哪”（灯条 PCA 亚像素角点），两者取长补短
+        if (neural_refine_ && !armors.empty() && !lights.empty())
+        {
+            refineArmorCorners(armors, lights, RefineParams{});
+        }
+
+        if (armors.empty() && neural_fallback_)
+        {
+            traditional_ran = true;
+            return detector_->detect(img);
+        }
+
+        // number_img 只给 /detector/number_img 调试用，不影响识别结果
+        if (!armors.empty())
+        {
+            detector_->classifier->extractNumbers(img, armors);
+        }
+
+        RCLCPP_DEBUG(
+            this->get_logger(), "神经网络: 检出 %zu 个装甲板, 推理 %.1fms", armors.size(),
+            neural_detector_->lastLatencyMs());
+
+        return armors;
+    }
+
     std::vector<Armor> ArmorDetectorNode::detectArmors(
         const sensor_msgs::msg::Image::ConstSharedPtr& img_msg)
     {
@@ -266,7 +442,18 @@ namespace rm_auto_aim
         detector_->detect_color = get_parameter("detect_color").as_int();
         detector_->classifier->threshold = get_parameter("classifier_threshold").as_double();
 
-        auto armors = detector_->detect(img);
+        // 两种模式都在这里分发：traditional 走原来的路，neural 走神经网络+融合
+        traditional_ran_ = false;
+        std::vector<Armor> armors;
+        if (neural_mode_)
+        {
+            armors = detectArmorsByNeural(img, traditional_ran_);
+        }
+        else
+        {
+            armors = detector_->detect(img);
+            traditional_ran_ = true;
+        }
 
         auto final_time = this->now();
         auto latency = (final_time - img_msg->header.stamp).seconds() * 1000;
@@ -275,34 +462,53 @@ namespace rm_auto_aim
         // Publish debug info
         if (debug_)
         {
-            binary_img_pub_.publish(
-                cv_bridge::CvImage(img_msg->header, "mono8", detector_->binary_img).toImageMsg());
+            // 神经网络模式下如果这一帧没跑传统流程，二值图/灯条就不是这一帧的，不发布
+            if (traditional_ran_)
+            {
+                binary_img_pub_.publish(
+                    cv_bridge::CvImage(img_msg->header, "mono8", detector_->binary_img).toImageMsg());
 
-            // Sort lights and armors data by x coordinate
-            std::sort(
-                detector_->debug_lights.data.begin(), detector_->debug_lights.data.end(),
-                [](const auto& l1, const auto& l2) { return l1.center_x < l2.center_x; });
-            std::sort(
-                detector_->debug_armors.data.begin(), detector_->debug_armors.data.end(),
-                [](const auto& a1, const auto& a2) { return a1.center_x < a2.center_x; });
+                // Sort lights and armors data by x coordinate
+                std::sort(
+                    detector_->debug_lights.data.begin(), detector_->debug_lights.data.end(),
+                    [](const auto& l1, const auto& l2) { return l1.center_x < l2.center_x; });
+                std::sort(
+                    detector_->debug_armors.data.begin(), detector_->debug_armors.data.end(),
+                    [](const auto& a1, const auto& a2) { return a1.center_x < a2.center_x; });
 
-            lights_data_pub_->publish(detector_->debug_lights);
-            armors_data_pub_->publish(detector_->debug_armors);
+                lights_data_pub_->publish(detector_->debug_lights);
+                armors_data_pub_->publish(detector_->debug_armors);
+            }
 
-            if (!armors.empty())
+            if (!armors.empty() && !armors.front().number_img.empty())
             {
                 auto all_num_img = detector_->getAllNumbersImage();
                 number_img_pub_.publish(
                     *cv_bridge::CvImage(img_msg->header, "mono8", all_num_img).toImageMsg());
             }
 
-            detector_->drawResults(img);
+            // 画框：神经网络模式画 CNN 角点(黄) + 融合后角点(绿)，传统模式画原来的
+            if (neural_mode_ && neural_detector_)
+            {
+                neural_detector_->drawResults(img, armors);
+            }
+            else
+            {
+                detector_->drawResults(img);
+            }
             // Draw camera center
             cv::circle(img, cam_center_, 5, cv::Scalar(255, 0, 0), 2);
             // Draw latency
             std::stringstream latency_ss;
             latency_ss << "Latency: " << std::fixed << std::setprecision(2) << latency << "ms";
             auto latency_s = latency_ss.str();
+            if (neural_mode_ && neural_detector_)
+            {
+                std::stringstream nn_ss;
+                nn_ss << "  NN: " << std::fixed << std::setprecision(1)
+                      << neural_detector_->lastLatencyMs() << "ms";
+                latency_s += nn_ss.str();
+            }
             cv::putText(
                 img, latency_s, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 255, 0), 2);
             result_img_pub_.publish(cv_bridge::CvImage(img_msg->header, "rgb8", img).toImageMsg());
