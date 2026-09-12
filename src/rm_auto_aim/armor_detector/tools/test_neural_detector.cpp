@@ -7,10 +7,9 @@
 //   ./test_neural_detector /path/armor.mp4 "" /tmp/out.avi
 //
 // 做的事情：
-//   1. 用深大模型做神经网络识别，打印每个装甲板的四角、类别、颜色、置信度；
-//   2. 同时跑一遍传统视觉的找灯条，用灯条 PCA 角点对 CNN 角点做融合微调，
-//      打印融合前后的角点差值（黄点=CNN 原始角点，绿框=融合后交给 PnP 的角点）；
-//   3. 把结果画出来存成图片/视频，方便和传统模式对比。
+//   1. 用深大模型做纯神经网络识别，打印角点、类别、颜色、置信度；
+//   2. 打印 preprocess / inference / postprocess / total 分段耗时；
+//   3. 把网络角点结果画出来存成图片/视频。
 
 #include <cstdio>
 #include <cstring>
@@ -23,30 +22,10 @@
 #include <opencv2/imgproc.hpp>
 #include <opencv2/videoio.hpp>
 
-#include "armor_detector/detector.hpp"
 #include "armor_detector/neural_detector.hpp"
 
 namespace
 {
-
-// 传统流程的参数，取 bringup/config/params.yaml 里实车在用的那组
-rm_auto_aim::Detector makeTraditionalDetector()
-{
-  rm_auto_aim::Detector::LightParams light_params;
-  light_params.min_ratio = 0.05;
-  light_params.max_ratio = 0.8;
-  light_params.max_angle = 40.0;
-
-  rm_auto_aim::Detector::ArmorParams armor_params;
-  armor_params.min_light_ratio = 0.7;
-  armor_params.min_small_center_distance = 0.8;
-  armor_params.max_small_center_distance = 3.2;
-  armor_params.min_large_center_distance = 3.2;
-  armor_params.max_large_center_distance = 5.0;
-  armor_params.max_angle = 35.0;
-
-  return rm_auto_aim::Detector(140, rm_auto_aim::BLUE, light_params, armor_params);
-}
 
 void printArmors(const std::vector<rm_auto_aim::Armor> & armors)
 {
@@ -60,12 +39,7 @@ void printArmors(const std::vector<rm_auto_aim::Armor> & armors)
       rm_auto_aim::ARMOR_TYPE_STR[static_cast<int>(armor.type)].c_str(), armor.confidence,
       armor.left_light.color == rm_auto_aim::RED ? "red" : "blue");
     std::printf(
-      "      CNN 角点  左上(%.1f,%.1f) 左下(%.1f,%.1f) 右下(%.1f,%.1f) 右上(%.1f,%.1f)\n",
-      armor.left_light.pca_top.x, armor.left_light.pca_top.y, armor.left_light.pca_bottom.x,
-      armor.left_light.pca_bottom.y, armor.right_light.pca_bottom.x, armor.right_light.pca_bottom.y,
-      armor.right_light.pca_top.x, armor.right_light.pca_top.y);
-    std::printf(
-      "      融合角点  左上(%.1f,%.1f) 左下(%.1f,%.1f) 右下(%.1f,%.1f) 右上(%.1f,%.1f)\n",
+      "      网络角点  左上(%.1f,%.1f) 左下(%.1f,%.1f) 右下(%.1f,%.1f) 右上(%.1f,%.1f)\n",
       armor.left_light.top.x, armor.left_light.top.y, armor.left_light.bottom.x,
       armor.left_light.bottom.y, armor.right_light.bottom.x, armor.right_light.bottom.y,
       armor.right_light.top.x, armor.right_light.top.y);
@@ -117,9 +91,6 @@ int main(int argc, char ** argv)
     return 1;
   }
 
-  auto traditional = makeTraditionalDetector();
-  const rm_auto_aim::RefineParams refine_params;
-
   // 图片还是视频：先按图片读，读不到再按视频试
   cv::Mat first = cv::imread(input_path);
   const bool is_image = !first.empty();
@@ -128,14 +99,12 @@ int main(int argc, char ** argv)
     cv::Mat rgb;
     cv::cvtColor(first, rgb, cv::COLOR_BGR2RGB);
 
-    auto binary = traditional.preprocessImage(rgb);
-    auto lights = traditional.findLights(rgb, binary, traditional.gray_img);
     auto armors = neural->detect(rgb);
-    const int refined = rm_auto_aim::refineArmorCorners(armors, lights, refine_params);
-
+    const auto & timing = neural->lastTiming();
     std::printf(
-      "图片 %s: 传统灯条 %zu 个, 神经网络 %.1fms, 检出 %zu 个装甲板, 融合微调 %d 个\n",
-      input_path.c_str(), lights.size(), neural->lastLatencyMs(), armors.size(), refined);
+      "图片 %s: 检出 %zu 个装甲板, pre %.2fms | infer %.2fms | post %.2fms | total %.2fms\n",
+      input_path.c_str(), armors.size(), timing.preprocess_ms, timing.inference_ms,
+      timing.postprocess_ms, timing.total_ms);
     printArmors(armors);
 
     cv::Mat vis = first.clone();
@@ -163,19 +132,23 @@ int main(int argc, char ** argv)
   int frames = 0;
   int frames_with_armor = 0;
   int total_armors = 0;
+  double total_pre_ms = 0;
+  double total_infer_ms = 0;
+  double total_post_ms = 0;
   double total_nn_ms = 0;
   cv::Mat bgr;
   while (capture.read(bgr) && !bgr.empty()) {
     cv::Mat rgb;
     cv::cvtColor(bgr, rgb, cv::COLOR_BGR2RGB);
 
-    auto binary = traditional.preprocessImage(rgb);
-    auto lights = traditional.findLights(rgb, binary, traditional.gray_img);
     auto armors = neural->detect(rgb);
-    rm_auto_aim::refineArmorCorners(armors, lights, refine_params);
+    const auto & timing = neural->lastTiming();
 
     ++frames;
-    total_nn_ms += neural->lastLatencyMs();
+    total_pre_ms += timing.preprocess_ms;
+    total_infer_ms += timing.inference_ms;
+    total_post_ms += timing.postprocess_ms;
+    total_nn_ms += timing.total_ms;
     if (!armors.empty()) {
       ++frames_with_armor;
       total_armors += static_cast<int>(armors.size());
@@ -186,9 +159,14 @@ int main(int argc, char ** argv)
   }
 
   std::printf(
-    "视频 %s: %d 帧, 有检出的帧 %d, 装甲板总计 %d, 平均推理 %.1fms (约 %.1f FPS)\n",
+    "视频 %s: %d 帧, 有检出的帧 %d, 装甲板总计 %d\n"
+    "  平均: pre %.2fms | infer %.2fms | post %.2fms | NN total %.2fms (约 %.1f FPS)\n",
     input_path.c_str(), frames, frames_with_armor, total_armors,
-    frames > 0 ? total_nn_ms / frames : 0.0, frames > 0 ? 1000.0 * frames / total_nn_ms : 0.0);
+    frames > 0 ? total_pre_ms / frames : 0.0,
+    frames > 0 ? total_infer_ms / frames : 0.0,
+    frames > 0 ? total_post_ms / frames : 0.0,
+    frames > 0 ? total_nn_ms / frames : 0.0,
+    total_nn_ms > 0.0 ? 1000.0 * frames / total_nn_ms : 0.0);
   std::printf("  结果视频: %s\n", output.c_str());
   return 0;
 }

@@ -166,30 +166,6 @@ namespace rm_auto_aim
         return reprojectionError(object_points, image_points, rvec, tvec);
     }
 
-    double PnPSolver::computeYawErrorFast(
-    double yaw,
-    const Eigen::Vector3d& t_cam,
-    const std::vector<cv::Point3f>& object_points,
-    const std::vector<cv::Point2f>& image_points) const
-    {
-        constexpr double pitch = 15.0 * M_PI / 180.0;
-
-        const double cy = std::cos(yaw);
-        const double sy = std::sin(yaw);
-        const double cp = std::cos(pitch);
-        const double sp = std::sin(pitch);
-
-        Eigen::Matrix3d R_aw;
-        R_aw <<
-            cy * cp, -sy, cy * sp,
-            sy * cp,  cy, sy * sp,
-            -sp,      0.0, cp;
-
-        const Eigen::Matrix3d R_ac = R_world2camera_ * R_aw;
-
-        return fastReprojectionError(R_ac, t_cam, object_points, image_points);
-    }
-
     double PnPSolver::computeDepthError(
         double depth,
         double yaw,
@@ -307,69 +283,4 @@ namespace rm_auto_aim
 
         return error;
     }
-
-    double PnPSolver::fastReprojectionError(
-    const Eigen::Matrix3d& R_ac,
-    const Eigen::Vector3d& t_ac,
-    const std::vector<cv::Point3f>& object_points,
-    const std::vector<cv::Point2f>& image_points) const
-{
-    const double fx = camera_matrix_.at<double>(0, 0);
-    const double fy = camera_matrix_.at<double>(1, 1);
-    const double cx = camera_matrix_.at<double>(0, 2);
-    const double cy = camera_matrix_.at<double>(1, 2);
-
-    double k1 = 0.0, k2 = 0.0, p1 = 0.0, p2 = 0.0, k3 = 0.0;
-
-    if (!dist_coeffs_.empty()) {
-        k1 = dist_coeffs_.at<double>(0, 0);
-        if (dist_coeffs_.cols * dist_coeffs_.rows > 1) k2 = dist_coeffs_.at<double>(0, 1);
-        if (dist_coeffs_.cols * dist_coeffs_.rows > 2) p1 = dist_coeffs_.at<double>(0, 2);
-        if (dist_coeffs_.cols * dist_coeffs_.rows > 3) p2 = dist_coeffs_.at<double>(0, 3);
-        if (dist_coeffs_.cols * dist_coeffs_.rows > 4) k3 = dist_coeffs_.at<double>(0, 4);
-    }
-
-    double error = 0.0;
-
-    for (int i = 0; i < 4; ++i)
-    {
-        const auto& p = object_points[i];
-
-        Eigen::Vector3d p_obj(p.x, p.y, p.z);
-        Eigen::Vector3d p_cam = R_ac * p_obj + t_ac;
-
-        const double X = p_cam.x();
-        const double Y = p_cam.y();
-        const double Z = p_cam.z();
-
-        if (Z <= 1e-6 || !std::isfinite(Z)) {
-            return 1e9;
-        }
-
-        const double x = X / Z;
-        const double y = Y / Z;
-
-        const double x2 = x * x;
-        const double y2 = y * y;
-        const double xy = x * y;
-        const double r2 = x2 + y2;
-        const double r4 = r2 * r2;
-        const double r6 = r4 * r2;
-
-        const double radial = 1.0 + k1 * r2 + k2 * r4 + k3 * r6;
-
-        const double x_dist = x * radial + 2.0 * p1 * xy + p2 * (r2 + 2.0 * x2);
-        const double y_dist = y * radial + p1 * (r2 + 2.0 * y2) + 2.0 * p2 * xy;
-
-        const double u = fx * x_dist + cx;
-        const double v = fy * y_dist + cy;
-
-        const double du = u - image_points[i].x;
-        const double dv = v - image_points[i].y;
-
-        error += std::sqrt(du * du + dv * dv);
-    }
-
-    return error;
-}
 } // namespace rm_auto_aim

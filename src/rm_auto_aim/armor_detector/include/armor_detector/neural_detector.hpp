@@ -2,7 +2,7 @@
 //
 // 这个文件只为“神经网络模式”服务，不改动原有的传统识别流程：
 //   detector_mode = traditional ：走 Detector（传统视觉），本文件不参与
-//   detector_mode = neural      ：走 NeuralDetector（本文件），再按需和传统灯条融合
+//   detector_mode = neural      ：只走 NeuralDetector（本文件），网络角点直接送入 PnP
 //
 // 模型：深圳大学 RobotPilots 战队开源的装甲板识别网络（魔改 YOLOv5 + MobileNetV3）
 //   仓库 https://github.com/broalantaps/RobotDetectionModel
@@ -63,11 +63,22 @@ public:
   // 可以直接交给 PnPSolver / 话题发布，字段含义和传统模式完全一样。
   std::vector<Armor> detect(const cv::Mat & rgb_img);
 
-  // 调试可视化：画 CNN 回归出来的角点、融合后的角点、类别与置信度
+  // 调试可视化：画网络回归的四角点、类别与置信度
   void drawResults(cv::Mat & img, const std::vector<Armor> & armors) const;
 
-  // 上一帧推理耗时（毫秒），只用于打印
-  float lastLatencyMs() const { return last_latency_ms_; }
+  struct Timing
+  {
+    float preprocess_ms = 0.0F;
+    float inference_ms = 0.0F;
+    float postprocess_ms = 0.0F;
+    float total_ms = 0.0F;
+  };
+
+  // 上一帧神经网络各阶段耗时。使用 steady_clock，只统计本进程计算时间。
+  const Timing & lastTiming() const { return last_timing_; }
+
+  // 兼容旧调用：这里明确表示纯 Session::Run() 时间，不是整条 NN 链路。
+  float lastLatencyMs() const { return last_timing_.inference_ms; }
 
   // 每帧同步一次可以在线修改的参数（置信度阈值、颜色、忽略类别等）
   void setParams(const NeuralDetectorParams & params) { params_ = params; }
@@ -79,29 +90,9 @@ private:
   struct Impl;
   std::unique_ptr<Impl> impl_;
   NeuralDetectorParams params_;
-  float last_latency_ms_ = 0.0F;
+  Timing last_timing_;
 };
 
-// 融合用的参数：神经网络负责“是什么”，传统视觉负责“在哪”，两者互补
-struct RefineParams
-{
-  // 传统灯条中心与 CNN 灯条中心的最大距离（单位：CNN 灯条长度）
-  double max_center_dist = 1.0;
-  // 两者倾角最大差（度）
-  double max_angle_diff = 15.0;
-  // 两者长度比上限
-  double max_length_ratio = 1.8;
-  // 微调后装甲板宽度相对原宽度的允许范围，超了就整体回退，防止配错灯条
-  double min_width_ratio = 0.5;
-  double max_width_ratio = 2.0;
-};
-
-// 用传统视觉找到的灯条 PCA 角点去微调 CNN 回归出来的角点。
-// 命中并成功微调的灯条数量作为返回值返回（0 表示这一帧没有可用的传统灯条）。
-// 微调后的角点在 light.top / light.bottom，
-// CNN 原始角点保留在 light.pca_top / light.pca_bottom，方便调试对比。
-int refineArmorCorners(
-  std::vector<Armor> & armors, const std::vector<Light> & lights, const RefineParams & params);
 
 }  // namespace rm_auto_aim
 

@@ -84,7 +84,7 @@ namespace rm_auto_aim
             cv::Mat& tvec,
             rclcpp::Time time);
 
-        //删除
+        // Yaw 重投影误差（使用 OpenCV projectPoints，保留精确实现）
         double computeYawError(double yaw,
                                const Eigen::Vector3d& t_world,
                                const std::vector<cv::Point3f>& object_points,
@@ -98,18 +98,6 @@ namespace rm_auto_aim
             const std::vector<cv::Point2f>& image_points);
 
         void updateTransform(const rclcpp::Time& time);
-
-        double fastReprojectionError(
-            const Eigen::Matrix3d& R_ac,
-            const Eigen::Vector3d& t_ac,
-            const std::vector<cv::Point3f>& object_points,
-            const std::vector<cv::Point2f>& image_points) const;
-
-        double computeYawErrorFast(
-            double yaw,
-            const Eigen::Vector3d& t_cam,
-            const std::vector<cv::Point3f>& object_points,
-            const std::vector<cv::Point2f>& image_points) const;
 
         geometry_msgs::msg::PoseStamped TransformToTargetFrame(geometry_msgs::msg::PoseStamped point,
                                                                std::string target_frame);

@@ -17,9 +17,12 @@
 // STD
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <exception>
+#include <iomanip>
 #include <map>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -131,6 +134,16 @@ namespace rm_auto_aim
 
     void ArmorDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr img_msg)
     {
+        const bool neural_frame = neural_mode_.load();
+        const auto callback_start = std::chrono::steady_clock::now();
+        if (neural_frame)
+        {
+            neural_frame_timing_ = {};
+            neural_frame_succeeded_ = false;
+            neural_frame_timing_.input_age_ms = static_cast<float>(
+                (this->now() - img_msg->header.stamp).seconds() * 1000.0);
+        }
+
         if (debug_)
         {
             static int fps = 0;
@@ -143,14 +156,15 @@ namespace rm_auto_aim
             }
             fps++;
         }
-        //装甲板识别
+
+        // 装甲板识别
         auto armors = detectArmors(img_msg);
 
+        float pnp_ms = 0.0F;
+        std::size_t pnp_count = 0;
         if (pnp_solver_ != nullptr)
         {
             armors_msg_.header = armor_marker_.header = text_marker_.header = img_msg->header;
-            //todo:要把时间改回图像时间，使用系统时间仅供调试
-            // armors_msg_.header.stamp = armor_marker_.header.stamp = text_marker_.header.stamp = this->get_clock()->now();
             armors_msg_.armors.clear();
             marker_array_.markers.clear();
             armor_marker_.id = 0;
@@ -160,9 +174,12 @@ namespace rm_auto_aim
             for (auto& armor : armors)
             {
                 cv::Mat rvec, tvec;
-                //todo:要把时间改回图像时间，使用系统时间仅供调试，记得改回来！
-                bool success = pnp_solver_->solvePnP(armor, rvec, tvec, img_msg->header.stamp);
-                // bool success = pnp_solver_->solvePnP(armor, rvec, tvec, this->get_clock()->now());
+                const auto pnp_start = std::chrono::steady_clock::now();
+                const bool success = pnp_solver_->solvePnP(armor, rvec, tvec, img_msg->header.stamp);
+                pnp_ms += std::chrono::duration<float, std::milli>(
+                    std::chrono::steady_clock::now() - pnp_start).count();
+                ++pnp_count;
+
                 if (success)
                 {
                     // Fill basic info
@@ -173,13 +190,12 @@ namespace rm_auto_aim
                     armor_msg.pose.position.x = tvec.at<double>(0);
                     armor_msg.pose.position.y = tvec.at<double>(1);
                     armor_msg.pose.position.z = tvec.at<double>(2);
-                    //debug
                     armor_msg.yaw_raw = armor.yaw_raw;
                     armor_msg.yaw_best = armor.best_yaw;
-                    // rvec to 3x3 rotation matrix
+
+                    // rvec to quaternion
                     cv::Mat rotation_matrix;
                     cv::Rodrigues(rvec, rotation_matrix);
-                    // rotation matrix to quaternion
                     tf2::Matrix3x3 tf2_rotation_matrix(
                         rotation_matrix.at<double>(0, 0), rotation_matrix.at<double>(0, 1),
                         rotation_matrix.at<double>(0, 2), rotation_matrix.at<double>(1, 0),
@@ -193,7 +209,7 @@ namespace rm_auto_aim
                     // Fill the distance to image center
                     armor_msg.distance_to_image_center = pnp_solver_->calculateDistanceToCenter(armor.center);
 
-                    // Fill the markers
+                    // Fill markers
                     armor_marker_.id++;
                     armor_marker_.scale.y = armor.type == ArmorType::SMALL ? 0.135 : 0.23;
                     armor_marker_.pose = armor_msg.pose;
@@ -211,11 +227,34 @@ namespace rm_auto_aim
                 }
             }
 
-            // Publishing detected armors
             armors_pub_->publish(armors_msg_);
-
-            // Publishing marker
             publishMarkers();
+        }
+
+        // 神经网络模式的性能统计在 PnP 之后截止，debug 绘制/图像发布不计入核心链路。
+        if (neural_frame && neural_frame_succeeded_ && !traditional_ran_)
+        {
+            neural_frame_timing_.pnp_ms = pnp_ms;
+            neural_frame_timing_.pnp_count = pnp_count;
+            neural_frame_timing_.core_ms = std::chrono::duration<float, std::milli>(
+                std::chrono::steady_clock::now() - callback_start).count();
+            neural_frame_timing_.e2e_ms = static_cast<float>(
+                (this->now() - img_msg->header.stamp).seconds() * 1000.0);
+
+            const auto & nn = neural_detector_->lastTiming();
+            RCLCPP_INFO(
+                this->get_logger(),
+                "NN perf: age %.2f | bridge %.2f | pre %.2f | infer %.2f | post %.2f | "
+                "NN %.2f | PnP %.2f(%zu) | core %.2f | E2E %.2f ms",
+                neural_frame_timing_.input_age_ms, neural_frame_timing_.cv_bridge_ms,
+                nn.preprocess_ms, nn.inference_ms, nn.postprocess_ms, nn.total_ms,
+                neural_frame_timing_.pnp_ms, neural_frame_timing_.pnp_count,
+                neural_frame_timing_.core_ms, neural_frame_timing_.e2e_ms);
+
+            if (debug_)
+            {
+                publishNeuralDebugImage(img_msg, armors);
+            }
         }
     }
 
@@ -267,7 +306,7 @@ namespace rm_auto_aim
     {
         rcl_interfaces::msg::ParameterDescriptor mode_desc;
         mode_desc.description =
-            "检测模式：traditional=传统识别（默认，原有流程），neural=神经网络（深大模型）+传统融合";
+            "检测模式：traditional=传统识别（默认，原有流程），neural=纯神经网络角点输出后直接进入 PnP";
         detector_mode_str_ = declare_parameter("detector_mode", std::string("traditional"), mode_desc);
 
         rcl_interfaces::msg::ParameterDescriptor model_desc;
@@ -290,8 +329,6 @@ namespace rm_auto_aim
         neural_params_.nms_threshold =
             static_cast<float>(declare_parameter("neural_nms_threshold", 0.45, conf_desc));
         neural_params_.swap_color = declare_parameter("neural_swap_color", false);
-        neural_refine_ = declare_parameter("neural_refine_with_traditional", true);
-        neural_fallback_ = declare_parameter("neural_fallback_traditional", true);
 
         RCLCPP_INFO(
             this->get_logger(), "检测模式: %s（切到神经网络: ros2 param set %s detector_mode neural）",
@@ -357,41 +394,52 @@ namespace rm_auto_aim
 
     std::vector<Armor> ArmorDetectorNode::detectArmorsByNeural(const cv::Mat& img, bool& traditional_ran)
     {
-        // 模型用不了就直接走传统流程，保证车还能打
-        if (!ensureNeuralDetector())
+        // 这里只保留“模型不可用/运行异常”的安全退回；NN 正常但零检出时不会跑传统视觉。
+        const auto run_traditional_fallback = [this, &img, &traditional_ran]()
         {
+            detector_->binary_thres = get_parameter("binary_thres").as_int();
+            detector_->detect_color = get_parameter("detect_color").as_int();
+            detector_->classifier->threshold = get_parameter("classifier_threshold").as_double();
             traditional_ran = true;
             return detector_->detect(img);
+        };
+
+        if (!ensureNeuralDetector())
+        {
+            return run_traditional_fallback();
         }
 
         // 同步一次可以在线改的参数
-        // neural_params_.detect_color = detector_->detect_color;
-        // neural_params_.ignore_classes = get_parameter("ignore_classes").as_string_array();
-        // neural_params_.conf_threshold =
-        //     static_cast<float>(get_parameter("neural_conf_threshold").as_double());
-        // neural_params_.nms_threshold =
-        //     static_cast<float>(get_parameter("neural_nms_threshold").as_double());
-        // neural_params_.swap_color = get_parameter("neural_swap_color").as_bool();
-        // neural_detector_->setParams(neural_params_);
+        neural_params_.detect_color = detector_->detect_color;
+        neural_params_.ignore_classes = get_parameter("ignore_classes").as_string_array();
+        neural_params_.conf_threshold =
+            static_cast<float>(get_parameter("neural_conf_threshold").as_double());
+        neural_params_.nms_threshold =
+            static_cast<float>(get_parameter("neural_nms_threshold").as_double());
+        neural_params_.swap_color = get_parameter("neural_swap_color").as_bool();
+        neural_detector_->setParams(neural_params_);
 
         std::vector<Armor> armors;
+        neural_frame_succeeded_ = false;
         try
         {
-            //神经网络推理
+            // 纯神经网络检测：网络角点直接送 PnP，不再执行传统角点精修。
             armors = neural_detector_->detect(img);
+            neural_frame_succeeded_ = true;
         }
         catch (const std::exception& e)
         {
             RCLCPP_ERROR_THROTTLE(
                 this->get_logger(), *this->get_clock(), 2000, "神经网络推理异常：%s", e.what());
-            traditional_ran = true;
-            //推理失败退回传统
-            return detector_->detect(img);
+            return run_traditional_fallback();
         }
 
+        const auto & timing = neural_detector_->lastTiming();
         RCLCPP_DEBUG(
-            this->get_logger(), "神经网络: 检出 %zu 个装甲板, 推理 %.1fms", armors.size(),
-            neural_detector_->lastLatencyMs());
+            this->get_logger(),
+            "神经网络: %zu 个, pre %.2fms | infer %.2fms | post %.2fms | NN total %.2fms",
+            armors.size(), timing.preprocess_ms, timing.inference_ms, timing.postprocess_ms,
+            timing.total_ms);
 
         return armors;
     }
@@ -399,60 +447,62 @@ namespace rm_auto_aim
     std::vector<Armor> ArmorDetectorNode::detectArmors(
         const sensor_msgs::msg::Image::ConstSharedPtr& img_msg)
     {
-        // Convert ROS img to cv::Mat
-        auto img = cv_bridge::toCvShare(img_msg, "rgb8")->image;
+        const bool use_neural = neural_mode_.load();
 
-        // 录制视频
+        // ROS Image -> cv::Mat toCvShare 不复制像素；单独计时方便排查编码转换/传输问题。
+        const auto bridge_start = std::chrono::steady_clock::now();
+        auto img = cv_bridge::toCvShare(img_msg, "rgb8")->image;
+        if (use_neural)
+        {
+            neural_frame_timing_.cv_bridge_ms = std::chrono::duration<float, std::milli>(
+                std::chrono::steady_clock::now() - bridge_start).count();
+        }
+
+        // 录制视频（会占用 callback 时间，正式性能测试建议关闭 is_record）。
         if (is_record_)
         {
-            // img转换为BGR
             cv::Mat save_img;
             cv::cvtColor(img, save_img, cv::COLOR_RGB2BGR);
             video_writer_.write(save_img);
         }
 
-        // Update params
-        detector_->binary_thres = get_parameter("binary_thres").as_int();
-        detector_->detect_color = get_parameter("detect_color").as_int();
-        detector_->classifier->threshold = get_parameter("classifier_threshold").as_double();
-
-        // 两种模式都在这里分发：traditional 走原来的路，neural 走神经网络+融合
         traditional_ran_ = false;
         std::vector<Armor> armors;
-        if (neural_mode_)
+        if (use_neural)
         {
+            // 神经网络只需要阵营颜色；不再读取传统二值化/MLP 的运行参数。
+            detector_->detect_color = get_parameter("detect_color").as_int();
             armors = detectArmorsByNeural(img, traditional_ran_);
         }
         else
         {
+            // 传统视觉流程保持原样。
+            detector_->binary_thres = get_parameter("binary_thres").as_int();
+            detector_->detect_color = get_parameter("detect_color").as_int();
+            detector_->classifier->threshold = get_parameter("classifier_threshold").as_double();
             armors = detector_->detect(img);
             traditional_ran_ = true;
         }
 
-        auto final_time = this->now();
-        auto latency = (final_time - img_msg->header.stamp).seconds() * 1000;
-        RCLCPP_DEBUG_STREAM(this->get_logger(), "Latency: " << latency << "ms");
-
-        // Publish debug info
-        if (debug_)
+        // 传统模式（以及 NN 故障安全退回传统）保持原来的 debug 发布流程。
+        // 纯 NN 模式的 result_img 延迟到 PnP 完成后发布，这样才能显示完整 PnP/E2E 时间。
+        if (debug_ && (!use_neural || traditional_ran_))
         {
-            // 神经网络模式下如果这一帧没跑传统流程，二值图/灯条就不是这一帧的，不发布
-            if (traditional_ran_)
-            {
-                binary_img_pub_.publish(
-                    cv_bridge::CvImage(img_msg->header, "mono8", detector_->binary_img).toImageMsg());
+            const auto final_time = this->now();
+            const auto latency = (final_time - img_msg->header.stamp).seconds() * 1000.0;
+            RCLCPP_DEBUG_STREAM(this->get_logger(), "Latency: " << latency << "ms");
 
-                // Sort lights and armors data by x coordinate
-                std::sort(
-                    detector_->debug_lights.data.begin(), detector_->debug_lights.data.end(),
-                    [](const auto& l1, const auto& l2) { return l1.center_x < l2.center_x; });
-                std::sort(
-                    detector_->debug_armors.data.begin(), detector_->debug_armors.data.end(),
-                    [](const auto& a1, const auto& a2) { return a1.center_x < a2.center_x; });
+            binary_img_pub_.publish(
+                cv_bridge::CvImage(img_msg->header, "mono8", detector_->binary_img).toImageMsg());
 
-                lights_data_pub_->publish(detector_->debug_lights);
-                armors_data_pub_->publish(detector_->debug_armors);
-            }
+            std::sort(
+                detector_->debug_lights.data.begin(), detector_->debug_lights.data.end(),
+                [](const auto& l1, const auto& l2) { return l1.center_x < l2.center_x; });
+            std::sort(
+                detector_->debug_armors.data.begin(), detector_->debug_armors.data.end(),
+                [](const auto& a1, const auto& a2) { return a1.center_x < a2.center_x; });
+            lights_data_pub_->publish(detector_->debug_lights);
+            armors_data_pub_->publish(detector_->debug_armors);
 
             if (!armors.empty() && !armors.front().number_img.empty())
             {
@@ -461,34 +511,63 @@ namespace rm_auto_aim
                     *cv_bridge::CvImage(img_msg->header, "mono8", all_num_img).toImageMsg());
             }
 
-            // 画框：神经网络模式画 CNN 角点(黄) + 融合后角点(绿)，传统模式画原来的
-            if (neural_mode_ && neural_detector_)
-            {
-                neural_detector_->drawResults(img, armors);
-            }
-            else
-            {
-                detector_->drawResults(img);
-            }
-            // Draw camera center
+            detector_->drawResults(img);
             cv::circle(img, cam_center_, 5, cv::Scalar(255, 0, 0), 2);
-            // Draw latency
+
             std::stringstream latency_ss;
             latency_ss << "Latency: " << std::fixed << std::setprecision(2) << latency << "ms";
-            auto latency_s = latency_ss.str();
-            if (neural_mode_ && neural_detector_)
-            {
-                std::stringstream nn_ss;
-                nn_ss << "  NN: " << std::fixed << std::setprecision(1)
-                      << neural_detector_->lastLatencyMs() << "ms";
-                latency_s += nn_ss.str();
-            }
             cv::putText(
-                img, latency_s, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 255, 0), 2);
+                img, latency_ss.str(), cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 1.0,
+                cv::Scalar(0, 255, 0), 2);
             result_img_pub_.publish(cv_bridge::CvImage(img_msg->header, "rgb8", img).toImageMsg());
         }
 
         return armors;
+    }
+
+    void ArmorDetectorNode::publishNeuralDebugImage(
+        const sensor_msgs::msg::Image::ConstSharedPtr& img_msg, const std::vector<Armor>& armors)
+    {
+        if (!neural_detector_)
+        {
+            return;
+        }
+
+        // Debug 绘制使用独立副本，避免修改订阅到的共享图像数据。
+        auto debug_img = cv_bridge::toCvCopy(img_msg, "rgb8")->image;
+        neural_detector_->drawResults(debug_img, armors);
+        cv::circle(debug_img, cam_center_, 5, cv::Scalar(255, 0, 0), 2);
+
+        const auto & nn = neural_detector_->lastTiming();
+        const auto put_line = [&debug_img](const std::string& text, int y, const cv::Scalar& color)
+        {
+            cv::putText(
+                debug_img, text, cv::Point(10, y), cv::FONT_HERSHEY_SIMPLEX, 0.62,
+                color, 2, cv::LINE_AA);
+        };
+
+        std::ostringstream line1;
+        line1 << std::fixed << std::setprecision(2)
+              << "E2E " << neural_frame_timing_.e2e_ms << " ms  |  input age "
+              << neural_frame_timing_.input_age_ms << " ms  |  core "
+              << neural_frame_timing_.core_ms << " ms";
+        put_line(line1.str(), 28, cv::Scalar(0, 255, 0));
+
+        std::ostringstream line2;
+        line2 << std::fixed << std::setprecision(2)
+              << "NN total " << nn.total_ms << " ms  |  pre " << nn.preprocess_ms
+              << "  infer " << nn.inference_ms << "  post " << nn.postprocess_ms;
+        put_line(line2.str(), 54, cv::Scalar(0, 255, 255));
+
+        std::ostringstream line3;
+        line3 << std::fixed << std::setprecision(2)
+              << "cv_bridge " << neural_frame_timing_.cv_bridge_ms << " ms  |  PnP "
+              << neural_frame_timing_.pnp_ms << " ms (" << neural_frame_timing_.pnp_count
+              << " armors)";
+        put_line(line3.str(), 80, cv::Scalar(255, 255, 0));
+
+        result_img_pub_.publish(
+            cv_bridge::CvImage(img_msg->header, "rgb8", debug_img).toImageMsg());
     }
 
     void ArmorDetectorNode::createDebugPublishers()

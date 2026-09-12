@@ -11,9 +11,11 @@
 #include <chrono>
 #include <cmath>
 #include <iomanip>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <opencv2/dnn.hpp>
@@ -97,11 +99,8 @@ namespace rm_auto_aim
                 memory_info, data, bytes, shape.data(), shape.size(), type);
         }
 
-        // 用四角点造一个灯条（传统流程里灯条由 cv::minAreaRect 得到，
-        // 这里由 CNN 角点直接给出，字段含义保持一致）
-        Light makeLight(
-            const cv::Point2f& top, const cv::Point2f& bottom, int color, const cv::Point2f& cnn_top,
-            const cv::Point2f& cnn_bottom)
+        // 用网络角点造一个 Light，保持下游 Armor/PnP 数据结构不变。
+        Light makeLight(const cv::Point2f& top, const cv::Point2f& bottom, int color)
         {
             Light light;
             light.top = top;
@@ -112,9 +111,9 @@ namespace rm_auto_aim
             light.tilt_angle =
                 static_cast<float>(std::atan2(std::abs(top.x - bottom.x), std::abs(top.y - bottom.y)) / CV_PI * 180.0);
             light.color = color;
-            // pca_top / pca_bottom 在这里表示“CNN 原始角点”，微调后用来对比调试
-            light.pca_top = cnn_top;
-            light.pca_bottom = cnn_bottom;
+            // 兼容 Light 结构；神经网络模式不再做传统角点精修。
+            light.pca_top = top;
+            light.pca_bottom = bottom;
             return light;
         }
 
@@ -131,6 +130,10 @@ namespace rm_auto_aim
         ONNXTensorElementDataType input_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
         int input_w = kDefaultInputW;
         int input_h = kDefaultInputH;
+        std::vector<int64_t> tensor_shape;
+        cv::Mat resized;
+        std::vector<float> buffer_f32;
+        std::vector<Ort::Float16_t> buffer_f16;
 #else
         int unused = 0;
 #endif
@@ -173,6 +176,18 @@ namespace rm_auto_aim
                 impl_->input_w = static_cast<int>(impl_->input_shape[3]);
             }
         }
+
+        impl_->tensor_shape = {1, 3, impl_->input_h, impl_->input_w};
+        const size_t input_elements =
+            static_cast<size_t>(impl_->input_w) * static_cast<size_t>(impl_->input_h) * 3U;
+        if (impl_->input_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16)
+        {
+            impl_->buffer_f16.resize(input_elements);
+        }
+        else
+        {
+            impl_->buffer_f32.resize(input_elements);
+        }
 #else
         (void)model_path;
         throw std::runtime_error("编译时没有找到 onnxruntime，神经网络模式不可用");
@@ -193,54 +208,41 @@ namespace rm_auto_aim
     std::vector<Armor> NeuralDetector::detect(const cv::Mat& rgb_img)
     {
         std::vector<Armor> armors;
+        last_timing_ = {};
 #ifdef ARMOR_DETECTOR_WITH_ONNXRUNTIME
-        //空图像检测
         if (rgb_img.empty() || rgb_img.type() != CV_8UC3)
         {
             return armors;
         }
 
-        //模型输入尺寸
+        const auto total_start = std::chrono::steady_clock::now();
         const int input_w = impl_->input_w;
         const int input_h = impl_->input_h;
-
-        //resize 640x640
-        cv::Mat resized;
-        cv::resize(rgb_img, resized, cv::Size(input_w, input_h), 0, 0, cv::INTER_LINEAR);
-
-        //RGB -> 0~1 -> NCHW。模型输入是 fp16 就转 fp16，是 fp32 就转 fp32。
         const size_t plane = static_cast<size_t>(input_w) * static_cast<size_t>(input_h);
-        const std::vector<int64_t> shape = {1, 3, input_h, input_w};
         const bool fp16 = impl_->input_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
 
-        // 输入缓冲放在外面，保证 Run 期间一直有效
-        std::vector<float> buffer_f32;
-        std::vector<Ort::Float16_t> buffer_f16;
-        if (fp16)
-        {
-            buffer_f16.resize(plane * 3);
-        }
-        else
-        {
-            buffer_f32.resize(plane * 3);
-        }
+        // 1) Preprocess: resize + RGB uint8 -> NCHW 0~1. Reuse buffers between frames.
+        const auto preprocess_start = std::chrono::steady_clock::now();
+        cv::resize(rgb_img, impl_->resized, cv::Size(input_w, input_h), 0, 0, cv::INTER_LINEAR);
 
         for (int c = 0; c < 3; ++c)
         {
+            const size_t channel_offset = static_cast<size_t>(c) * plane;
             for (int y = 0; y < input_h; ++y)
             {
-                const uchar* row = resized.ptr<uchar>(y);
+                const uchar* row = impl_->resized.ptr<uchar>(y);
+                const size_t row_offset = channel_offset + static_cast<size_t>(y) * input_w;
                 for (int x = 0; x < input_w; ++x)
                 {
-                    const float value = static_cast<float>(row[x * 3 + c]) / 255.0F;
-                    const size_t index = static_cast<size_t>(c) * plane + static_cast<size_t>(y) * input_w + x;
+                    const float value = static_cast<float>(row[x * 3 + c]) * (1.0F / 255.0F);
+                    const size_t index = row_offset + static_cast<size_t>(x);
                     if (fp16)
                     {
-                        buffer_f16[index] = Ort::Float16_t(value);
+                        impl_->buffer_f16[index] = Ort::Float16_t(value);
                     }
                     else
                     {
-                        buffer_f32[index] = value;
+                        impl_->buffer_f32[index] = value;
                     }
                 }
             }
@@ -249,14 +251,18 @@ namespace rm_auto_aim
         auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
         Ort::Value input_tensor = fp16
                                       ? createTensor(
-                                          memory_info, buffer_f16.data(), buffer_f16.size() * sizeof(Ort::Float16_t),
-                                          shape, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16)
+                                          memory_info, impl_->buffer_f16.data(),
+                                          impl_->buffer_f16.size() * sizeof(Ort::Float16_t), impl_->tensor_shape,
+                                          ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16)
                                       : createTensor(
-                                          memory_info, buffer_f32.data(), buffer_f32.size() * sizeof(float),
-                                          shape, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+                                          memory_info, impl_->buffer_f32.data(),
+                                          impl_->buffer_f32.size() * sizeof(float), impl_->tensor_shape,
+                                          ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+        last_timing_.preprocess_ms = std::chrono::duration<float, std::milli>(
+            std::chrono::steady_clock::now() - preprocess_start).count();
 
-        //推理
-        const auto start = std::chrono::steady_clock::now();
+        // 2) ONNX Runtime inference only.
+        const auto inference_start = std::chrono::steady_clock::now();
         const char* input_names[] = {impl_->input_name.c_str()};
         const char* output_names[] = {impl_->output_name.c_str()};
         std::vector<Ort::Value> outputs;
@@ -269,10 +275,11 @@ namespace rm_auto_aim
         {
             throw std::runtime_error(std::string("神经网络推理失败: ") + error.what());
         }
-        last_latency_ms_ = std::chrono::duration<float, std::milli>(
-                std::chrono::steady_clock::now() - start)
-            .count();
+        last_timing_.inference_ms = std::chrono::duration<float, std::milli>(
+            std::chrono::steady_clock::now() - inference_start).count();
 
+        // 3) Decode + threshold + NMS + Armor construction.
+        const auto postprocess_start = std::chrono::steady_clock::now();
         const std::vector<int64_t> output_shape = outputs[0].GetTensorTypeAndShapeInfo().GetShape();
         if (output_shape.size() != 3 || output_shape[2] != kOutputCols)
         {
@@ -280,8 +287,6 @@ namespace rm_auto_aim
         }
         const int rows = static_cast<int>(output_shape[1]);
         const float* data = outputs[0].GetTensorData<float>();
-
-        // 4) 解码 + 阈值 + NMS
         const float scale_x = static_cast<float>(rgb_img.cols) / static_cast<float>(input_w);
         const float scale_y = static_cast<float>(rgb_img.rows) / static_cast<float>(input_h);
 
@@ -297,18 +302,31 @@ namespace rm_auto_aim
         std::vector<Candidate> candidates;
         std::vector<cv::Rect> boxes;
         std::vector<float> scores;
+        candidates.reserve(64);
+        boxes.reserve(64);
+        scores.reserve(64);
+
+        // sigmoid 单调，因此先在 logit 域过滤，可避免对 25200 个候选逐个调用 exp()。
+        float logit_threshold = -std::numeric_limits<float>::infinity();
+        if (params_.conf_threshold >= 1.0F)
+        {
+            logit_threshold = std::numeric_limits<float>::infinity();
+        }
+        else if (params_.conf_threshold > 0.0F)
+        {
+            logit_threshold = std::log(params_.conf_threshold / (1.0F - params_.conf_threshold));
+        }
 
         for (int row = 0; row < rows; ++row)
         {
             const float* line = data + static_cast<size_t>(row) * kOutputCols;
-
-            const float confidence = sigmoid(line[kConfCol]);
-            if (confidence < params_.conf_threshold)
+            if (line[kConfCol] < logit_threshold)
             {
                 continue;
             }
+            const float confidence = sigmoid(line[kConfCol]);
 
-            // 颜色：0 蓝 1 红 2 灰 3 紫，灰和紫（未激活/混色）直接丢掉
+            // 颜色：0 蓝 1 红 2 灰 3 紫，灰和紫（未激活/混色）直接丢掉。
             const int color_id = argmax(line + kColorCol, 4);
             if (color_id >= 2)
             {
@@ -341,50 +359,47 @@ namespace rm_auto_aim
             scores.push_back(candidate.confidence);
         }
 
-        if (candidates.empty())
+        if (!candidates.empty())
         {
-            return armors;
+            std::vector<int> kept;
+            cv::dnn::NMSBoxes(boxes, scores, params_.conf_threshold, params_.nms_threshold, kept);
+            armors.reserve(kept.size());
+
+            for (int index : kept)
+            {
+                if (index < 0 || index >= static_cast<int>(candidates.size()))
+                {
+                    continue;
+                }
+                const Candidate& candidate = candidates[index];
+                const GenreInfo& genre = kGenres[static_cast<size_t>(candidate.genre)];
+
+                if (std::find(
+                        params_.ignore_classes.begin(), params_.ignore_classes.end(),
+                        std::string(genre.number)) != params_.ignore_classes.end())
+                {
+                    continue;
+                }
+
+                Armor armor(
+                    makeLight(candidate.corners[0], candidate.corners[1], candidate.color),
+                    makeLight(candidate.corners[3], candidate.corners[2], candidate.color));
+                armor.type = genre.type;
+                armor.number = genre.number;
+                armor.confidence = candidate.confidence;
+
+                std::stringstream result_ss;
+                result_ss << armor.number << ": " << std::fixed << std::setprecision(1)
+                    << armor.confidence * 100.0F << "%";
+                armor.classfication_result = result_ss.str();
+                armors.emplace_back(std::move(armor));
+            }
         }
 
-        std::vector<int> kept;
-        cv::dnn::NMSBoxes(boxes, scores, params_.conf_threshold, params_.nms_threshold, kept);
-
-        for (int index : kept)
-        {
-            if (index < 0 || index >= static_cast<int>(candidates.size()))
-            {
-                continue;
-            }
-            const Candidate& candidate = candidates[index];
-            const GenreInfo& genre = kGenres[static_cast<size_t>(candidate.genre)];
-
-            // 类别过滤，沿用传统模式的 ignore_classes
-            if (
-                std::find(
-                    params_.ignore_classes.begin(), params_.ignore_classes.end(), std::string(genre.number)) !=
-                params_.ignore_classes.end())
-            {
-                continue;
-            }
-
-            Armor armor(
-                makeLight(
-                    candidate.corners[0], candidate.corners[1], candidate.color, candidate.corners[0],
-                    candidate.corners[1]),
-                makeLight(
-                    candidate.corners[3], candidate.corners[2], candidate.color, candidate.corners[3],
-                    candidate.corners[2]));
-            armor.type = genre.type;
-            armor.number = genre.number;
-            armor.confidence = candidate.confidence;
-
-            std::stringstream result_ss;
-            result_ss << armor.number << ": " << std::fixed << std::setprecision(1)
-                << armor.confidence * 100.0F << "%";
-            armor.classfication_result = result_ss.str();
-
-            armors.emplace_back(armor);
-        }
+        last_timing_.postprocess_ms = std::chrono::duration<float, std::milli>(
+            std::chrono::steady_clock::now() - postprocess_start).count();
+        last_timing_.total_ms = std::chrono::duration<float, std::milli>(
+            std::chrono::steady_clock::now() - total_start).count();
 #endif  // ARMOR_DETECTOR_WITH_ONNXRUNTIME
         return armors;
     }
@@ -396,150 +411,15 @@ namespace rm_auto_aim
             const auto& left = armor.left_light;
             const auto& right = armor.right_light;
 
-            // 融合后的最终角点（给 PnP 用的那四个点）
-            cv::line(img, left.top, left.bottom, cv::Scalar(0, 255, 0), 1);
-            cv::line(img, right.top, right.bottom, cv::Scalar(0, 255, 0), 1);
-            cv::line(img, left.top, right.top, cv::Scalar(0, 255, 0), 1);
-            cv::line(img, right.bottom, left.bottom, cv::Scalar(0, 255, 0), 1);
-
-            // CNN 原始角点（黄色），和绿色点离得越远说明融合起的作用越大
-            cv::circle(img, left.pca_top, 2, cv::Scalar(0, 255, 255), 1);
-            cv::circle(img, left.pca_bottom, 2, cv::Scalar(0, 255, 255), 1);
-            cv::circle(img, right.pca_top, 2, cv::Scalar(0, 255, 255), 1);
-            cv::circle(img, right.pca_bottom, 2, cv::Scalar(0, 255, 255), 1);
+            // 网络输出角点即最终交给 PnP 的角点。
+            cv::line(img, left.top, left.bottom, cv::Scalar(0, 255, 0), 2);
+            cv::line(img, right.top, right.bottom, cv::Scalar(0, 255, 0), 2);
+            cv::line(img, left.top, right.top, cv::Scalar(0, 255, 0), 2);
+            cv::line(img, right.bottom, left.bottom, cv::Scalar(0, 255, 0), 2);
 
             cv::putText(
-                img, armor.classfication_result, left.top + cv::Point2f(0, -4), cv::FONT_HERSHEY_SIMPLEX, 0.8,
-                cv::Scalar(0, 255, 255), 1);
+                img, armor.classfication_result, left.top + cv::Point2f(0, -4),
+                cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 255, 255), 1);
         }
-    }
-
-    int refineArmorCorners(
-        std::vector<Armor>& armors, const std::vector<Light>& lights, const RefineParams& params)
-    {
-        int refined_count = 0;
-        if (lights.empty())
-        {
-            return refined_count;
-        }
-
-        for (auto& armor : armors)
-        {
-            Light* sides[2] = {&armor.left_light, &armor.right_light};
-            Light backup[2] = {armor.left_light, armor.right_light};
-            cv::Point2f new_top[2];
-            cv::Point2f new_bottom[2];
-            bool refined[2] = {false, false};
-
-            for (int s = 0; s < 2; ++s)
-            {
-                const Light& cnn_light = *sides[s];
-                const cv::Point2f axis = cnn_light.bottom - cnn_light.top;
-                const float cnn_length = cv::norm(axis);
-                if (cnn_length < 1.0F)
-                {
-                    continue;
-                }
-                const float cnn_angle = cnn_light.tilt_angle;
-
-                const Light* best_light = nullptr;
-                float best_distance = 1e9F;
-                for (const auto& light : lights)
-                {
-                    if (light.length < 1.0)
-                    {
-                        continue;
-                    }
-                    const float distance = cv::norm(light.center - cnn_light.center);
-                    if (distance > params.max_center_dist * cnn_length)
-                    {
-                        continue;
-                    }
-                    const float length_ratio = static_cast<float>(
-                        light.length > cnn_length ? light.length / cnn_length : cnn_length / light.length);
-                    if (length_ratio > params.max_length_ratio)
-                    {
-                        continue;
-                    }
-                    if (std::abs(light.tilt_angle - cnn_angle) > params.max_angle_diff)
-                    {
-                        continue;
-                    }
-                    if (distance < best_distance)
-                    {
-                        best_distance = distance;
-                        best_light = &light;
-                    }
-                }
-
-                if (best_light == nullptr)
-                {
-                    continue;
-                }
-
-                // 方向对齐：传统灯条的 top/bottom 要和 CNN 的 top/bottom 在同一边，
-                // 否则说明灯条首尾反了，交换一下再用
-                const float straight = cv::norm(best_light->top - cnn_light.top) +
-                    cv::norm(best_light->bottom - cnn_light.bottom);
-                const float crossed = cv::norm(best_light->top - cnn_light.bottom) +
-                    cv::norm(best_light->bottom - cnn_light.top);
-                if (straight <= crossed)
-                {
-                    new_top[s] = best_light->top;
-                    new_bottom[s] = best_light->bottom;
-                }
-                else
-                {
-                    new_top[s] = best_light->bottom;
-                    new_bottom[s] = best_light->top;
-                }
-                refined[s] = true;
-            }
-
-            if (!refined[0] && !refined[1])
-            {
-                continue;
-            }
-
-            // 只对命中的那一侧做替换，没命中的一侧继续用 CNN 角点
-            for (int s = 0; s < 2; ++s)
-            {
-                if (!refined[s])
-                {
-                    continue;
-                }
-                sides[s]->top = new_top[s];
-                sides[s]->bottom = new_bottom[s];
-            }
-            const cv::Point2f left_center = (armor.left_light.top + armor.left_light.bottom) * 0.5F;
-            const cv::Point2f right_center = (armor.right_light.top + armor.right_light.bottom) * 0.5F;
-            const float old_width = cv::norm(backup[1].center - backup[0].center);
-            const float new_width = cv::norm(right_center - left_center);
-
-            // 微调后装甲板宽度不能离谱，超了就整体回退，防止把别的灯条配进来
-            if (
-                old_width > 1.0F &&
-                (new_width < params.min_width_ratio * old_width || new_width > params.max_width_ratio * old_width))
-            {
-                armor.left_light = backup[0];
-                armor.right_light = backup[1];
-                continue;
-            }
-
-            for (int s = 0; s < 2; ++s)
-            {
-                sides[s]->center = (sides[s]->top + sides[s]->bottom) * 0.5F;
-                sides[s]->length = cv::norm(sides[s]->top - sides[s]->bottom);
-                sides[s]->tilt_angle = static_cast<float>(
-                    std::atan2(
-                        std::abs(sides[s]->top.x - sides[s]->bottom.x),
-                        std::abs(sides[s]->top.y - sides[s]->bottom.y)) /
-                    CV_PI * 180.0);
-            }
-            armor.center = (armor.left_light.center + armor.right_light.center) * 0.5F;
-            ++refined_count;
-        }
-
-        return refined_count;
     }
 } // namespace rm_auto_aim

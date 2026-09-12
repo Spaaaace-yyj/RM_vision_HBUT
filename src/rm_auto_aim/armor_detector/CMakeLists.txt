@@ -5,6 +5,12 @@ project(armor_detector)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+## 该包包含大量逐像素预处理循环 colcon 未指定构建类型时 CMake 默认几乎不优化，
+## 会造成“ORT 推理很快、整条神经网络链路很慢”的假象
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
+
 ## By adding -Wall and -Werror, the compiler does not ignore warnings anymore,
 ## enforcing cleaner code.
 add_definitions(-Wall -Werror)

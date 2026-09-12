@@ -4,8 +4,8 @@
 
 | 模式 | 走哪条路 | 说明 |
 | --- | --- | --- |
-| `traditional`（默认） | `Detector`，二值化 + 找灯条 + PCA + 配对 + MLP 数字分类 | **原有流程一行没改**，行为和以前完全一致 |
-| `neural` | `NeuralDetector`，深大 RobotPilots 开源模型 + 传统灯条角点融合 | 新增，神经网络负责“是什么”，传统视觉负责“在哪” |
+| `traditional`（默认） | `Detector`，二值化 + 找灯条 + PCA + 配对 + MLP 数字分类 | `Detector` 算法流程保持不变，行为与原来一致 |
+| `neural` | `NeuralDetector`，深大 RobotPilots 开源模型 | 网络直接输出四角点/颜色/编号，角点直接送入 PnP，再由 PnP 做重投影 yaw 优化 |
 
 两种模式最后都输出同一种 `Armor`，所以 PnP、tracker、串口、云台这些下游**都不用改**。
 
@@ -37,8 +37,6 @@ ros2 run armor_detector armor_detector_node --ros-args -p detector_mode:=neural
     neural_model_path: ""           # 留空用 share/armor_detector/model/shenzhen-0526.onnx
     neural_conf_threshold: 0.65
     neural_nms_threshold: 0.45
-    neural_refine_with_traditional: true
-    neural_fallback_traditional: true
     neural_swap_color: false
 ```
 
@@ -50,12 +48,9 @@ ros2 run armor_detector armor_detector_node --ros-args -p detector_mode:=neural
 | `neural_model_path` | 空 → `model/shenzhen-0526.onnx` | 模型路径，换成 `0708.onnx` 也能跑（输入 dtype 自动识别） |
 | `neural_conf_threshold` | 0.65 | 置信度阈值，远距离误识别多就调高，漏检多就调低（0.5~0.6） |
 | `neural_nms_threshold` | 0.45 | NMS 的 IoU 阈值，同一个板子出多个框就调小 |
-| `neural_refine_with_traditional` | true | 是否用传统灯条 PCA 角点微调 CNN 角点（融合的关键） |
-| `neural_fallback_traditional` | true | CNN 这一帧啥也没检出时，是否整帧退回传统流程 |
 | `neural_swap_color` | false | 红蓝对调。实测 0526 模型第 9 列是蓝、第 10 列是红；实车若发现颜色反了打开这个开关 |
 
-`detect_color`（0 蓝 1 红）、`ignore_classes`、`debug`、`binary_thres` 这几个老参数在两种模式下都有效。
-神经网络模式下 `classifier_threshold` 不再参与判定（数字由网络直接给出），只影响调试信息。
+`detect_color`（0 蓝 1 红）、`ignore_classes`、`debug` 在两种模式下都有效。`binary_thres` 和 `classifier_threshold` 只属于传统视觉链路；神经网络模式的数字类别由网络直接输出。
 
 ## 3. 模型来源
 
@@ -93,20 +88,31 @@ ros2 run armor_detector armor_detector_node --ros-args -p detector_mode:=neural
 
 预处理与深大原版部署保持一致：整幅图**直接拉伸**到 640x640（不做 letterbox，实测两者精度相当，拉伸与原版一致）。
 
-## 4. 神经网络模式做了什么（融合思路）
+## 4. 神经网络模式做了什么
 
-1. **神经网络**：一帧推理给出装甲板候选 + 四个角点 + 颜色 + 编号，解决“是什么”和传统视觉难处理的误识别（灯条粘连、远处糊成一团）。
-2. **传统视觉**：同一帧照常找灯条（二值化 + PCA + 梯度找端点），拿到亚像素级的灯条端点。对每个 CNN 灯条，按中心距离 / 倾角 / 长度比找最近的同一条灯条，用它的端点替换 CNN 回归出来的角点 → PnP 更稳。
-   - 匹配阈值、装甲板宽度回退保护见 `RefineParams`，配错灯条会整体回退，不会让位姿飞掉。
-   - CNN 原始角点保留在 `light.pca_top / light.pca_bottom`，调试图像里画成**黄色**，融合后的角点画成**绿色**，一眼能看出融合起没起作用。
-3. **兜底**：CNN 这一帧一个板子都没检出时，整帧退回传统流程（含 MLP 分类），避免神经网络抖动导致丢帧。
-4. 关掉 2、3 就是“纯神经网络模式”：
-   ```bash
-   ros2 param set /armor_detector neural_refine_with_traditional false
-   ros2 param set /armor_detector neural_fallback_traditional false
-   ```
+神经网络模式现在是**纯 NN 检测链路**：
 
-调试话题和传统模式共用：`/detector/result_img`、`/detector/number_img`、`/detector/binary_img`（二值图在神经网络模式下只有跑了传统流程的那一帧才发布）、`/detector/debug_lights`、`/detector/debug_armors`。
+1. ONNX 模型直接输出装甲板候选、四角点、颜色和编号。
+2. 置信度/颜色/类别过滤后做 NMS，生成与传统流程相同的 `Armor` 数据结构。
+3. 网络输出角点**不再经过传统灯条 PCA 精修**，直接进入 `PnPSolver`。
+4. PnP 仍保留原来的 OpenCV `projectPoints` 重投影 yaw 搜索；此前试验性的快速手写投影近似已经移除。
+5. 只有模型加载失败或 ONNX Runtime 执行抛异常时，才安全退回传统识别；“NN 没检出目标就跑传统视觉”的旧策略已删除。
+
+神经网络正常运行时不会执行传统二值化、找灯条、MLP 分类，因此 `/detector/binary_img`、`/detector/debug_lights`、`/detector/debug_armors` 不会为该 NN 帧产生新内容。
+
+### Debug 图像性能信息
+
+`debug:=true` 时，`/detector/result_img` 左上角显示：
+
+- `E2E`：图像消息时间戳 → PnP 与结果发布完成；包含 ROS/相机消息等待。
+- `input age`：图像消息时间戳 → image callback 开始，用来判断是否有队列/传输积压。
+- `core`：callback 开始 → PnP 与结果发布完成，不含 debug 绘图。
+- `NN total`：神经网络 preprocess + inference + postprocess。
+- `pre / infer / post`：resize+NCHW、`Session::Run()`、解码+NMS 的分段耗时。
+- `cv_bridge`：ROS Image → `cv::Mat` 共享视图时间。
+- `PnP`：本帧所有 `solvePnP()`（含当前重投影 yaw 优化）的累计时间。
+
+因此以后不要再把单独的 `infer` 当成完整神经网络检测延迟。
 
 ## 5. 实测记录（2026-09 离线 + 话题联调）
 
@@ -137,7 +143,7 @@ cd install/armor_detector/lib/armor_detector
 ./test_neural_detector /path/armor.avi "" /tmp/out.avi
 ```
 
-输出里会同时打印 **CNN 角点** 和 **融合角点**，可以直接对比融合前后差多少像素；结果图上黄点=CNN 角点，绿框=最终交给 PnP 的角点。
+输出会打印网络角点，并统计 `pre / infer / post / NN total`；结果图绿框就是直接交给 PnP 的网络角点。
 
 ### 用实车视频看效果（一条命令，自动开看图窗口）
 
@@ -155,7 +161,7 @@ ros2 launch bringup armor_video_launch.py video_path:=red_rotate_fast.mp4 detect
 ros2 launch bringup armor_video_launch.py rqt:=false fps:=30
 ```
 
-窗口里：**绿框**=最终交给 PnP 的角点，**黄点**=CNN 原始角点，左上角文字=编号+置信度。
+窗口里：**绿框**=网络直接输出并交给 PnP 的角点；左上角除编号/置信度外，还会显示 E2E、NN 分段和 PnP 耗时。
 rqt 顶部的 topic 下拉框还能切到 `/detector/binary_img`（二值图）、`/detector/number_img`（数字小图）看中间结果。
 一边跑一边切模式（不用重启）：
 
@@ -206,6 +212,12 @@ python3 src/rm_auto_aim/armor_detector/tools/ab_compare.py
 
 ## 7. 编译说明
 
+该包在未显式指定构建类型时默认使用 `Release`，避免逐像素预处理以 `-O0` 运行。建议仍显式构建：
+
+```bash
+colcon build --packages-select armor_detector --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
+```
+
 - 推理后端是 **onnxruntime**，不额外安装：CMake 会先找本包 `third_party/onnxruntime`，找不到就复用 `buff_detector/third_party/onnxruntime`（随仓库分发的那份），也可以 `-DARMOR_ONNXRUNTIME_ROOT=/path/to/onnxruntime` 指定。
 - 万一没有 onnxruntime：包照样编译，只是 `detector_mode:=neural` 会报“编译时没有链接 onnxruntime”并退回传统识别。
 - 安装时会把 `libonnxruntime.so.1` 装到本包 `lib/` 下（RPATH `$ORIGIN`），和 `buff_detector` 各自一份，互不干扰。
@@ -215,8 +227,8 @@ python3 src/rm_auto_aim/armor_detector/tools/ab_compare.py
 - **颜色反了**：`ros2 param set /armor_detector neural_swap_color true`。
 - **远距离误识别多**：`neural_conf_threshold` 调到 0.75~0.85（深大自己的建议也是哨兵把阈值调高）；也可以按类别屏蔽，例如 `ignore_classes: ["base"]`。
 - **一个板子出好几个框**：`neural_nms_threshold` 从 0.45 调到 0.3。
-- **数字偶尔跳**（比如 3/4 之间跳）：tracker 是按 `number` 匹配的，跳变会导致重新锁定；可以先调高置信度阈值，再考虑只用神经网络给颜色、编号仍用 MLP（把 `neural_refine_with_traditional` 保持 true，编号逻辑在 `neural_detector.cpp` 的 `kGenres` 表旁边）。
-- **帧率掉**：CPU 推理 12ms 左右，肉眼无感；如果整机吃紧，可以关掉 `debug`，或把 `neural_fallback_traditional` 关掉省一次传统流程。
+- **数字偶尔跳**（比如 3/4 之间跳）：tracker 是按 `number` 匹配的，跳变会导致重新锁定；先调高置信度阈值，类别映射在 `neural_detector.cpp` 的 `kGenres`。
+- **帧率掉**：先看 debug 图中的 `input age / pre / infer / post / PnP / E2E` 分段；正式性能测试关闭 `debug` 和 `is_record`，避免绘图、图像发布和视频编码干扰。
 - **模型只在它训练过的场地最稳**：深大模型和曝光/增益强相关（官方建议低曝光、高增益），实车务必按队里的曝光重新确认阈值。
 - **rqt 窗口弹不出来，报 `Could not find Qt binding ... No module named 'PyQt5'`**：`rqt_image_view` 的 shebang 是 `/usr/bin/env python3`，而 PATH 最前面挂的不是系统 python（本机是 `~/.platformio/penv/bin/python3`），那个环境里没有 PyQt5。`armor_video_launch.py` 已经给看图进程单独把 `/usr/bin` 放到 PATH 最前面，直接用 launch 不受影响；手工起的时候写成
   `PATH=/usr/bin:$PATH ros2 run rqt_image_view rqt_image_view /detector/result_img` 即可。
