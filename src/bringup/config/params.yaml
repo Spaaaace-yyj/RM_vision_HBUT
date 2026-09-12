@@ -15,6 +15,10 @@
 /armor_detector:
   ros__parameters:
     debug: true
+    #traditional=传统识别，neural=神经网络模式
+#    detector_mode: traditional
+    detector_mode: neural
+
 
     detect_color: 0
     binary_thres: 140

@@ -109,9 +109,11 @@ namespace rm_auto_aim
             });
 
         std::string transport_ = this->declare_parameter("subscribe_compressed", false) ? "compressed" : "raw";
+        auto qos_image_sub = rmw_qos_profile_sensor_data;
+        qos_image_sub.depth = 1;
         img_sub_ = std::make_shared<image_transport::Subscriber>(image_transport::create_subscription(
             this, "/image_raw", std::bind(&ArmorDetectorNode::imageCallback, this, std::placeholders::_1),
-            transport_, rmw_qos_profile_sensor_data));
+            transport_, qos_image_sub));
 
         // 用opencv录制视频,图像类型为rgb8
         is_record_ = this->declare_parameter("is_record", false);
@@ -362,30 +364,20 @@ namespace rm_auto_aim
             return detector_->detect(img);
         }
 
-        // 传统流程这一帧也跑一遍：一是给融合提供亚像素灯条角点，
-        // 二是神经网络漏检时可以整帧退回传统结果
-        std::vector<Light> lights;
-        if (neural_refine_ || neural_fallback_)
-        {
-            auto binary_img = detector_->preprocessImage(img);
-            lights = detector_->findLights(img, binary_img, detector_->gray_img);
-            detector_->debug_armors.data.clear();
-            traditional_ran = true;
-        }
-
         // 同步一次可以在线改的参数
-        neural_params_.detect_color = detector_->detect_color;
-        neural_params_.ignore_classes = get_parameter("ignore_classes").as_string_array();
-        neural_params_.conf_threshold =
-            static_cast<float>(get_parameter("neural_conf_threshold").as_double());
-        neural_params_.nms_threshold =
-            static_cast<float>(get_parameter("neural_nms_threshold").as_double());
-        neural_params_.swap_color = get_parameter("neural_swap_color").as_bool();
-        neural_detector_->setParams(neural_params_);
+        // neural_params_.detect_color = detector_->detect_color;
+        // neural_params_.ignore_classes = get_parameter("ignore_classes").as_string_array();
+        // neural_params_.conf_threshold =
+        //     static_cast<float>(get_parameter("neural_conf_threshold").as_double());
+        // neural_params_.nms_threshold =
+        //     static_cast<float>(get_parameter("neural_nms_threshold").as_double());
+        // neural_params_.swap_color = get_parameter("neural_swap_color").as_bool();
+        // neural_detector_->setParams(neural_params_);
 
         std::vector<Armor> armors;
         try
         {
+            //神经网络推理
             armors = neural_detector_->detect(img);
         }
         catch (const std::exception& e)
@@ -393,26 +385,8 @@ namespace rm_auto_aim
             RCLCPP_ERROR_THROTTLE(
                 this->get_logger(), *this->get_clock(), 2000, "神经网络推理异常：%s", e.what());
             traditional_ran = true;
+            //推理失败退回传统
             return detector_->detect(img);
-        }
-
-        // 融合：神经网络负责“是什么”（类别、颜色、候选框），
-        // 传统视觉负责“在哪”（灯条 PCA 亚像素角点），两者取长补短
-        if (neural_refine_ && !armors.empty() && !lights.empty())
-        {
-            refineArmorCorners(armors, lights, RefineParams{});
-        }
-
-        if (armors.empty() && neural_fallback_)
-        {
-            traditional_ran = true;
-            return detector_->detect(img);
-        }
-
-        // number_img 只给 /detector/number_img 调试用，不影响识别结果
-        if (!armors.empty())
-        {
-            detector_->classifier->extractNumbers(img, armors);
         }
 
         RCLCPP_DEBUG(
