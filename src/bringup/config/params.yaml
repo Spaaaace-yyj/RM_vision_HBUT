@@ -4,7 +4,7 @@
     camera_info_url: package://bringup/config/camera_info.yaml
     camera_name: mv_camera
     frame_id: "camera_optical_frame"
-    exposure_time: 4000
+    exposure_time: 8000
     flip_image: false
     gamma: 100
     rgb_gain:
@@ -14,10 +14,10 @@
 
 /armor_detector:
   ros__parameters:
-    debug: false
+    debug: true
     #traditional=传统识别，neural=神经网络模式
-#    detector_mode: traditional
-    detector_mode: neural
+    detector_mode: traditional
+#    detector_mode: neural
 
 
     detect_color: 0

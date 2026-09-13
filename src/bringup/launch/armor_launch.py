@@ -88,6 +88,47 @@ def generate_launch_description():
         condition=IfCondition(PythonExpression(["not ", debug_mode])),
         output='screen',
     )
+    # mv_camera_detector_container = ComposableNodeContainer(
+    #     name='camera_detector_container',
+    #     namespace='',
+    #     package='rclcpp_components',
+    #     executable='component_container_mt',
+    #
+    #     arguments=[
+    #         '--ros-args',
+    #         '-p', 'thread_num:=2'
+    #     ],
+    #
+    #     composable_node_descriptions=[
+    #         ComposableNode(
+    #             package='mindvision_camera',
+    #             plugin='mindvision_camera::MVCameraNode',
+    #             name='camera_node',
+    #             condition=IfCondition(
+    #                 PythonExpression(["not ", ros_bag_mode])
+    #             ),
+    #             parameters=[
+    #                 camera_params,
+    #                 {
+    #                     'use_sensor_data_qos': True
+    #                 }
+    #             ],
+    #             extra_arguments=[
+    #                 {
+    #                     'use_intra_process_comms': True
+    #                 }
+    #             ]
+    #         ),
+    #
+    #         detector_node
+    #     ],
+    #
+    #     condition=IfCondition(
+    #         PythonExpression(["not ", debug_mode])
+    #     ),
+    #
+    #     output='screen',
+    # )
 
     video_detector_container = ComposableNodeContainer(
         name='video_detector_container',

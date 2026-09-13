@@ -5,8 +5,8 @@ project(armor_detector)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-## 该包包含大量逐像素预处理循环 colcon 未指定构建类型时 CMake 默认几乎不优化，
-## 会造成“ORT 推理很快、整条神经网络链路很慢”的假象
+## 该包包含大量逐像素预处理循环。colcon 未指定构建类型时 CMake 默认几乎不优化，
+## 会造成“ORT 推理很快、整条神经网络链路很慢”的假象。显式传 Debug/RelWithDebInfo 时仍尊重用户选择。
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
@@ -24,6 +24,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(ament_cmake_auto REQUIRED)
 find_package(OpenCV REQUIRED)
+find_package(Threads REQUIRED)
 ament_auto_find_build_dependencies()
 
 ###########################
@@ -69,7 +70,7 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
 )
 
 target_include_directories(${PROJECT_NAME} PUBLIC ${OpenCV_INCLUDE_DIRS})
-target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})
+target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS} Threads::Threads)
 
 if(ARMOR_ONNXRUNTIME_ROOT)
   target_compile_definitions(${PROJECT_NAME} PUBLIC ARMOR_DETECTOR_WITH_ONNXRUNTIME)

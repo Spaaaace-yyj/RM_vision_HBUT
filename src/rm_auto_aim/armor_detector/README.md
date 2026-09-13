@@ -38,6 +38,7 @@ ros2 run armor_detector armor_detector_node --ros-args -p detector_mode:=neural
     neural_conf_threshold: 0.65
     neural_nms_threshold: 0.45
     neural_swap_color: false
+    performance_log: true         # 每秒打印一次性能统计，debug=false 时也可看
 ```
 
 ## 2. 参数表
@@ -49,6 +50,7 @@ ros2 run armor_detector armor_detector_node --ros-args -p detector_mode:=neural
 | `neural_conf_threshold` | 0.65 | 置信度阈值，远距离误识别多就调高，漏检多就调低（0.5~0.6） |
 | `neural_nms_threshold` | 0.45 | NMS 的 IoU 阈值，同一个板子出多个框就调小 |
 | `neural_swap_color` | false | 红蓝对调。实测 0526 模型第 9 列是蓝、第 10 列是红；实车若发现颜色反了打开这个开关 |
+| `performance_log` | true | 每秒打印一次 RX age / wait / work age / 算法分段 / E2E / worker FPS / overwritten 帧数 |
 
 `detect_color`（0 蓝 1 红）、`ignore_classes`、`debug` 在两种模式下都有效。`binary_thres` 和 `classifier_threshold` 只属于传统视觉链路；神经网络模式的数字类别由网络直接输出。
 
@@ -100,19 +102,44 @@ ros2 run armor_detector armor_detector_node --ros-args -p detector_mode:=neural
 
 神经网络正常运行时不会执行传统二值化、找灯条、MLP 分类，因此 `/detector/binary_img`、`/detector/debug_lights`、`/detector/debug_armors` 不会为该 NN 帧产生新内容。
 
-### Debug 图像性能信息
+### Latest-frame 调度架构
 
-`debug:=true` 时，`/detector/result_img` 左上角显示：
+相机订阅已经从“在 ROS callback 里直接跑算法”改成**单槽位 latest-frame mailbox + 单 worker**：
 
-- `E2E`：图像消息时间戳 → PnP 与结果发布完成；包含 ROS/相机消息等待。
-- `input age`：图像消息时间戳 → image callback 开始，用来判断是否有队列/传输积压。
-- `core`：callback 开始 → PnP 与结果发布完成，不含 debug 绘图。
-- `NN total`：神经网络 preprocess + inference + postprocess。
-- `pre / infer / post`：resize+NCHW、`Session::Run()`、解码+NMS 的分段耗时。
-- `cv_bridge`：ROS Image → `cv::Mat` 共享视图时间。
-- `PnP`：本帧所有 `solvePnP()`（含当前重投影 yaw 优化）的累计时间。
+```text
+/image_raw
+    ↓
+imageCallback()            ← 只保存 shared_ptr，立即返回
+    ↓
+latest_frame_              ← 永远最多 1 帧；新帧覆盖尚未处理的旧帧
+    ↓
+processing_thread_         ← 唯一算法线程
+    ├─ traditional / neural
+    ├─ PnP + yaw 重投影优化
+    └─ 结果发布
+```
 
-因此以后不要再把单独的 `infer` 当成完整神经网络检测延迟。
+`Detector`、`NeuralDetector`、`PnPSolver` 都只在同一个 worker 中串行访问，所以算法对象内部不需要额外互斥锁。`frame_mutex_` 只保护一次 `shared_ptr`/元数据交换，不会覆盖 OpenCV、ORT 或 PnP 计算。
+
+这套结构的目标不是“处理每一帧”，而是**算法忙时主动丢掉过时帧，下一次永远处理最新可用帧**。这更符合自瞄的低延迟需求。
+
+### 性能计时
+
+`debug:=true` 时，`/detector/result_img` 左上角显示；即使 `debug:=false`，`performance_log:=true` 也会每秒在终端打印一次：
+
+- `RX age`：图像 `header.stamp` → ROS `imageCallback()` 真正收到消息。用于判断相机/ROS/DDS 输入链路延迟。
+- `wait`：本帧进入 latest-frame mailbox → worker 取走本帧。用于判断算法忙导致的等待。
+- `work age`：图像 `header.stamp` → worker 开始处理。理论上约等于 `RX age + wait`。
+- `bridge`：ROS Image → `cv::Mat` 共享视图。
+- `detect`：完整检测阶段。传统模式是传统检测总时间；NN 模式另拆 `pre / infer / post / NN total`。
+- `PnP`：本帧所有 `solvePnP()`，包含保留的 OpenCV `projectPoints` yaw 重投影搜索。
+- `pub`：装甲板结果和 marker 发布。
+- `core`：worker 开始处理 → 检测结果发布完成；不包含 debug 绘图。
+- `E2E`：图像 `header.stamp` → 检测结果发布完成。
+- `overwritten`：worker 忙时被更新帧覆盖掉的未处理帧累计数。这是**主动丢旧帧**，不是异常。
+- `FPS`：worker 实际处理帧率。
+
+因此不要再把单独的 `infer` 当成完整检测延迟，也不要把 `overwritten` 当成消息队列故障；当模型速度低于相机 FPS 时，它正是保证低延迟所需要的行为。
 
 ## 5. 实测记录（2026-09 离线 + 话题联调）
 
@@ -123,7 +150,7 @@ ros2 run armor_detector armor_detector_node --ros-args -p detector_mode:=neural
 | 本队远距离图 | `doc/截图 2026-03-10 12-57-13.png`（8mm，4~5m）蓝色 3 号：置信度 0.933 |
 | 速度 | 本机 i7-13650HX（20 线程，CPU）：单帧推理 **11.5~13ms**（引用进 640x640），整链路 FPS 还受视频源限制 |
 | 话题联调 | `video_pub` 播测试视频 + `armor_detector`：在线切 `neural` 后 `/detector/armors` 正常输出 `number: '3' / type: small` 和 PnP 位姿，切回 `traditional` 正常 |
-| 传统模式 | 代码路径未改动，两种模式下 `/detector/*` 调试话题都在 |
+| 传统模式 | 传统检测算法本身未改；调度统一改为 latest-frame worker，两种模式下 `/detector/*` 调试话题都在 |
 | 实车视频（小陀螺） | `blue_rotate_fast.mp4`（1280x1024@60，3813 帧）与 `red_rotate_fast.mp4`（3056 帧）：**每一帧都检出**，蓝 5933 个板 / 红 4758 个板，编号全部正确为 `3`，平均推理 10.9 / 11.3ms |
 | 同视频 A/B（蓝方） | 传统模式 100% 帧有检出、1.04 个/帧、处理 34FPS；神经网络模式 100% 帧有检出、**1.55 个/帧**、处理 42FPS —— 快到小陀螺转过侧面那块板时，传统配对规则会漏掉，神经网络补上了 |
 
@@ -228,7 +255,7 @@ colcon build --packages-select armor_detector --symlink-install --cmake-args -DC
 - **远距离误识别多**：`neural_conf_threshold` 调到 0.75~0.85（深大自己的建议也是哨兵把阈值调高）；也可以按类别屏蔽，例如 `ignore_classes: ["base"]`。
 - **一个板子出好几个框**：`neural_nms_threshold` 从 0.45 调到 0.3。
 - **数字偶尔跳**（比如 3/4 之间跳）：tracker 是按 `number` 匹配的，跳变会导致重新锁定；先调高置信度阈值，类别映射在 `neural_detector.cpp` 的 `kGenres`。
-- **帧率掉**：先看 debug 图中的 `input age / pre / infer / post / PnP / E2E` 分段；正式性能测试关闭 `debug` 和 `is_record`，避免绘图、图像发布和视频编码干扰。
+- **帧率掉 / 延迟高**：先看 `RX age / wait / work age / pre / infer / post / PnP / core / E2E`。如果 `RX age` 仍约 1~2ms 而 `wait` 变大，说明模型速度低于相机帧率；latest-frame 会主动覆盖旧帧。正式性能测试关闭 `debug` 和 `is_record`，但可以保留 `performance_log:=true`。
 - **模型只在它训练过的场地最稳**：深大模型和曝光/增益强相关（官方建议低曝光、高增益），实车务必按队里的曝光重新确认阈值。
 - **rqt 窗口弹不出来，报 `Could not find Qt binding ... No module named 'PyQt5'`**：`rqt_image_view` 的 shebang 是 `/usr/bin/env python3`，而 PATH 最前面挂的不是系统 python（本机是 `~/.platformio/penv/bin/python3`），那个环境里没有 PyQt5。`armor_video_launch.py` 已经给看图进程单独把 `/usr/bin` 放到 PATH 最前面，直接用 launch 不受影响；手工起的时候写成
   `PATH=/usr/bin:$PATH ros2 run rqt_image_view rqt_image_view /detector/result_img` 即可。
