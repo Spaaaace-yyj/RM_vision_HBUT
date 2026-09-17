@@ -1,26 +1,24 @@
 name: GitHub Feishu Notify
 
 on:
-  # 所有分支的 Push 都通知
   push:
     branches:
       - '**'
 
-  # PR 生命周期
-  # 故意不监听 synchronize：
-  # PR 分支的新提交本身已经会触发 push，避免重复通知
   pull_request:
     types:
       - opened
       - reopened
       - closed
 
-  # Issue 生命周期
   issues:
     types:
       - opened
       - reopened
       - closed
+
+  # 可以在 GitHub Actions 页面手动点击 Run workflow 测试
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -34,21 +32,11 @@ jobs:
     env:
       FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
 
-      # 可选：
-      # 如果飞书机器人开启了“签名校验”，
-      # 再创建 FEISHU_SECRET 即可。
-      # 没有配置时这里会是空字符串，不影响运行。
-      FEISHU_SECRET: ${{ secrets.FEISHU_SECRET }}
-
     steps:
-      - name: Build and send notification
+      - name: Build and send Feishu card
         shell: bash
         run: |
           set -euo pipefail
-
-          # ============================================================
-          # Basic information
-          # ============================================================
 
           EVENT_NAME="${GITHUB_EVENT_NAME}"
           EVENT_PATH="${GITHUB_EVENT_PATH}"
@@ -56,60 +44,76 @@ jobs:
           REPOSITORY="${GITHUB_REPOSITORY}"
           REPO_NAME="${GITHUB_REPOSITORY#*/}"
           REPO_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
-
           ACTOR="${GITHUB_ACTOR}"
 
           if [ -z "${FEISHU_WEBHOOK:-}" ]; then
-            echo "FEISHU_WEBHOOK is not configured."
+            echo "::error::Repository secret FEISHU_WEBHOOK is not configured."
             exit 1
           fi
 
-
-          # ============================================================
-          # Default card values
-          # ============================================================
-
           HEADER_TITLE=""
           HEADER_COLOR="grey"
-
           BODY=""
-
           BUTTON_TEXT="View on GitHub"
           BUTTON_URL="${REPO_URL}"
 
+          # ============================================================
+          # 手动测试
+          # ============================================================
+
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+
+            HEADER_TITLE="GitHub · Notification test"
+            HEADER_COLOR="grey"
+
+            BODY=$(printf \
+              '**%s**\n\nFeishu integration is working.\nTriggered by **%s**.' \
+              "${REPO_NAME}" \
+              "${ACTOR}"
+            )
+
+            BUTTON_TEXT="Open repository"
+            BUTTON_URL="${REPO_URL}"
 
           # ============================================================
           # Push
           # ============================================================
 
-          if [ "${EVENT_NAME}" = "push" ]; then
+          elif [ "${EVENT_NAME}" = "push" ]; then
 
-            BRANCH=$(jq -r '
-              .ref
-              | sub("^refs/heads/"; "")
-            ' "${EVENT_PATH}")
+            BRANCH=$(jq -r \
+              '.ref | sub("^refs/heads/"; "")' \
+              "${EVENT_PATH}"
+            )
 
-            PUSHER=$(jq -r '
-              .pusher.name
-              // .sender.login
-              // "unknown"
-            ' "${EVENT_PATH}")
+            PUSHER=$(jq -r \
+              '.pusher.name // .sender.login // "unknown"' \
+              "${EVENT_PATH}"
+            )
 
-            CREATED=$(jq -r '.created // false' "${EVENT_PATH}")
-            DELETED=$(jq -r '.deleted // false' "${EVENT_PATH}")
+            CREATED=$(jq -r \
+              '.created // false' \
+              "${EVENT_PATH}"
+            )
 
-            COMMIT_COUNT=$(jq '
-              (.commits // []) | length
-            ' "${EVENT_PATH}")
+            DELETED=$(jq -r \
+              '.deleted // false' \
+              "${EVENT_PATH}"
+            )
 
-            COMPARE_URL=$(jq -r '
-              .compare // empty
-            ' "${EVENT_PATH}")
+            COMMIT_COUNT=$(jq \
+              '(.commits // []) | length' \
+              "${EVENT_PATH}"
+            )
 
+            COMPARE_URL=$(jq -r \
+              '.compare // empty' \
+              "${EVENT_PATH}"
+            )
 
-            # ------------------------------------------------------------
+            # ----------------------------------------------------------
             # Branch deleted
-            # ------------------------------------------------------------
+            # ----------------------------------------------------------
 
             if [ "${DELETED}" = "true" ]; then
 
@@ -126,10 +130,9 @@ jobs:
               BUTTON_TEXT="View branches"
               BUTTON_URL="${REPO_URL}/branches"
 
-
-            # ------------------------------------------------------------
+            # ----------------------------------------------------------
             # Branch created
-            # ------------------------------------------------------------
+            # ----------------------------------------------------------
 
             elif [ "${CREATED}" = "true" ]; then
 
@@ -146,315 +149,316 @@ jobs:
               BUTTON_TEXT="View branch"
               BUTTON_URL="${REPO_URL}/tree/${BRANCH}"
 
-
-            # ------------------------------------------------------------
-            # Normal Push
-            # ------------------------------------------------------------
+            # ----------------------------------------------------------
+            # Normal push
+            # ----------------------------------------------------------
 
             else
 
               HEADER_TITLE="GitHub · Push"
               HEADER_COLOR="grey"
 
-              # 最多展示前 5 个 commit
-              COMMITS=$(jq -r '
-                (.commits // [])[:5][]
-                |
-                "`\(.id[0:7])`  \(.message | split("\n")[0])"
-              ' "${EVENT_PATH}")
+              COMMITS=$(jq -r \
+                '(.commits // [])[:5][]
+                | "`\(.id[0:7])`  \(.message | split("\n")[0])"' \
+                "${EVENT_PATH}"
+              )
 
               if [ -z "${COMMITS}" ]; then
                 COMMITS="_No commit details available._"
               fi
 
-              # 超过 5 条时显示剩余数量
               if [ "${COMMIT_COUNT}" -gt 5 ]; then
+
                 REMAINING=$((COMMIT_COUNT - 5))
 
-                COMMITS="${COMMITS}
+                COMMITS=$(printf \
+                  '%s\n\n_+ %s more commits_' \
+                  "${COMMITS}" \
+                  "${REMAINING}"
+                )
 
-  _+ ${REMAINING} more commits_"
-  fi
-  
-  # commit / commits
-  if [ "${COMMIT_COUNT}" -eq 1 ]; then
-  COMMIT_WORD="commit"
-  else
-  COMMIT_WORD="commits"
-  fi
-  
-  BODY=$(printf \
-  '**%s**\n\n`%s`\n%s pushed **%s %s**\n\n%s' \
-  "${REPO_NAME}" \
-  "${BRANCH}" \
-  "${PUSHER}" \
-  "${COMMIT_COUNT}" \
-  "${COMMIT_WORD}" \
-  "${COMMITS}"
-  )
-  
-  BUTTON_TEXT="View changes"
-  
-  if [ -n "${COMPARE_URL}" ]; then
-  BUTTON_URL="${COMPARE_URL}"
-  else
-  BUTTON_URL="${REPO_URL}/commits/${BRANCH}"
-  fi
-  
-  fi
-  
-  
-  # ============================================================
-  # Pull Request
-  # ============================================================
-  
-  elif [ "${EVENT_NAME}" = "pull_request" ]; then
-  
-  ACTION=$(jq -r '.action' "${EVENT_PATH}")
-  
-  NUMBER=$(jq -r '
-  .pull_request.number
-  ' "${EVENT_PATH}")
-  
-  TITLE=$(jq -r '
-  .pull_request.title
-  ' "${EVENT_PATH}")
-  
-  AUTHOR=$(jq -r '
-  .pull_request.user.login
-  ' "${EVENT_PATH}")
-  
-  HEAD_BRANCH=$(jq -r '
-  .pull_request.head.ref
-  ' "${EVENT_PATH}")
-  
-  BASE_BRANCH=$(jq -r '
-  .pull_request.base.ref
-  ' "${EVENT_PATH}")
-  
-  URL=$(jq -r '
-  .pull_request.html_url
-  ' "${EVENT_PATH}")
-  
-  MERGED=$(jq -r '
-  .pull_request.merged // false
-  ' "${EVENT_PATH}")
-  
-  ADDITIONS=$(jq -r '
-  .pull_request.additions // 0
-  ' "${EVENT_PATH}")
-  
-  DELETIONS=$(jq -r '
-  .pull_request.deletions // 0
-  ' "${EVENT_PATH}")
-  
-  CHANGED_FILES=$(jq -r '
-  .pull_request.changed_files // 0
-  ' "${EVENT_PATH}")
-  
-  
-  # ------------------------------------------------------------
-  # PR opened
-  # ------------------------------------------------------------
-  
-  if [ "${ACTION}" = "opened" ]; then
-  
-  HEADER_TITLE="GitHub · Pull request #${NUMBER}"
-  HEADER_COLOR="green"
-  
-  ACTION_TEXT="opened by **${AUTHOR}**"
-  
-  
-  # ------------------------------------------------------------
-  # PR reopened
-  # ------------------------------------------------------------
-  
-  elif [ "${ACTION}" = "reopened" ]; then
-  
-  HEADER_TITLE="GitHub · Pull request #${NUMBER} · Reopened"
-  HEADER_COLOR="green"
-  
-  ACTION_TEXT="reopened by **${ACTOR}**"
-  
-  
-  # ------------------------------------------------------------
-  # PR merged
-  # ------------------------------------------------------------
-  
-  elif [ "${ACTION}" = "closed" ] && [ "${MERGED}" = "true" ]; then
-  
-  HEADER_TITLE="GitHub · Pull request #${NUMBER} · Merged"
-  HEADER_COLOR="purple"
-  
-  MERGED_BY=$(jq -r '
-  .pull_request.merged_by.login
-  // .sender.login
-  // "unknown"
-  ' "${EVENT_PATH}")
-  
-  ACTION_TEXT="merged by **${MERGED_BY}**"
-  
-  
-  # ------------------------------------------------------------
-  # PR closed without merge
-  # ------------------------------------------------------------
-  
-  else
-  
-  HEADER_TITLE="GitHub · Pull request #${NUMBER} · Closed"
-  HEADER_COLOR="red"
-  
-  ACTION_TEXT="closed by **${ACTOR}**"
-  
-  fi
-  
-  
-  BODY=$(printf \
-  '**%s**\n\n`%s` → `%s`\n%s\n\n+%s  −%s  ·  %s files' \
-  "${TITLE}" \
-  "${HEAD_BRANCH}" \
-  "${BASE_BRANCH}" \
-  "${ACTION_TEXT}" \
-  "${ADDITIONS}" \
-  "${DELETIONS}" \
-  "${CHANGED_FILES}"
-  )
-  
-  BUTTON_TEXT="View pull request"
-  BUTTON_URL="${URL}"
-  
-  
-  # ============================================================
-  # Issue
-  # ============================================================
-  
-  elif [ "${EVENT_NAME}" = "issues" ]; then
-  
-  ACTION=$(jq -r '.action' "${EVENT_PATH}")
-  
-  NUMBER=$(jq -r '
-  .issue.number
-  ' "${EVENT_PATH}")
-  
-  TITLE=$(jq -r '
-  .issue.title
-  ' "${EVENT_PATH}")
-  
-  AUTHOR=$(jq -r '
-  .issue.user.login
-  ' "${EVENT_PATH}")
-  
-  URL=$(jq -r '
-  .issue.html_url
-  ' "${EVENT_PATH}")
-  
-  STATE_REASON=$(jq -r '
-  .issue.state_reason // ""
-  ' "${EVENT_PATH}")
-  
-  LABELS=$(jq -r '
-  [
-  .issue.labels[]?.name
-  ]
-  | join(" · ")
-  ' "${EVENT_PATH}")
-  
-  
-  # ------------------------------------------------------------
-  # Issue opened
-  # ------------------------------------------------------------
-  
-  if [ "${ACTION}" = "opened" ]; then
-  
-  HEADER_TITLE="GitHub · Issue #${NUMBER}"
-  HEADER_COLOR="green"
-  
-  ACTION_TEXT="opened by **${AUTHOR}**"
-  
-  
-  # ------------------------------------------------------------
-  # Issue reopened
-  # ------------------------------------------------------------
-  
-  elif [ "${ACTION}" = "reopened" ]; then
-  
-  HEADER_TITLE="GitHub · Issue #${NUMBER} · Reopened"
-  HEADER_COLOR="green"
-  
-  ACTION_TEXT="reopened by **${ACTOR}**"
-  
-  
-  # ------------------------------------------------------------
-  # Issue closed
-  # ------------------------------------------------------------
-  
-  else
-  
-  if [ "${STATE_REASON}" = "not_planned" ]; then
-  
-  HEADER_TITLE="GitHub · Issue #${NUMBER} · Not planned"
-  HEADER_COLOR="grey"
-  
-  else
-  
-  HEADER_TITLE="GitHub · Issue #${NUMBER} · Closed"
-  HEADER_COLOR="purple"
-  
-  fi
-  
-  ACTION_TEXT="closed by **${ACTOR}**"
-  
-  fi
-  
-  
-  # Labels 有内容才显示
-  if [ -n "${LABELS}" ]; then
-  
-  BODY=$(printf \
-  '**%s**\n\n%s\n\n%s' \
-  "${TITLE}" \
-  "${ACTION_TEXT}" \
-  "${LABELS}"
-  )
-  
-  else
-  
-  BODY=$(printf \
-  '**%s**\n\n%s' \
-  "${TITLE}" \
-  "${ACTION_TEXT}"
-  )
-  
-  fi
-  
-  BUTTON_TEXT="View issue"
-  BUTTON_URL="${URL}"
-  
-  
-  # ============================================================
-  # Unsupported event
-  # ============================================================
-  
-  else
+              fi
 
-echo "Unsupported event: ${EVENT_NAME}"
-  exit 0
-  
-  fi
-  
-  
-  # ============================================================
-  # Build Feishu interactive card
-  # ============================================================
-  
-  PAYLOAD=$(jq -n \
-  --arg header_title "${HEADER_TITLE}" \
-  --arg header_color "${HEADER_COLOR}" \
-  --arg body "${BODY}" \
-  --arg button_text "${BUTTON_TEXT}" \
-  --arg button_url "${BUTTON_URL}" \
-  '
-            {
+              if [ "${COMMIT_COUNT}" -eq 1 ]; then
+                COMMIT_WORD="commit"
+              else
+                COMMIT_WORD="commits"
+              fi
+
+              BODY=$(printf \
+                '**%s**\n\n`%s`\n%s pushed **%s %s**\n\n%s' \
+                "${REPO_NAME}" \
+                "${BRANCH}" \
+                "${PUSHER}" \
+                "${COMMIT_COUNT}" \
+                "${COMMIT_WORD}" \
+                "${COMMITS}"
+              )
+
+              BUTTON_TEXT="View changes"
+
+              if [ -n "${COMPARE_URL}" ]; then
+                BUTTON_URL="${COMPARE_URL}"
+              else
+                BUTTON_URL="${REPO_URL}/commits/${BRANCH}"
+              fi
+
+            fi
+
+          # ============================================================
+          # Pull Request
+          # ============================================================
+
+          elif [ "${EVENT_NAME}" = "pull_request" ]; then
+
+            ACTION=$(jq -r \
+              '.action' \
+              "${EVENT_PATH}"
+            )
+
+            NUMBER=$(jq -r \
+              '.pull_request.number' \
+              "${EVENT_PATH}"
+            )
+
+            TITLE=$(jq -r \
+              '.pull_request.title' \
+              "${EVENT_PATH}"
+            )
+
+            AUTHOR=$(jq -r \
+              '.pull_request.user.login' \
+              "${EVENT_PATH}"
+            )
+
+            HEAD_BRANCH=$(jq -r \
+              '.pull_request.head.ref' \
+              "${EVENT_PATH}"
+            )
+
+            BASE_BRANCH=$(jq -r \
+              '.pull_request.base.ref' \
+              "${EVENT_PATH}"
+            )
+
+            URL=$(jq -r \
+              '.pull_request.html_url' \
+              "${EVENT_PATH}"
+            )
+
+            MERGED=$(jq -r \
+              '.pull_request.merged // false' \
+              "${EVENT_PATH}"
+            )
+
+            ADDITIONS=$(jq -r \
+              '.pull_request.additions // 0' \
+              "${EVENT_PATH}"
+            )
+
+            DELETIONS=$(jq -r \
+              '.pull_request.deletions // 0' \
+              "${EVENT_PATH}"
+            )
+
+            CHANGED_FILES=$(jq -r \
+              '.pull_request.changed_files // 0' \
+              "${EVENT_PATH}"
+            )
+
+            # ----------------------------------------------------------
+            # Opened
+            # ----------------------------------------------------------
+
+            if [ "${ACTION}" = "opened" ]; then
+
+              HEADER_TITLE="GitHub · Pull request #${NUMBER}"
+              HEADER_COLOR="green"
+
+              ACTION_TEXT="opened by **${AUTHOR}**"
+
+            # ----------------------------------------------------------
+            # Reopened
+            # ----------------------------------------------------------
+
+            elif [ "${ACTION}" = "reopened" ]; then
+
+              HEADER_TITLE="GitHub · Pull request #${NUMBER} · Reopened"
+              HEADER_COLOR="green"
+
+              ACTION_TEXT="reopened by **${ACTOR}**"
+
+            # ----------------------------------------------------------
+            # Merged
+            # ----------------------------------------------------------
+
+            elif [ "${ACTION}" = "closed" ] && [ "${MERGED}" = "true" ]; then
+
+              HEADER_TITLE="GitHub · Pull request #${NUMBER} · Merged"
+              HEADER_COLOR="purple"
+
+              MERGED_BY=$(jq -r \
+                '.pull_request.merged_by.login // .sender.login // "unknown"' \
+                "${EVENT_PATH}"
+              )
+
+              ACTION_TEXT="merged by **${MERGED_BY}**"
+
+            # ----------------------------------------------------------
+            # Closed
+            # ----------------------------------------------------------
+
+            else
+
+              HEADER_TITLE="GitHub · Pull request #${NUMBER} · Closed"
+              HEADER_COLOR="red"
+
+              ACTION_TEXT="closed by **${ACTOR}**"
+
+            fi
+
+            BODY=$(printf \
+              '**%s**\n\n`%s` → `%s`\n%s\n\n+%s  −%s  ·  %s files' \
+              "${TITLE}" \
+              "${HEAD_BRANCH}" \
+              "${BASE_BRANCH}" \
+              "${ACTION_TEXT}" \
+              "${ADDITIONS}" \
+              "${DELETIONS}" \
+              "${CHANGED_FILES}"
+            )
+
+            BUTTON_TEXT="View pull request"
+            BUTTON_URL="${URL}"
+
+          # ============================================================
+          # Issue
+          # ============================================================
+
+          elif [ "${EVENT_NAME}" = "issues" ]; then
+
+            ACTION=$(jq -r \
+              '.action' \
+              "${EVENT_PATH}"
+            )
+
+            NUMBER=$(jq -r \
+              '.issue.number' \
+              "${EVENT_PATH}"
+            )
+
+            TITLE=$(jq -r \
+              '.issue.title' \
+              "${EVENT_PATH}"
+            )
+
+            AUTHOR=$(jq -r \
+              '.issue.user.login' \
+              "${EVENT_PATH}"
+            )
+
+            URL=$(jq -r \
+              '.issue.html_url' \
+              "${EVENT_PATH}"
+            )
+
+            STATE_REASON=$(jq -r \
+              '.issue.state_reason // ""' \
+              "${EVENT_PATH}"
+            )
+
+            LABELS=$(jq -r \
+              '[.issue.labels[]?.name]
+              | map("`" + . + "`")
+              | join("  ")' \
+              "${EVENT_PATH}"
+            )
+
+            # ----------------------------------------------------------
+            # Opened
+            # ----------------------------------------------------------
+
+            if [ "${ACTION}" = "opened" ]; then
+
+              HEADER_TITLE="GitHub · Issue #${NUMBER}"
+              HEADER_COLOR="green"
+
+              ACTION_TEXT="opened by **${AUTHOR}**"
+
+            # ----------------------------------------------------------
+            # Reopened
+            # ----------------------------------------------------------
+
+            elif [ "${ACTION}" = "reopened" ]; then
+
+              HEADER_TITLE="GitHub · Issue #${NUMBER} · Reopened"
+              HEADER_COLOR="green"
+
+              ACTION_TEXT="reopened by **${ACTOR}**"
+
+            # ----------------------------------------------------------
+            # Closed
+            # ----------------------------------------------------------
+
+            else
+
+              if [ "${STATE_REASON}" = "not_planned" ]; then
+
+                HEADER_TITLE="GitHub · Issue #${NUMBER} · Not planned"
+                HEADER_COLOR="grey"
+
+              else
+
+                HEADER_TITLE="GitHub · Issue #${NUMBER} · Closed"
+                HEADER_COLOR="purple"
+
+              fi
+
+              ACTION_TEXT="closed by **${ACTOR}**"
+
+            fi
+
+            if [ -n "${LABELS}" ]; then
+
+              BODY=$(printf \
+                '**%s**\n\n%s\n\n%s' \
+                "${TITLE}" \
+                "${ACTION_TEXT}" \
+                "${LABELS}"
+              )
+
+            else
+
+              BODY=$(printf \
+                '**%s**\n\n%s' \
+                "${TITLE}" \
+                "${ACTION_TEXT}"
+              )
+
+            fi
+
+            BUTTON_TEXT="View issue"
+            BUTTON_URL="${URL}"
+
+          else
+
+            echo "Unsupported event: ${EVENT_NAME}"
+            exit 0
+
+          fi
+
+          # ============================================================
+          # 构造飞书卡片
+          # ============================================================
+
+          PAYLOAD=$(jq -n \
+            --arg header_title "${HEADER_TITLE}" \
+            --arg header_color "${HEADER_COLOR}" \
+            --arg body "${BODY}" \
+            --arg button_text "${BUTTON_TEXT}" \
+            --arg button_url "${BUTTON_URL}" \
+            '{
               msg_type: "interactive",
 
               card: {
@@ -504,59 +508,11 @@ echo "Unsupported event: ${EVENT_NAME}"
                   }
                 ]
               }
-            }
-            '
-  )
-  
-  
-  # ============================================================
-  # Optional Feishu signature
-  #
-  # 如果没有设置 FEISHU_SECRET，这一段自动跳过。
-  # ============================================================
-  
-  if [ -n "${FEISHU_SECRET:-}" ]; then
-  
-  TIMESTAMP=$(date +%s)
-  
-  SIGN=$(python3 - "${TIMESTAMP}" "${FEISHU_SECRET}" <<'PY'
-  import sys
-  import hmac
-  import hashlib
-  import base64
-  
-  timestamp = sys.argv[1]
-  secret = sys.argv[2]
-  
-  string_to_sign = f"{timestamp}\n{secret}"
-  
-  signature = hmac.new(
-  string_to_sign.encode("utf-8"),
-  digestmod=hashlib.sha256
-  ).digest()
-  
-  print(
-  base64.b64encode(signature).decode("utf-8")
-  )
-  PY
-  )
-  
-  PAYLOAD=$(echo "${PAYLOAD}" | jq \
-  --arg timestamp "${TIMESTAMP}" \
-  --arg sign "${SIGN}" \
-  '
-  . + {
-timestamp: ($timestamp | tonumber),
-sign: $sign
-}
-  '
-            )
-
-          fi
-
+            }'
+          )
 
           # ============================================================
-          # Send
+          # 发送
           # ============================================================
 
           RESPONSE=$(curl \
@@ -569,37 +525,26 @@ sign: $sign
             "${FEISHU_WEBHOOK}"
           )
 
-
-          # ============================================================
-          # Validate Feishu response
-          #
-          # 飞书历史接口成功响应可能出现：
-          #
-          # StatusCode: 0
-          #
-          # 或：
-          #
-          # code: 0
-          #
-          # 两种都兼容。
-          # ============================================================
-
           echo "Feishu response:"
-          echo "${RESPONSE}" | jq '.' || true
-  
-  RESULT_CODE=$(echo "${RESPONSE}" | jq -r '
-  if .StatusCode? != null then
-  .StatusCode
-  elif .code? != null then
-  .code
-  else
-  0
-  end
-  ')
-  
-  if [ "${RESULT_CODE}" != "0" ]; then
-  echo "Failed to send Feishu notification."
-  exit 1
-  fi
-  
-  echo "Feishu notification sent successfully."
+          echo "${RESPONSE}" | jq '.' || echo "${RESPONSE}"
+
+          # ============================================================
+          # 检查飞书返回值
+          # ============================================================
+
+          RESULT_CODE=$(echo "${RESPONSE}" | jq -r '
+            if has("StatusCode") then
+              .StatusCode
+            elif has("code") then
+              .code
+            else
+              -1
+            end
+          ')
+
+          if [ "${RESULT_CODE}" != "0" ]; then
+            echo "::error::Feishu returned error code ${RESULT_CODE}."
+            exit 1
+          fi
+
+          echo "Feishu notification sent successfully."
