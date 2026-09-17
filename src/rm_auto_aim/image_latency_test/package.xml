@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>image_latency_test</name>
+  <version>0.0.1</version>
+  <description>Minimal ROS2 image subscriber for measuring input image age and receive FPS.</description>
+
+  <maintainer email="user@example.com">user</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>sensor_msgs</depend>
+  <depend>image_transport</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
