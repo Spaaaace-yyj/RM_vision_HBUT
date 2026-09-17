@@ -1,0 +1,162 @@
+name: Feishu GitHub Manager
+
+on:
+  push:
+
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - closed
+
+  issues:
+    types:
+      - opened
+      - reopened
+      - closed
+
+jobs:
+  notify:
+    name: Notify Feishu
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Build message and send to Feishu
+        env:
+          FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPOSITORY: ${{ github.repository }}
+
+        run: |
+          set -euo pipefail
+
+          # =========================
+          # Push
+          # =========================
+          if [ "$EVENT_NAME" = "push" ]; then
+
+            BRANCH=$(jq -r '.ref | sub("^refs/heads/"; "")' "$GITHUB_EVENT_PATH")
+            PUSHER=$(jq -r '.pusher.name // "unknown"' "$GITHUB_EVENT_PATH")
+            COMMIT_COUNT=$(jq '.commits | length' "$GITHUB_EVENT_PATH")
+            COMPARE_URL=$(jq -r '.compare // ""' "$GITHUB_EVENT_PATH")
+
+            COMMITS=$(jq -r '
+              .commits[]? |
+              "• \(.id[0:7])  \(.message | split("\n")[0])  — \(.author.name)"
+            ' "$GITHUB_EVENT_PATH" | head -10)
+
+            if [ -z "$COMMITS" ]; then
+              COMMITS="无 Commit 信息"
+            fi
+
+            TEXT=$(printf \
+            'GitHub｜🚀 新 Push\n\n仓库：%s\n分支：%s\n推送者：%s\n提交数：%s\n\n%s\n\n查看变更：%s' \
+            "$REPOSITORY" \
+            "$BRANCH" \
+            "$PUSHER" \
+            "$COMMIT_COUNT" \
+            "$COMMITS" \
+            "$COMPARE_URL")
+
+          # =========================
+          # Pull Request
+          # =========================
+          elif [ "$EVENT_NAME" = "pull_request" ]; then
+
+            ACTION=$(jq -r '.action' "$GITHUB_EVENT_PATH")
+            NUMBER=$(jq -r '.pull_request.number' "$GITHUB_EVENT_PATH")
+            TITLE=$(jq -r '.pull_request.title' "$GITHUB_EVENT_PATH")
+            USER=$(jq -r '.pull_request.user.login' "$GITHUB_EVENT_PATH")
+            URL=$(jq -r '.pull_request.html_url' "$GITHUB_EVENT_PATH")
+            HEAD=$(jq -r '.pull_request.head.ref' "$GITHUB_EVENT_PATH")
+            BASE=$(jq -r '.pull_request.base.ref' "$GITHUB_EVENT_PATH")
+            MERGED=$(jq -r '.pull_request.merged' "$GITHUB_EVENT_PATH")
+
+            if [ "$ACTION" = "opened" ]; then
+              STATUS="🆕 新 Pull Request"
+            elif [ "$ACTION" = "reopened" ]; then
+              STATUS="🔄 PR 重新打开"
+            elif [ "$ACTION" = "synchronize" ]; then
+              STATUS="📦 PR 有新的提交"
+            elif [ "$ACTION" = "closed" ] && [ "$MERGED" = "true" ]; then
+              STATUS="✅ PR 已合并"
+            elif [ "$ACTION" = "closed" ]; then
+              STATUS="❌ PR 已关闭"
+            else
+              STATUS="🔀 PR 更新"
+            fi
+
+            TEXT=$(printf \
+            'GitHub｜%s\n\n仓库：%s\nPR：#%s %s\n提交者：%s\n分支：%s → %s\n\n查看 PR：%s' \
+            "$STATUS" \
+            "$REPOSITORY" \
+            "$NUMBER" \
+            "$TITLE" \
+            "$USER" \
+            "$HEAD" \
+            "$BASE" \
+            "$URL")
+
+          # =========================
+          # Issue
+          # =========================
+          elif [ "$EVENT_NAME" = "issues" ]; then
+
+            ACTION=$(jq -r '.action' "$GITHUB_EVENT_PATH")
+            NUMBER=$(jq -r '.issue.number' "$GITHUB_EVENT_PATH")
+            TITLE=$(jq -r '.issue.title' "$GITHUB_EVENT_PATH")
+            USER=$(jq -r '.issue.user.login' "$GITHUB_EVENT_PATH")
+            URL=$(jq -r '.issue.html_url' "$GITHUB_EVENT_PATH")
+
+            if [ "$ACTION" = "opened" ]; then
+              STATUS="🐛 新 Issue"
+            elif [ "$ACTION" = "reopened" ]; then
+              STATUS="🔄 Issue 重新打开"
+            elif [ "$ACTION" = "closed" ]; then
+              STATUS="✅ Issue 已关闭"
+            else
+              STATUS="📋 Issue 更新"
+            fi
+
+            TEXT=$(printf \
+            'GitHub｜%s\n\n仓库：%s\nIssue：#%s %s\n创建者：%s\n\n查看 Issue：%s' \
+            "$STATUS" \
+            "$REPOSITORY" \
+            "$NUMBER" \
+            "$TITLE" \
+            "$USER" \
+            "$URL")
+
+          else
+            echo "Unsupported event: $EVENT_NAME"
+            exit 0
+          fi
+
+          # =========================
+          # 构造飞书 JSON
+          # =========================
+          PAYLOAD=$(jq -n \
+            --arg text "$TEXT" \
+            '{
+              msg_type: "text",
+              content: {
+                text: $text
+              }
+            }'
+          )
+
+          # =========================
+          # 发送到飞书
+          # =========================
+          curl \
+            --fail-with-body \
+            --silent \
+            --show-error \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
+            "$FEISHU_WEBHOOK"
+
+          echo
+          echo "Feishu notification sent."
