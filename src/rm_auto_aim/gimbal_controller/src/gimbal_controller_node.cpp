@@ -16,6 +16,8 @@ GimbalControllerNode::GimbalControllerNode() : Node("GimbalControllerNode")
     z_gain_ = declare_parameter("z_gain", 0.0);
     y_gain_ = declare_parameter("y_gain", 0.0);
     x_gain_ = declare_parameter("x_gain", 0.0);
+    pitch_gain_ = declare_parameter("pitch_gain", 0.0);
+    yaw_gain_ = declare_parameter("yaw_gain", 0.0);
     pitch_gain_factor_ = declare_parameter("pitch_gain_factor", 1.0);
     timestamp_offset_ = this->declare_parameter("timestamp_offset", 0.0);
     is_track_ = declare_parameter("is_track", true);
@@ -26,6 +28,51 @@ GimbalControllerNode::GimbalControllerNode() : Node("GimbalControllerNode")
     int R_K_iter = declare_parameter("R_K_iter", 50);
     coord_solver_ = std::make_unique<CoordSolver>(max_iter, stop_error, R_K_iter);
 
+    //mpc
+    mpc_horizon_ = declare_parameter("mpc.horizon", 100);
+    mpc_half_horizon_ = declare_parameter("mpc.half_horizon", 50);
+    mpc_dt_ = declare_parameter("mpc.dt", 0.01);
+    mpc_enable_ = declare_parameter("mpc.enable", true);
+
+    if (mpc_horizon_ < 4)
+    {
+        mpc_horizon_ = 100;
+    }
+    if (mpc_half_horizon_ <= 0 || mpc_half_horizon_ >= mpc_horizon_)
+    {
+        mpc_half_horizon_ = mpc_horizon_ / 2;
+    }
+
+    AxisTinyMPC::Config yaw_cfg;
+    yaw_cfg.dt = mpc_dt_;
+    yaw_cfg.horizon = mpc_horizon_;
+    yaw_cfg.output_index = mpc_half_horizon_;
+    yaw_cfg.max_acc = declare_parameter("mpc.yaw.max_acc", 200.0);
+    yaw_cfg.max_vel = declare_parameter("mpc.yaw.max_vel", 50.0);
+    yaw_cfg.q_pos = declare_parameter("mpc.yaw.q_pos", 1e6);
+    yaw_cfg.q_vel = declare_parameter("mpc.yaw.q_vel", 0.0);
+    yaw_cfg.r_acc = declare_parameter("mpc.yaw.r_acc", 1.0);
+    yaw_cfg.rho = declare_parameter("mpc.yaw.rho", 1.0);
+    yaw_cfg.max_iter = declare_parameter("mpc.yaw.max_iter", 50);
+
+    AxisTinyMPC::Config pitch_cfg;
+    pitch_cfg.dt = mpc_dt_;
+    pitch_cfg.horizon = mpc_horizon_;
+    pitch_cfg.output_index = mpc_half_horizon_;
+    pitch_cfg.max_acc = declare_parameter("mpc.pitch.max_acc", 40.0);
+    pitch_cfg.max_vel = declare_parameter("mpc.pitch.max_vel", 20.0);
+    pitch_cfg.q_pos = declare_parameter("mpc.pitch.q_pos", 9e6);
+    pitch_cfg.q_vel = declare_parameter("mpc.pitch.q_vel", 0.0);
+    pitch_cfg.r_acc = declare_parameter("mpc.pitch.r_acc", 1.0);
+    pitch_cfg.rho = declare_parameter("mpc.pitch.rho", 1.0);
+    pitch_cfg.max_iter = declare_parameter("mpc.pitch.max_iter", 10);
+
+    if (mpc_enable_)
+    {
+        yaw_mpc_ = std::make_unique<AxisTinyMPC>(yaw_cfg);
+        pitch_mpc_ = std::make_unique<AxisTinyMPC>(pitch_cfg);
+    }
+
     //哨兵扫描寻敌
     sentray_mode_ = declare_parameter("sentray_mode", false);
     pitch_scan_range_ = declare_parameter("pitch_scan_range", 20.0);
@@ -35,15 +82,189 @@ GimbalControllerNode::GimbalControllerNode() : Node("GimbalControllerNode")
 
     //subscription
     target_sub_ = this->create_subscription<auto_aim_interfaces::msg::Target>(
-      "/tracker/target", rclcpp::SensorDataQoS(), std::bind(&GimbalControllerNode::TargetCallback, this, std::placeholders::_1));
+        "/tracker/target", rclcpp::SensorDataQoS(),
+        std::bind(&GimbalControllerNode::TargetCallback, this, std::placeholders::_1));
     gimbal_feed_sub_ = this->create_subscription<auto_aim_interfaces::msg::GimbalFeed>(
-        "/gimbal_feed", rclcpp::SensorDataQoS(), std::bind(&GimbalControllerNode::GimbalFeedCallback, this, std::placeholders::_1));
+        "/gimbal_feed", rclcpp::SensorDataQoS(),
+        std::bind(&GimbalControllerNode::GimbalFeedCallback, this, std::placeholders::_1));
     //publisher
     control_pub_ = this->create_publisher<auto_aim_interfaces::msg::GimbalControl>("control/gimbal_control", 10);
     marker_array_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("debug/control_visuallize", 10);
     debug_pub_ = this->create_publisher<auto_aim_interfaces::msg::DebugController>("debug/controller", 10);
 
     RCLCPP_INFO(this->get_logger(), "Gimbal Controller Init!");
+}
+
+static double shortestAngularDistance(double from, double to)
+{
+    double diff = to - from;
+    while (diff > M_PI) diff -= 2.0 * M_PI;
+    while (diff < -M_PI) diff += 2.0 * M_PI;
+    return diff;
+}
+
+static double limitRad(double angle)
+{
+    while (angle > M_PI) angle -= 2.0 * M_PI;
+    while (angle < -M_PI) angle += 2.0 * M_PI;
+    return angle;
+}
+
+GimbalControllerNode::AimReference GimbalControllerNode::calcAimReferenceAtTime(
+    double pos_t,
+    double yaw_t,
+    double yaw,
+    double r1,
+    double r2,
+    double xc,
+    double yc,
+    double za,
+    double vx,
+    double vy,
+    double vz,
+    double dz,
+    double v_yaw,
+    size_t a_n,
+    bool apply_pitch_gain)
+{
+    AimReference ref;
+
+    if (a_n == 0)
+    {
+        return ref;
+    }
+
+    double xc_pre = xc + vx * pos_t;
+    double yc_pre = yc + vy * pos_t;
+    double za_pre = za + vz * pos_t;
+
+    double yaw_pre = yaw + v_yaw * yaw_t;
+
+    int best_index = 0;
+    double min_yaw = 2.0 * M_PI;
+    double c_yaw = std::atan2(yc_pre, xc_pre);
+
+    for (size_t i = 0; i < a_n; ++i)
+    {
+        double tmp_yaw = yaw_pre + i * (2.0 * M_PI / static_cast<double>(a_n));
+        tmp_yaw = std::fmod(tmp_yaw + 2.0 * M_PI, 2.0 * M_PI);
+
+        double delta_to_0 = std::fabs(tmp_yaw - c_yaw);
+        double delta_to_2pi = std::fabs(tmp_yaw - (c_yaw + 2.0 * M_PI));
+        double delta_to_zero = std::min(delta_to_0, delta_to_2pi);
+
+        if (delta_to_zero < min_yaw)
+        {
+            min_yaw = delta_to_zero;
+            best_index = static_cast<int>(i);
+        }
+    }
+
+    bool use_second_pair = false;
+    if (a_n == 4)
+    {
+        use_second_pair = (best_index % 2 == 1);
+    }
+
+    double r = use_second_pair ? r2 : r1;
+    double z = za_pre + (use_second_pair ? dz : 0.0);
+    double armor_yaw = yaw_pre + best_index * (2.0 * M_PI / static_cast<double>(a_n));
+
+    double x = xc_pre - r * std::cos(armor_yaw);
+    double y = yc_pre - r * std::sin(armor_yaw);
+
+    ref.yaw = -std::atan2(y, x);
+    ref.pitch = std::atan2(z, std::sqrt(x * x + y * y));
+    ref.x = x;
+    ref.y = y;
+    ref.z = z;
+    ref.armor_index = best_index;
+    ref.min_yaw = min_yaw;
+
+    if (apply_pitch_gain && is_pitch_gain_)
+    {
+        pitch_gain_factor_ = get_parameter("pitch_gain_factor").as_double();
+        coord_solver_->bullet_speed = shoot_speed_;
+        Eigen::Vector3d xyz(x, y, z);
+        double send_pitch_gain = coord_solver_->dynamicCalcPitchOffset(xyz);
+        send_pitch_gain = send_pitch_gain * M_PI / 180.0;
+        if (pitch_gain_factor_ > 10.0)
+            send_pitch_gain *= xyz.norm() * (pitch_gain_factor_ - 10.0);
+        else
+            send_pitch_gain *= pitch_gain_factor_;
+        ref.pitch += send_pitch_gain;
+        ref.pitch_gain = send_pitch_gain;
+    }
+
+    return ref;
+}
+
+bool GimbalControllerNode::buildOpenSourceStyleMpcTrajectory(
+    double pos_center_time,
+    double yaw_center_time,
+    double yaw,
+    double r1,
+    double r2,
+    double xc,
+    double yc,
+    double za,
+    double vx,
+    double vy,
+    double vz,
+    double dz,
+    double v_yaw,
+    size_t a_n,
+    std::vector<double>& yaw_ref_relative,
+    std::vector<double>& pitch_ref,
+    double& yaw0,
+    double& yaw_start_vel,
+    double& pitch_start_vel,
+    AimReference& center_ref)
+{
+    if (a_n == 0 || mpc_horizon_ <= 1 || mpc_half_horizon_ <= 0 || mpc_half_horizon_ >= mpc_horizon_)
+    {
+        return false;
+    }
+
+    std::vector<double> yaw_ref_abs;
+    yaw_ref_abs.reserve(mpc_horizon_);
+    pitch_ref.reserve(mpc_horizon_);
+    yaw_ref_relative.reserve(mpc_horizon_);
+
+    for (int i = 0; i < mpc_horizon_; ++i)
+    {
+        double pos_t = pos_center_time + (static_cast<double>(i - mpc_half_horizon_) * mpc_dt_);
+        double yaw_t = yaw_center_time + (static_cast<double>(i - mpc_half_horizon_) * mpc_dt_);
+        auto ref = calcAimReferenceAtTime(
+            pos_t, yaw_t, yaw, r1, r2, xc, yc, za, vx, vy, vz, dz, v_yaw, a_n, true);
+
+        if (i == mpc_half_horizon_)
+        {
+            center_ref = ref;
+        }
+
+        yaw_ref_abs.push_back(ref.yaw);
+        pitch_ref.push_back(ref.pitch);
+    }
+
+    yaw0 = yaw_ref_abs[mpc_half_horizon_];
+    for (int i = 0; i < mpc_horizon_; ++i)
+    {
+        yaw_ref_relative.push_back(shortestAngularDistance(yaw0, yaw_ref_abs[i]));
+    }
+
+    if (mpc_horizon_ >= 2)
+    {
+        yaw_start_vel = shortestAngularDistance(yaw_ref_relative[0], yaw_ref_relative[1]) / mpc_dt_;
+        pitch_start_vel = (pitch_ref[1] - pitch_ref[0]) / mpc_dt_;
+    }
+    else
+    {
+        yaw_start_vel = 0.0;
+        pitch_start_vel = 0.0;
+    }
+
+    return true;
 }
 
 void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::SharedPtr msg)
@@ -54,9 +275,12 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
     static int fps = 0;
     auto start_time = this->now();
 
-    if((start_time - last_time).seconds() < 1){
+    if ((start_time - last_time).seconds() < 1)
+    {
         fps_tmp++;
-    }else{
+    }
+    else
+    {
         fps = fps_tmp;
         RCLCPP_INFO(rclcpp::get_logger("lc_serial"), "Gimbal Serial update FPS: %d", fps);
         fps_tmp = 0;
@@ -71,13 +295,14 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
 
     auto_aim_interfaces::msg::GimbalControl control_msg;
 
+    //保存数据
     double yaw = msg->yaw, r1 = msg->radius_1, r2 = msg->radius_2;
     double xc = msg->position.x, yc = msg->position.y, za = msg->position.z;
     double zc = za + za / 2;
     double vx = msg->velocity.x, vy = msg->velocity.y, vz = msg->velocity.z;
     double dz = msg->dz;
     double v_yaw = msg->v_yaw;
-    double armor_witch = msg->type == "large" ? 0.225 : 0.135 ;
+    double armor_witch = msg->type == "large" ? 0.225 : 0.135;
     size_t a_n = msg->armors_num;
     // if (!msg->tracking) lock_armor_idx_ = -1;
 
@@ -88,6 +313,7 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
         y_gain_ = get_parameter("y_gain").as_double();
         x_gain_ = get_parameter("x_gain").as_double();
 
+        //静态补偿
         za += z_gain_;
         yc += y_gain_;
         xc += x_gain_;
@@ -116,14 +342,18 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
         std::vector<geometry_msgs::msg::Point> points_a;
         geometry_msgs::msg::Point p_a;
         double r = 0;
-        for (size_t i = 0; i < a_n; i++) {
+        for (size_t i = 0; i < a_n; i++)
+        {
             double tmp_yaw = yaw + i * (2 * M_PI / a_n);
             // Only 4 armors has 2 radius and height
-            if (a_n == 4) {
+            if (a_n == 4)
+            {
                 r = is_current_pair ? r1 : r2;
                 p_a.z = za + (is_current_pair ? 0 : dz);
                 is_current_pair = !is_current_pair;
-            } else {
+            }
+            else
+            {
                 r = r1;
                 p_a.z = za;
             }
@@ -134,11 +364,28 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
 
         // 子弹飞行速度为, 发单延迟为 0.1s
         shoot_speed_ = get_parameter("shoot_speed").as_double();
+        //todo:发射延迟是不是不应该用于补偿打击提前量的时间，而是控制开火区间，因为子弹可以看作是水流
         shoot_delay_ = get_parameter("shoot_delay").as_double();
         shoot_delay_spin_ = get_parameter("shoot_delay_spin_").as_double();
 
-        // 子弹飞行时间加上发单延迟
-        double delay_translation = shoot_delay_ + sqrt(xc*xc + yc*yc + zc*zc) / shoot_speed_;
+        //todo:英雄的弹道解算是不是应该考虑空气摩擦？
+        //抛物线弹道解算，忽略空气摩擦
+        BulletPitchResult bullet_pitch_result = calcBallisticPitch(shoot_speed_,
+                                    std::sqrt(point_c.x * point_c.x + point_c.y * point_c.y) - r1, point_c.z);
+
+        //求解失败退化到直线
+        if (!bullet_pitch_result.success)
+        {
+
+            bullet_pitch_result.fly_time = std::sqrt(xc * xc + yc * yc) / shoot_speed_;
+            RCLCPP_WARN(this->get_logger(), "bullet cal faild");
+        }else
+        {
+            // RCLCPP_INFO(this->get_logger(), "bullet_pitch = %f, fly_time = %f", bullet_pitch_result.pitch, bullet_pitch_result.fly_time);
+        }
+
+        // 子弹飞行时间加上发单延迟和云台延迟
+        double delay_translation = shoot_delay_ + bullet_pitch_result.fly_time;
 
         // 整车预测坐标
         geometry_msgs::msg::Point point_c_pre;
@@ -146,23 +393,26 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
         point_c_pre.y = point_c.y + velocity_c.y * delay_translation;
         point_c_pre.z = point_c.z + velocity_c.z * delay_translation;
 
-        // 整车角度预测
-        // TODO: 角度预测时间要短些
-        double delay_spin = shoot_delay_spin_ + sqrt(xc*xc + yc*yc + zc*zc) / shoot_speed_;
+        // 整车角度预测，子弹飞行时间加上发单延迟
+        double delay_spin = shoot_delay_spin_ + bullet_pitch_result.fly_time;
         double yaw_pre = yaw + angular_v_c.z * delay_spin;
 
         //装甲板坐标预测
         is_current_pair = true;
         std::vector<geometry_msgs::msg::Point> points_a_pre;
         r = 0;
-        for (size_t i = 0; i < a_n; i++) {
+        for (size_t i = 0; i < a_n; i++)
+        {
             double tmp_yaw = yaw_pre + i * (2 * M_PI / a_n);
             // Only 4 armors has 2 radius and height
-            if (a_n == 4) {
+            if (a_n == 4)
+            {
                 r = is_current_pair ? r1 : r2;
                 p_a.z = za + (is_current_pair ? 0 : dz);
                 is_current_pair = !is_current_pair;
-            } else {
+            }
+            else
+            {
                 r = r1;
                 p_a.z = za;
             }
@@ -232,68 +482,210 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
         //击打装甲板的世界坐标
         double x, y, z;
 
-        if(is_track_){
+        if (is_track_)
+        {
             x = points_a_pre[index].x;
             y = points_a_pre[index].y;
             z = points_a_pre[index].z;
-        }else{
+        }
+        else
+        {
             x = points_a[index].x;
             y = points_a[index].y;
             z = points_a[index].z;
         }
 
+        auto_aim_interfaces::msg::DebugController debug_msg;
         // 计算需要击打的装甲板的云台姿态
-        send_pitch = atan2(z, sqrt(x * x + y * y));
+        //pitch不用预测的点，速度噪声会导致预测点的高度出现跳跃
+        BulletPitchResult bullet_pitch_send = calcBallisticPitch(shoot_speed_,
+                                    std::sqrt(points_a[index].x * points_a[index].x + points_a[index].y * points_a[index].y), points_a[index].z);
+        if (bullet_pitch_send.success && is_pitch_gain_)
+        {
+            send_pitch = bullet_pitch_send.pitch;
+        }else
+        {
+            send_pitch = atan2(points_a[index].z, sqrt(points_a[index].x * points_a[index].x + points_a[index].y * points_a[index].y));
+        }
         send_yaw = -atan2(y, x);
         send_is_fire = 0;
+        pitch_ref_ = send_pitch;
+        yaw_ref_ = send_yaw;
 
-        auto_aim_interfaces::msg::DebugController debug_msg;
-        debug_msg.send_pitch = send_pitch;
+        bool mpc_used = false;
+        AimReference center_ref;
+        std::vector<double> yaw_ref_relative;
+        std::vector<double> pitch_ref;
+        double yaw0 = send_yaw;
+        double yaw_start_vel = 0.0;
+        double pitch_start_vel = 0.0;
+
+        double mpc_yaw_center_time = is_track_ ? delay_spin : 0.0;
+        double mpc_pos_center_time = is_track_ ? delay_translation : 0.0;
+        bool trajectory_ready = buildOpenSourceStyleMpcTrajectory(
+            mpc_pos_center_time,
+            mpc_yaw_center_time,
+            yaw,
+            r1,
+            r2,
+            point_c_pre.x,
+            point_c_pre.y,
+            point_c_pre.z,
+            vx,
+            vy,
+            vz,
+            dz,
+            v_yaw,
+            a_n,
+            yaw_ref_relative,
+            pitch_ref,
+            yaw0,
+            yaw_start_vel,
+            pitch_start_vel,
+            center_ref);
+
+        if (trajectory_ready)
+        {
+            x = center_ref.x;
+            y = center_ref.y;
+            z = center_ref.z;
+            index = center_ref.armor_index;
+            min_yaw = center_ref.min_yaw;
+            send_yaw = center_ref.yaw;
+            send_pitch = center_ref.pitch;
+        }
+
+        if (trajectory_ready &&
+            static_cast<int>(yaw_ref_relative.size()) > mpc_half_horizon_ &&
+            static_cast<int>(pitch_ref.size()) > mpc_half_horizon_)
+        {
+            debug_msg.yaw_ref = limitRad(yaw_ref_relative[mpc_half_horizon_] + yaw0);
+            debug_msg.pitch_ref = pitch_ref[mpc_half_horizon_];
+        }
+        else
+        {
+            debug_msg.yaw_ref = send_yaw;
+            debug_msg.pitch_ref = send_pitch;
+        }
+
+        if (mpc_enable_ && yaw_mpc_ && pitch_mpc_ && trajectory_ready &&
+            static_cast<int>(yaw_ref_relative.size()) >= mpc_horizon_ &&
+            static_cast<int>(pitch_ref.size()) >= mpc_horizon_)
+        {
+            auto clampFinite = [](double v, double limit) {
+                if (!std::isfinite(v)) {
+                    return 0.0;
+                }
+                return std::clamp(v, -limit, limit);
+            };
+
+            double safe_yaw_start_vel = clampFinite(yaw_start_vel, 6.0);
+            double safe_pitch_start_vel = clampFinite(pitch_start_vel, 4.0);
+            auto yaw_cmd = yaw_mpc_->solve(yaw_ref_relative[0], safe_yaw_start_vel, yaw_ref_relative);
+            auto pitch_cmd = pitch_mpc_->solve(pitch_ref[0], pitch_start_vel, pitch_ref);
+
+            if (yaw_cmd.success)
+            {
+                send_yaw = limitRad(yaw_cmd.pos + yaw0);
+                mpc_used = true;
+                debug_msg.yaw_vel = yaw_cmd.vel;
+                debug_msg.yaw_acc = yaw_cmd.acc;
+                control_msg.yaw_vel_speed = static_cast<float>(yaw_cmd.vel);
+                control_msg.yaw_acc = static_cast<float>(yaw_cmd.acc);
+                RCLCPP_DEBUG(
+                    this->get_logger(),
+                    "[MPC yaw] yaw_pos = %f, yaw_vel = %f, yaw_acc = %f",
+                    yaw_cmd.pos, yaw_cmd.vel, yaw_cmd.acc);
+            }
+
+            else
+            {
+                RCLCPP_WARN_THROTTLE(
+                    this->get_logger(),
+                    *this->get_clock(),
+                    500,
+                    "[MPC SOLVE FAILED] yaw_success=%d pitch_success=%d yaw0=%.4f yaw_start_vel=%.4f pitch0=%.4f pitch_start_vel=%.4f yaw_ref0=%.4f yaw_ref_mid=%.4f yaw_ref_last=%.4f",
+                    yaw_cmd.success,
+                    pitch_cmd.success,
+                    yaw0,
+                    yaw_start_vel,
+                    pitch_ref.empty() ? 0.0 : pitch_ref[0],
+                    pitch_start_vel,
+                    yaw_ref_relative.empty() ? 0.0 : yaw_ref_relative[0],
+                    yaw_ref_relative.size() > static_cast<size_t>(mpc_half_horizon_) ? yaw_ref_relative[mpc_half_horizon_] : 0.0,
+                    yaw_ref_relative.empty() ? 0.0 : yaw_ref_relative.back());
+            }
+        }else
+        {
+            RCLCPP_WARN_THROTTLE(
+                this->get_logger(),
+                *this->get_clock(),
+                500,
+                "[MPC SKIP] enable=%d yaw_mpc=%d pitch_mpc=%d trajectory_ready=%d yaw_size=%ld pitch_size=%ld horizon=%d",
+                mpc_enable_,
+                static_cast<bool>(yaw_mpc_),
+                static_cast<bool>(pitch_mpc_),
+                trajectory_ready,
+                yaw_ref_relative.size(),
+                pitch_ref.size(),
+                mpc_horizon_);
+        }
+
+        debug_msg.pitch_send = send_pitch;
+        debug_msg.yaw_send = send_yaw;
         debug_msg.armor_x = x;
         debug_msg.armor_y = y;
         debug_msg.armor_z = z;
-        // 对抬枪角度进行增益
-        if(is_pitch_gain_){
-            pitch_gain_factor_ = get_parameter("pitch_gain_factor").as_double();
-            coord_solver_->bullet_speed = shoot_speed_;
-            Eigen::Vector3d xyz(x, y, z);
-            double send_pitch_gain = coord_solver_->dynamicCalcPitchOffset(xyz);
-            send_pitch_gain = send_pitch_gain * M_PI / 180.0;
-            debug_msg.send_pitch_gain = send_pitch_gain;
-            if(pitch_gain_factor_ > 10.0)
-                send_pitch_gain *= xyz.norm() * (pitch_gain_factor_ - 10.0);
-            else
-                send_pitch_gain *= pitch_gain_factor_;
-            send_pitch += send_pitch_gain;
-        }
 
-        debug_pub_->publish(debug_msg);
+        // 对抬枪角度进行增益
+        // if (is_pitch_gain_)
+        // {
+        //     pitch_gain_factor_ = get_parameter("pitch_gain_factor").as_double();
+        //     coord_solver_->bullet_speed = shoot_speed_;
+        //     Eigen::Vector3d xyz(x, y, z);
+        //     double send_pitch_gain = coord_solver_->dynamicCalcPitchOffset(xyz);
+        //     send_pitch_gain = send_pitch_gain * M_PI / 180.0;
+        //     debug_msg.send_pitch_gain = send_pitch_gain;
+        //     if (pitch_gain_factor_ > 10.0)
+        //         send_pitch_gain *= xyz.norm() * (pitch_gain_factor_ - 10.0);
+        //     else
+        //         send_pitch_gain *= pitch_gain_factor_;
+        //     send_pitch += send_pitch_gain;
+        // }
+
 
         //开火控制
         Eigen::Vector3d xyz(x, y, z);
         //装甲板尺寸内
-        double shoot_diff = atan((armor_witch/2) / xyz.norm());
-        RCLCPP_DEBUG(rclcpp::get_logger("lc_serial"), "SerialDriver shoot_diff: %f", shoot_diff);
+        double shoot_diff = atan((armor_witch / 2) / xyz.norm());
+        debug_msg.target_yaw2real_error = std::fabs(yaw_ref_ - gimbal_yaw_);
         static int loss_cnt = 0;
         //如果云台yaw、pitch与当前目标yaw、pitch的差值小于阈值，则认为云台已经对准目标，可以进行射击
-        if( std::fabs(send_yaw - gimbal_yaw_) < fire_angle_threshold_ * shoot_diff &&
-            std::fabs(send_pitch - gimbal_pitch_) < fire_angle_threshold_ * shoot_diff)
+        if (std::fabs(yaw_ref_ - gimbal_yaw_) < fire_angle_threshold_ * shoot_diff
+            // std::fabs(pitch_ref_ - gimbal_pitch_) < fire_angle_threshold_ * shoot_diff
+            )
         {
             send_is_fire = 1.0;
             loss_cnt = 0;
-        }else
+        }
+        else
         {
-            loss_cnt ++;
-            if(loss_cnt > 0)
+            loss_cnt++;
+            if (loss_cnt > 0)
                 send_is_fire = 0.0;
             else
                 send_is_fire = 1.0;
         }
+        debug_pub_->publish(debug_msg);
+        //todo:写死
+        // RCLCPP_INFO(this->get_logger(), "yaw_deff = %f", std::fabs(yaw_ref_ - gimbal_yaw_));
+
         //开火窗口范围，max_move_yaw_单位度，只有在窗口内的装甲板才开火
         //TODO：是不是可以当超出窗口的时候直接去追下一个装甲板，而不是只不开火
         max_move_yaw_ = get_parameter("max_move_yaw").as_double();
-        if(min_yaw > max_move_yaw_ * M_PI / 180){
-            RCLCPP_WARN(rclcpp::get_logger("lc_serial"), "No optimal armor, now min yaw: %f", min_yaw * 180 / M_PI);
+        if (min_yaw > max_move_yaw_ * M_PI / 180)
+        {
+            // RCLCPP_WARN(rclcpp::get_logger("lc_serial"), "No optimal armor, now min yaw: %f", min_yaw * 180 / M_PI);
             send_is_fire = 0.0;
         }
         control_msg.is_fire = send_is_fire;
@@ -306,14 +698,14 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
 
         visualization_msgs::msg::Marker shoot_point_marker;
         shoot_point_marker.header.frame_id = "odom";
-        shoot_point_marker.header.stamp = now();
+        shoot_point_marker.header.stamp = msg->header.stamp;
         shoot_point_marker.ns = "shoot_point";
         shoot_point_marker.id = 0;
         shoot_point_marker.type = visualization_msgs::msg::Marker::SPHERE;
         shoot_point_marker.action = visualization_msgs::msg::Marker::ADD;
-        shoot_point_marker.pose.position.x = points_a_pre[index].x;
-        shoot_point_marker.pose.position.y = points_a_pre[index].y;
-        shoot_point_marker.pose.position.z = points_a_pre[index].z;
+        shoot_point_marker.pose.position.x = x;
+        shoot_point_marker.pose.position.y = y;
+        shoot_point_marker.pose.position.z = z;
         shoot_point_marker.scale.x = 0.1;
         shoot_point_marker.scale.y = 0.1;
         shoot_point_marker.scale.z = 0.1;
@@ -325,7 +717,7 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
 
         visualization_msgs::msg::Marker target_armor_marker;
         target_armor_marker.header.frame_id = "odom";
-        target_armor_marker.header.stamp = now();
+        target_armor_marker.header.stamp = msg->header.stamp;
         target_armor_marker.ns = "target_point";
         target_armor_marker.id = 0;
         target_armor_marker.type = visualization_msgs::msg::Marker::SPHERE;
@@ -344,7 +736,7 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
 
         visualization_msgs::msg::Marker yaw_marker;
         yaw_marker.header.frame_id = "odom";
-        yaw_marker.header.stamp = now();
+        yaw_marker.header.stamp = msg->header.stamp;
         yaw_marker.ns = "bullet_path";
         yaw_marker.id = 0;
         yaw_marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
@@ -357,7 +749,9 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
         yaw_marker.color.b = 0.5;
         yaw_marker.color.a = 0.9;
         geometry_msgs::msg::Point p0;
-        p0.x = 0; p0.y = 0; p0.z = 0;
+        p0.x = 0;
+        p0.y = 0;
+        p0.z = 0;
         geometry_msgs::msg::Point pa;
         pa.x = points_a[index].x;
         pa.y = points_a[index].y;
@@ -374,18 +768,20 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
         yaw_marker.color.a = 0.9;
         yaw_marker.points.clear();
         yaw_marker.points.push_back(point_c);
-        pa.x = points_a_pre[index].x;
-        pa.y = points_a_pre[index].y;
-        pa.z = points_a_pre[index].z;
+        pa.x = x;
+        pa.y = y;
+        pa.z = z;
         yaw_marker.points.push_back(pa);
         markers.markers.push_back(yaw_marker);
         marker_array_pub_->publish(markers);
         lost_time = this->now();
-    }else
+    }
+    else
     {
         double dt = (lost_time - this->now()).seconds();
         control_msg.tracing = 0.0;
-        if (sentray_mode_){
+        if (sentray_mode_)
+        {
             control_msg.is_fire = 0;
             control_msg.pitch = pitch_scanner_->getValue() + (-5.0 * (M_PI / 180.0));
             control_msg.yaw = send_yaw + yaw_scan_speed_ * (M_PI / 180.0) * dt;
@@ -406,7 +802,8 @@ void GimbalControllerNode::GimbalFeedCallback(auto_aim_interfaces::msg::GimbalFe
     gimbal_pitch_ = msg->pitch;
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv)
+{
     rclcpp::init(argc, argv);
     auto node = std::make_shared<GimbalControllerNode>();
     rclcpp::spin(node);

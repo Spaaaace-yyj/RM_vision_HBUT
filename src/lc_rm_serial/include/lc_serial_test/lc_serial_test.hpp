@@ -37,6 +37,9 @@ typedef struct
 	float v_x;
 	float v_y;
 	float w;
+	float nav_state;
+	float yaw_speed;
+	float yaw_acc;
 } Vision_Send_s;
 
 typedef struct
@@ -44,6 +47,8 @@ typedef struct
 	float yaw;
 	float pitch;
     float row;
+	float game_state;
+	float robot_hp;
 } Vision_Recv_s;
 
 class LcSerialTestNode : public rclcpp::Node

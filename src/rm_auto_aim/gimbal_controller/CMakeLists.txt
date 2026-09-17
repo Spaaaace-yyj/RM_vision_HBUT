@@ -12,6 +12,7 @@ find_package(Eigen3 REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(auto_aim_interfaces REQUIRED)
+add_subdirectory(third_party/TinyMPC)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -34,6 +35,15 @@ ament_target_dependencies(gimbal_controller
         auto_aim_interfaces
 )
 
+target_include_directories(gimbal_controller PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/TinyMPC/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/TinyMPC/include/Eigen
+)
+
+target_link_libraries(gimbal_controller
+        tinympcstatic
+)
 install(TARGETS
         gimbal_controller
         DESTINATION lib/${PROJECT_NAME}
