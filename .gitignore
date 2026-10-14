@@ -5,3 +5,8 @@ site/*
 Camera/*
 **/video/*.mp4
 **/video/*.avi
+
+# IDE
+.idea/
+cmake-build-*/
+compile_commands.json

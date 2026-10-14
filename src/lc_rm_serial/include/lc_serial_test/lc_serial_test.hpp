@@ -1,6 +1,8 @@
-#ifndef LC_SERTAL_TEST_HPP
+#ifndef LC_SERIAL_TEST_HPP
 #define LC_SERIAL_TEST_HPP
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <thread>
@@ -8,7 +10,7 @@
 #include <iomanip>
 #include <iostream>
 //USER
-#include "serial_process.hpp"
+#include "lc_serial_test/serial_process.hpp"
 
 // ROS2
 #include <rclcpp/rclcpp.hpp>
@@ -78,14 +80,8 @@ private:
     std::vector<uint8_t> buffer;
 
 
-    Vision_Recv_s recv_data;
-	Vision_Send_s send_data = {
-		.pitch = 0.0,
-		.yaw = 0.0,
-		.v_x = 0.0,
-		.v_y = 0.0,
-		.w = 0.0,
-	};
+    Vision_Recv_s recv_data{};
+	Vision_Send_s send_data{};
 
 private:
 	//subscription
@@ -95,13 +91,11 @@ private:
 	rclcpp::Publisher<auto_aim_interfaces::msg::GimbalFeed>::SharedPtr gimbal_feed_pub_;
 	rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
 
-	geometry_msgs::msg::Twist latest_cmd_vel_;
-
 private:
   	rclcpp::TimerBase::SharedPtr serial_timer_;
 
-    std::unique_ptr<IoContext> owned_ctx_;
-    std::string device_name_;
+    std::unique_ptr<drivers::common::IoContext> owned_ctx_;
+    std::string device_name_{"/dev/ttyACM0"};
     std::unique_ptr<drivers::serial_driver::SerialPortConfig> device_config_;
     std::unique_ptr<drivers::serial_driver::SerialDriver> serial_driver_;
 
@@ -116,4 +110,4 @@ private:
 	bool recv_tf_reverse_yaw = false;
 };
 
-#endif
+#endif  // LC_SERIAL_TEST_HPP
