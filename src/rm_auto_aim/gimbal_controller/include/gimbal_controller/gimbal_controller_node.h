@@ -19,6 +19,9 @@
 #include "auto_aim_interfaces/msg/target.hpp"
 #include "auto_aim_interfaces/msg/debug_controller.hpp"
 #include "auto_aim_interfaces/msg/gimbal_feed.hpp"
+//mujoco sim msg interface
+#include "std_msgs/msg/float64.hpp"
+#include "std_msgs/msg/bool.hpp"
 
 #include "coordsolver.h"
 #include "sinScanner.h"
@@ -140,6 +143,10 @@ private:
 
     void GimbalFeedCallback(auto_aim_interfaces::msg::GimbalFeed::SharedPtr msg);
 
+    void SimGimbalPitchCallback(std_msgs::msg::Float64::SharedPtr msg);
+
+    void SimGimbalYawCallback(std_msgs::msg::Float64::SharedPtr msg);
+
     AimReference calcAimReferenceAtTime(
         double pos_t,
         double yaw_t,
@@ -186,6 +193,13 @@ private:
     rclcpp::Publisher<auto_aim_interfaces::msg::GimbalControl>::SharedPtr control_pub_;
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_array_pub_;
     rclcpp::Publisher<auto_aim_interfaces::msg::DebugController>::SharedPtr debug_pub_;
+
+    //mujoco sim interface sub/pub
+    rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr sim_gimbal_pitch_pub_;
+    rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr sim_gimbal_yaw_pub_;
+    rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr sim_fire_pub_;
+    rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr sim_gimbal_pitch_sub_;
+    rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr sim_gimbal_yaw_sub_;
 
     //弹道解算器
     std::unique_ptr<CoordSolver> coord_solver_;
@@ -241,6 +255,8 @@ private:
 
     double pitch_ref_ = 0;
     double yaw_ref_ = 0;
+
+    bool use_sim_interface_ = false;
 };
 
 #endif //BUILD_GIMBAL_CONTROLLER_NODE_H

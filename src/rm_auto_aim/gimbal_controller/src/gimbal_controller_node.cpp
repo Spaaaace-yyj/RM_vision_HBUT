@@ -34,6 +34,8 @@ GimbalControllerNode::GimbalControllerNode() : Node("GimbalControllerNode")
     mpc_dt_ = declare_parameter("mpc.dt", 0.01);
     mpc_enable_ = declare_parameter("mpc.enable", true);
 
+    use_sim_interface_ = declare_parameter("use_sim_interface", false);
+
     if (mpc_horizon_ < 4)
     {
         mpc_horizon_ = 100;
@@ -87,11 +89,19 @@ GimbalControllerNode::GimbalControllerNode() : Node("GimbalControllerNode")
     gimbal_feed_sub_ = this->create_subscription<auto_aim_interfaces::msg::GimbalFeed>(
         "/gimbal_feed", rclcpp::SensorDataQoS(),
         std::bind(&GimbalControllerNode::GimbalFeedCallback, this, std::placeholders::_1));
+    sim_gimbal_pitch_sub_ = this->create_subscription<std_msgs::msg::Float64>(
+        "/gimbal/pitch", rclcpp::SensorDataQoS(),
+        std::bind(&GimbalControllerNode::SimGimbalPitchCallback, this, std::placeholders::_1));
+    sim_gimbal_yaw_sub_ = this->create_subscription<std_msgs::msg::Float64>(
+        "/gimbal/yaw", rclcpp::SensorDataQoS(),
+        std::bind(&GimbalControllerNode::SimGimbalYawCallback, this, std::placeholders::_1));
     //publisher
     control_pub_ = this->create_publisher<auto_aim_interfaces::msg::GimbalControl>("control/gimbal_control", 10);
     marker_array_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("debug/control_visuallize", 10);
     debug_pub_ = this->create_publisher<auto_aim_interfaces::msg::DebugController>("debug/controller", 10);
-
+    sim_gimbal_pitch_pub_ = this->create_publisher<std_msgs::msg::Float64>("/gimbal/target_pitch", 10); //mujoco sim topic
+    sim_gimbal_yaw_pub_ = this->create_publisher<std_msgs::msg::Float64>("/gimbal/target_yaw", 10); //mujoco sim topic
+    sim_fire_pub_ = this->create_publisher<std_msgs::msg::Bool>("/gimbal/fire", 10);
     RCLCPP_INFO(this->get_logger(), "Gimbal Controller Init!");
 }
 
@@ -371,15 +381,17 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
         //todo:英雄的弹道解算是不是应该考虑空气摩擦？
         //抛物线弹道解算，忽略空气摩擦
         BulletPitchResult bullet_pitch_result = calcBallisticPitch(shoot_speed_,
-                                    std::sqrt(point_c.x * point_c.x + point_c.y * point_c.y) - r1, point_c.z);
+                                                                   std::sqrt(
+                                                                       point_c.x * point_c.x + point_c.y * point_c.y) -
+                                                                   r1, point_c.z);
 
         //求解失败退化到直线
         if (!bullet_pitch_result.success)
         {
-
             bullet_pitch_result.fly_time = std::sqrt(xc * xc + yc * yc) / shoot_speed_;
             RCLCPP_WARN(this->get_logger(), "bullet cal faild");
-        }else
+        }
+        else
         {
             // RCLCPP_INFO(this->get_logger(), "bullet_pitch = %f, fly_time = %f", bullet_pitch_result.pitch, bullet_pitch_result.fly_time);
         }
@@ -499,13 +511,18 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
         // 计算需要击打的装甲板的云台姿态
         //pitch不用预测的点，速度噪声会导致预测点的高度出现跳跃
         BulletPitchResult bullet_pitch_send = calcBallisticPitch(shoot_speed_,
-                                    std::sqrt(points_a[index].x * points_a[index].x + points_a[index].y * points_a[index].y), points_a[index].z);
+                                                                 std::sqrt(
+                                                                     points_a[index].x * points_a[index].x + points_a[
+                                                                         index].y * points_a[index].y),
+                                                                 points_a[index].z);
         if (bullet_pitch_send.success && is_pitch_gain_)
         {
             send_pitch = bullet_pitch_send.pitch;
-        }else
+        }
+        else
         {
-            send_pitch = atan2(points_a[index].z, sqrt(points_a[index].x * points_a[index].x + points_a[index].y * points_a[index].y));
+            send_pitch = atan2(points_a[index].z,
+                               sqrt(points_a[index].x * points_a[index].x + points_a[index].y * points_a[index].y));
         }
         send_yaw = -atan2(y, x);
         send_is_fire = 0;
@@ -572,8 +589,10 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
             static_cast<int>(yaw_ref_relative.size()) >= mpc_horizon_ &&
             static_cast<int>(pitch_ref.size()) >= mpc_horizon_)
         {
-            auto clampFinite = [](double v, double limit) {
-                if (!std::isfinite(v)) {
+            auto clampFinite = [](double v, double limit)
+            {
+                if (!std::isfinite(v))
+                {
                     return 0.0;
                 }
                 return std::clamp(v, -limit, limit);
@@ -612,10 +631,12 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
                     pitch_ref.empty() ? 0.0 : pitch_ref[0],
                     pitch_start_vel,
                     yaw_ref_relative.empty() ? 0.0 : yaw_ref_relative[0],
-                    yaw_ref_relative.size() > static_cast<size_t>(mpc_half_horizon_) ? yaw_ref_relative[mpc_half_horizon_] : 0.0,
+                    yaw_ref_relative.size() > static_cast<size_t>(mpc_half_horizon_) ? yaw_ref_relative[
+                        mpc_half_horizon_] : 0.0,
                     yaw_ref_relative.empty() ? 0.0 : yaw_ref_relative.back());
             }
-        }else
+        }
+        else
         {
             RCLCPP_WARN_THROTTLE(
                 this->get_logger(),
@@ -663,7 +684,7 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
         //如果云台yaw、pitch与当前目标yaw、pitch的差值小于阈值，则认为云台已经对准目标，可以进行射击
         if (std::fabs(yaw_ref_ - gimbal_yaw_) < fire_angle_threshold_ * shoot_diff
             // std::fabs(pitch_ref_ - gimbal_pitch_) < fire_angle_threshold_ * shoot_diff
-            )
+        )
         {
             send_is_fire = 1.0;
             loss_cnt = 0;
@@ -692,6 +713,16 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
         control_msg.yaw = send_yaw;
         control_msg.pitch = send_pitch;
         control_msg.tracing = 1.0;
+
+        std_msgs::msg::Float64 sim_pitch_msg, sim_yaw_msg;
+        std_msgs::msg::Bool sim_fire_msg;
+        sim_fire_msg.data = control_msg.is_fire > 0 ? true : false;
+        sim_yaw_msg.data = -send_yaw;
+        sim_pitch_msg.data = send_pitch;
+
+        sim_gimbal_pitch_pub_->publish(sim_pitch_msg);
+        sim_gimbal_yaw_pub_->publish(sim_yaw_msg);
+        sim_fire_pub_->publish(sim_fire_msg);
 
         //===================DEBUG=======================
         visualization_msgs::msg::MarkerArray markers;
@@ -794,6 +825,16 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
         }
     }
     control_pub_->publish(control_msg);
+}
+
+void GimbalControllerNode::SimGimbalPitchCallback(std_msgs::msg::Float64::SharedPtr msg)
+{
+    gimbal_pitch_ = msg->data;
+}
+
+void GimbalControllerNode::SimGimbalYawCallback(std_msgs::msg::Float64::SharedPtr msg)
+{
+    gimbal_yaw_ = -msg->data;
 }
 
 void GimbalControllerNode::GimbalFeedCallback(auto_aim_interfaces::msg::GimbalFeed::SharedPtr msg)

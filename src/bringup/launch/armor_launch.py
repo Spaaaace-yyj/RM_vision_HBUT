@@ -14,9 +14,11 @@ import yaml
 def generate_launch_description():
 
     use_serial = LaunchConfiguration('use_serial')
+    use_sim_time = LaunchConfiguration('use_sim_time')
     debug_mode = LaunchConfiguration('debug_mode')
     ros_bag_mode = LaunchConfiguration('ros_bag_mode')
     tracker_overlay_debug = LaunchConfiguration('tracker_overlay_debug')
+    use_mujoco = LaunchConfiguration('use_mujoco')
     
     declare_use_serial_cmd = DeclareLaunchArgument(
         'use_serial',
@@ -35,6 +37,16 @@ def generate_launch_description():
         'tracker_overlay_debug',
         default_value='True',
         description='Whether start tracker debug overlay node'
+    )
+    declare_use_sim_time_cmd = DeclareLaunchArgument(
+        'use_sim_time',
+        default_value='False',        # 真车默认关，仿真/rosbag 时传 True
+        description='Use /clock simulated time')
+    declare_use_mujoco_cmd = DeclareLaunchArgument(
+        'use_mujoco',
+        default_value='False',
+        description='MuJoCo 仿真模式：只启动 detector/tracker/overlay/gimbal_controller，'
+                    '不启动相机、串口、robot_state_publisher、joint_state_publisher'
     )
 
     # params file path
@@ -63,7 +75,7 @@ def generate_launch_description():
         package='armor_detector',
         plugin='rm_auto_aim::ArmorDetectorNode',
         name='armor_detector',
-        parameters=[detector_params],
+        parameters=[detector_params, {'use_sim_time': use_sim_time}],
         extra_arguments=[{'use_intra_process_comms': True}],
         # arguments=['--ros-args', '--log-level', 'armor_detector:=DEBUG'],
     )
@@ -85,7 +97,8 @@ def generate_launch_description():
             ),
             detector_node
         ],
-        condition=IfCondition(PythonExpression(["not ", debug_mode])),
+        condition=IfCondition(PythonExpression(
+            ["not ", use_mujoco, " and not ", debug_mode, " and not ", ros_bag_mode])),
         output='screen',
     )
 
@@ -106,13 +119,27 @@ def generate_launch_description():
         ],
         output='screen',
     )
-    
+
+    # MuJoCo 仿真：相机/视频容器都不启动，单独起一个 detector 进程
+    # 注意 detector_params 来自 params.yaml 的 /armor_detector；
+    # 如果仿真发的是未压缩图像，把那里的 subscribe_compressed 改成 false
+    mujoco_detector_node = Node(
+        package='armor_detector',
+        executable='armor_detector_node',
+        name='armor_detector',
+        output='screen',
+        emulate_tty=True,
+        parameters=[detector_params, {'use_sim_time': use_sim_time}],
+        condition=IfCondition(use_mujoco),
+        arguments=['--ros-args', '--log-level', 'armor_detector:=INFO'],
+    )
+
     tracker_node = Node(
         package='armor_tracker',
         executable='armor_tracker_node',
         output='screen',
         emulate_tty=True,
-        parameters=[processor_params],
+        parameters=[processor_params, {'use_sim_time': use_sim_time}],
         arguments=['--ros-args', '--log-level', 'armor_tracker:=DEBUG'],
     )
 
@@ -142,8 +169,9 @@ def generate_launch_description():
 
             'tf_timeout_sec': 0.03,
             'sync_queue_size': 20,
-        }],
-        condition=IfCondition(tracker_overlay_debug),
+        }, {'use_sim_time': use_sim_time}],
+        condition=IfCondition(PythonExpression(
+            ["not ", use_mujoco, " or ", tracker_overlay_debug])),
         arguments=['--ros-args', '--log-level', 'tracker_overlay_node:=INFO'],
     )
 
@@ -152,7 +180,7 @@ def generate_launch_description():
         executable='gimbal_controller',
         output='screen',
         emulate_tty=True,
-        parameters=[controller_params],
+        parameters=[controller_params, {'use_sim_time': use_sim_time}],
     )
     
     serial_node = Node(
@@ -162,7 +190,8 @@ def generate_launch_description():
         output='screen',
         emulate_tty=True,
         parameters=[serial_params],
-        condition=IfCondition(use_serial),
+        condition=IfCondition(PythonExpression(
+            ["not ", use_mujoco, " and ", use_serial])),
         arguments=['--ros-args', '--log-level', 'lc_serial:=INFO'],
     )
     # 如果要这个通讯把下面的延迟启动替换
@@ -173,7 +202,8 @@ def generate_launch_description():
         output='screen',
         emulate_tty=True,
         # parameters=[serial_params],
-        condition=IfCondition(use_serial),
+        condition=IfCondition(PythonExpression(
+            ["not ", use_mujoco, " and ", use_serial])),
         arguments=['--ros-args', '--log-level', 'serial_test:=INFO'],
     )
 
@@ -199,14 +229,17 @@ def generate_launch_description():
         package='robot_state_publisher',
         executable='robot_state_publisher',
         parameters=[{'robot_description': robot_description,
-                     'publish_frequency': 1000.0}]
+                     'publish_frequency': 1000.0,
+                     'use_sim_time': use_sim_time}],
+        condition=IfCondition(PythonExpression(["not ", use_mujoco]))
     )
 
     joint_state_publisher = Node(
         package='joint_state_publisher',
         executable='joint_state_publisher',
         parameters=[{'rate': 600}],
-        condition=IfCondition(PythonExpression(["not ", use_serial]))
+        condition=IfCondition(PythonExpression(
+            ["not ", use_mujoco, " and not ", use_serial]))
     )
 
     delay_serial_node = TimerAction(
@@ -224,16 +257,29 @@ def generate_launch_description():
         actions=[gimbal_controller_node],
     )
 
+    delay_mujoco_detector_node = TimerAction(
+        period=1.0,
+        actions=[mujoco_detector_node],
+    )
+
     return LaunchDescription([
         declare_use_serial_cmd,
         declare_debug_mode_cmd,
         declare_ros_bag_cmd,
-        # 启动相机和观测节点
+        declare_use_sim_time_cmd,
+        declare_use_mujoco_cmd,
+        declare_tracker_overlay_debug_cmd,
+
+        # 真车：相机 + detector 在同一个容器里（use_mujoco=False 时才启动）
         mv_camera_detector_container,
         # debug_dji_camera,
         # debug_aruco_detector,
 
         # video_detector_container,
+
+        # use_mujoco=True 时单独启动的 detector
+        delay_mujoco_detector_node,
+
         robot_state_publisher,
         joint_state_publisher,
 
