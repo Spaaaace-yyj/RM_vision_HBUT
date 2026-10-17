@@ -7,7 +7,7 @@
 namespace lc_serial
 {
     //crc参数
-    //crc8:SHT75多项式，用于校验帧头
+    // CRC8：多项式 0x1D，初始值 0xFF，用于帧头校验（前 4 字节）
     constexpr uint8_t CRC8_INIT = 0xFF;
 
    //crc16:多项式初始值0xFFFF(整包校验)
