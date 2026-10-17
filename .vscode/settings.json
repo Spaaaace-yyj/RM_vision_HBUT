@@ -1,9 +1,0 @@
-{
-  "clangd.arguments": [
-    "--compile-commands-dir=.",
-    "--query-driver=/usr/bin/*",
-    "--background-index",
-    "--clang-tidy",
-    "--completion-style=detailed"
-  ]
-}
