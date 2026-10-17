@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <cstring>
 #include <cstddef>
-#include "crc_check.hpp"
+#include "lc_serial_test/crc_check.hpp"
 
 #define PROTOCOL_CMD_ID 0xA5
 #define OFFSET_BYTE 8

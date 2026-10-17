@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.8)
 project(lc_serial_test)
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+## Export compile commands for clangd
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
@@ -29,7 +35,8 @@ if(BUILD_TESTING)
 endif()
 
 add_executable(lc_serial_test src/lc_serial_test.cpp src/crc_check.cpp src/serial_process.cpp)
-ament_target_dependencies(lc_serial_test rclcpp serial_driver geometry_msgs std_msgs auto_aim_interfaces sensor_msgs)
+target_include_directories(lc_serial_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+ament_target_dependencies(lc_serial_test rclcpp serial_driver geometry_msgs auto_aim_interfaces sensor_msgs)
 
 install(TARGETS
   lc_serial_test
