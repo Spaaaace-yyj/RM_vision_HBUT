@@ -3,5 +3,24 @@ install/*
 log/*
 site/*
 Camera/*
+# 测试视频和模型输出，都从开源仓库拷，不进 git
 **/video/*.mp4
 **/video/*.avi
+**/model/*.mp4
+**/model/*.avi
+# Python 缓存
+__pycache__/
+*.pyc
+# 编辑器杂项
+.DS_Store
+*.swp
+# Claude 本地会话数据
+.claude/
+# 本地教学文档，不上传
+teach.md
+# vscode 本地路径配置
+.vscode/c_cpp_properties.json
+# 性能测试脚本与数据（相机链路 A/B、延迟测量等，见 .bench/REPORT.md）
+.bench/
+# DSH 工具目录
+.dsh-vision-router/
