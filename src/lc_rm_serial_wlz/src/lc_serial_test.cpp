@@ -116,31 +116,6 @@ namespace lc_serial
             }
         }
 
-        //命令码组装
-        uint16_t LcSerialTestNode::BuildCmdId(bool is_fire, bool tracing) const
-        {
-            uint16_t cmd_id = 0;
-
-            //底盘：默认跟随
-            cmd_id |= (static_cast<uint16_t>(ChassisCmd::FOLLOWING) << CHASSIS_CMD_SHIFT);
-            //云台：默认使能
-            cmd_id |= (static_cast<uint16_t>(GimbalCmd::ENABLE) << GIMBAL_CMD_SHIFT);
-            //发射机构：开火 > 摩擦轮 > 关闭
-            uint16_t shoot = static_cast<uint16_t>(ShootCmd::OFF);
-            if(is_fire)
-            {
-                shoot = static_cast<uint16_t>(ShootCmd::FIRE);
-            }
-            else if(tracing)
-            {
-                shoot = static_cast<uint16_t>(ShootCmd::FICTION_ON);
-            }
-
-            cmd_id |= (shoot << SHOOT_CMD_SHIFT);
-
-            return cmd_id;
-        }
-
         //订阅回调
         void LcSerialTestNode::onCmdVel(const geometry_msgs::msg::Twist::SharedPtr msg)
         {
@@ -167,7 +142,13 @@ namespace lc_serial
             std::lock_guard<std::mutex> lock(data_mutex_);
             tx_data_.yaw = yaw_deg;
             tx_data_.pitch = pitch_deg;
-            tx_cmd_id_ = BuildCmdId(msg->is_fire, msg->tracing);
+            if (msg->is_fire) {
+                shoot_cmd_ = static_cast<uint16_t>(ShootCmd::FIRE);
+            } else if (msg->tracing) {
+                shoot_cmd_ = static_cast<uint16_t>(ShootCmd::FICTION_ON);
+            } else {
+                shoot_cmd_ = static_cast<uint16_t>(ShootCmd::OFF);
+            }
         }
 
         //定时发送
@@ -184,11 +165,14 @@ namespace lc_serial
 
             // 2. 加锁拷贝数据
             TxData local_data;
-            uint16_t local_cmd_id;
+            uint16_t local_cmd_id = 0;
             {
                 std::lock_guard<std::mutex> lock(data_mutex_);
                 local_data = tx_data_;
-                local_cmd_id = tx_cmd_id_;
+                // 动态拼装
+                local_cmd_id |= (chassis_cmd_ << CHASSIS_CMD_SHIFT);
+                local_cmd_id |= (gimbal_cmd_  << GIMBAL_CMD_SHIFT);
+                local_cmd_id |= (shoot_cmd_   << SHOOT_CMD_SHIFT);
             }
 
             // 3. 打包

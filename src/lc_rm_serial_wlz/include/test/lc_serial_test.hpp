@@ -45,8 +45,6 @@ namespace lc_serial
                 bool openPort();
                 void closePort();
 
-                //命令码组装
-                uint16_t BuildCmdId(bool is_fire, bool tracing)const;
         private:
                 // 串口设备
                 std::string device_name_{"/dev/ttyACM0"};
@@ -65,7 +63,9 @@ namespace lc_serial
 
                 //协议数据
                 TxData tx_data_{};
-                uint16_t tx_cmd_id_ = 0;
+                uint16_t chassis_cmd_ = static_cast<uint16_t>(ChassisCmd::FOLLOWING); // 默认跟随
+                uint16_t gimbal_cmd_  = static_cast<uint16_t>(GimbalCmd::ENABLE);     // 默认使能
+                uint16_t shoot_cmd_   = static_cast<uint16_t>(ShootCmd::OFF);         // 默认关闭
                 RxData rx_frame_{};
 
                 //ros接口
