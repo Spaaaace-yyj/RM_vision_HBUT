@@ -52,11 +52,10 @@ namespace lc_serial
             {
                 RCLCPP_ERROR(get_logger(), "Failed to open serial port at startup.Will retry in sendLoop().");
             }
-            else
-            {
+            
                 
-                receive_thread_ = std::thread(&LcSerialTestNode::receiveLoop, this);
-            }
+            receive_thread_ = std::thread(&LcSerialTestNode::receiveLoop, this);
+            
 
             //定时发送（100Hz）
             serial_timer_ = create_wall_timer(10ms, std::bind(&LcSerialTestNode::sendLoop, this));
@@ -156,11 +155,14 @@ namespace lc_serial
         {
             if(!running_) return; // 节点析构了才退出
 
-            // 1. 如果串口没打开，尝试重连
-            if (!serial_driver_->port() || !serial_driver_->port()->is_open())
+            // 1. 安全地检查串口状态（加锁）
             {
-                // 注意：openPort 内部自带锁，不要在这里加 serial_mutex_，否则死锁
-                openPort(); 
+                std::lock_guard<std::mutex> lock(serial_mutex_);
+                if (!serial_driver_->port() || !serial_driver_->port()->is_open())
+                {
+                    // 直接退出本次发送，等待接收线程报错重连
+                    return; 
+                }
             }
 
             // 2. 加锁拷贝数据
@@ -181,7 +183,6 @@ namespace lc_serial
             pack_frame(local_cmd_id, local_data, tx_buf, &tx_len);
 
             // 4. 发送
-            bool send_ok = false;
             {
                 std::lock_guard<std::mutex> lock(serial_mutex_);
                 try
@@ -190,7 +191,6 @@ namespace lc_serial
                     {
                         std::vector<uint8_t> buf(tx_buf, tx_buf + tx_len);
                         serial_driver_->port()->send(buf);
-                        send_ok = true;
                     }
                 }
                 catch(const std::exception& e)
@@ -268,6 +268,7 @@ namespace lc_serial
                 }
                 catch(const std::exception& e)
                 {
+                    if (!running_) break; // 如果节点正在退出，直接结束线程，不要重连！
                     RCLCPP_ERROR(get_logger(), "Serial receive failed: %s", e.what());
                     // 加锁重连
                     closePort();
