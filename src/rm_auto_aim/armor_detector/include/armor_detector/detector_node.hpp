@@ -21,9 +21,16 @@
 #include <tf2_ros/transform_listener.h>
 
 // STD
+#include <atomic>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
+
+#ifdef ARMOR_DETECTOR_WITH_CAMERA
+// MindVision 相机 SDK（内嵌相机模式：SDK 出图直接进检测，跳过 ROS 话题）
+#include <CameraApi.h>
+#endif
 
 #include "armor_detector/detector.hpp"
 #include "armor_detector/number_classifier.hpp"
@@ -37,9 +44,16 @@ class ArmorDetectorNode : public rclcpp::Node
 {
 public:
   ArmorDetectorNode(const rclcpp::NodeOptions & options);
+  ~ArmorDetectorNode() override;
 
 private:
   void imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr img_msg);
+
+  // 内嵌相机模式（use_embedded_camera:=true）：
+  // 单独起一个采集线程从 SDK 取图，拼成 Image 消息后直接调 imageCallback，
+  // 识别逻辑（detectArmors / PnP / 发布）完全复用，一行不改。
+  void initEmbeddedCamera();
+  void captureLoop();
 
   std::unique_ptr<Detector> initDetector();
   std::vector<Armor> detectArmors(const sensor_msgs::msg::Image::ConstSharedPtr & img_msg);
@@ -89,6 +103,18 @@ private:
   // 录制视频
   bool is_record_;
   cv::VideoWriter video_writer_;
+
+  // ===== 内嵌相机模式（可选）=====
+  bool use_embedded_camera_ = false;
+#ifdef ARMOR_DETECTOR_WITH_CAMERA
+  int h_camera_ = -1;
+  tSdkFrameHead frame_info_{};
+  tSdkCameraCapbility capability_{};
+  uint8_t * pby_buffer_ = nullptr;
+  bool flip_image_ = false;
+  std::thread capture_thread_;
+  std::atomic<bool> camera_running_{false};
+#endif
 };
 
 }  // namespace rm_auto_aim
