@@ -93,20 +93,10 @@ namespace rm_auto_aim
                 cam_info_sub_.reset();
             });
 
-        // 图像来源：默认还是订阅 /image_raw（视频回放、分进程都能用）
-        // use_embedded_camera:=true 时改为本节点直接调相机 SDK，跳过 ROS 话题
-        use_embedded_camera_ = this->declare_parameter("use_embedded_camera", false);
-        if (use_embedded_camera_)
-        {
-            initEmbeddedCamera();
-        }
-        else
-        {
-            std::string transport_ = this->declare_parameter("subscribe_compressed", false) ? "compressed" : "raw";
-            img_sub_ = std::make_shared<image_transport::Subscriber>(image_transport::create_subscription(
-                this, "/image_raw", std::bind(&ArmorDetectorNode::imageCallback, this, std::placeholders::_1),
-                transport_, rmw_qos_profile_sensor_data));
-        }
+        std::string transport_ = this->declare_parameter("subscribe_compressed", false) ? "compressed" : "raw";
+        img_sub_ = std::make_shared<image_transport::Subscriber>(image_transport::create_subscription(
+            this, "/image_raw", std::bind(&ArmorDetectorNode::imageCallback, this, std::placeholders::_1),
+            transport_, rmw_qos_profile_sensor_data));
 
         // 用opencv录制视频,图像类型为rgb8
         is_record_ = this->declare_parameter("is_record", false);
@@ -120,23 +110,6 @@ namespace rm_auto_aim
                 save_video_path, cv::VideoWriter::fourcc('P', 'I', 'M', '1'), save_video_fps,
                 cv::Size(save_video_width, save_video_height), true);
         }
-    }
-
-    ArmorDetectorNode::~ArmorDetectorNode()
-    {
-#ifdef ARMOR_DETECTOR_WITH_CAMERA
-        // 先停采集线程，再释放相机句柄
-        camera_running_ = false;
-        if (capture_thread_.joinable())
-        {
-            capture_thread_.join();
-        }
-        if (h_camera_ >= 0)
-        {
-            CameraUnInit(h_camera_);
-            h_camera_ = -1;
-        }
-#endif
     }
 
     void ArmorDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr img_msg)
@@ -227,106 +200,6 @@ namespace rm_auto_aim
             // Publishing marker
             publishMarkers();
         }
-    }
-
-    // ===== 内嵌相机模式：初始化 MindVision SDK =====
-    void ArmorDetectorNode::initEmbeddedCamera()
-    {
-#ifdef ARMOR_DETECTOR_WITH_CAMERA
-        CameraSdkInit(1);
-
-        int counts = 1;
-        tSdkCameraDevInfo dev_info;
-        if (CameraEnumerateDevice(&dev_info, &counts) != CAMERA_STATUS_SUCCESS || counts == 0)
-        {
-            RCLCPP_ERROR(this->get_logger(), "use_embedded_camera:=true 但没找到相机，收不到图");
-            return;
-        }
-        if (CameraInit(&dev_info, -1, -1, &h_camera_) != CAMERA_STATUS_SUCCESS)
-        {
-            RCLCPP_ERROR(this->get_logger(), "相机初始化失败");
-            h_camera_ = -1;
-            return;
-        }
-
-        CameraGetCapability(h_camera_, &capability_);
-        CameraSetAeState(h_camera_, false);
-
-        // 参数名和 mv_camera_node 保持一致，可以沿用同一份 params.yaml
-        double exposure_line_time = 0.0;
-        CameraGetExposureLineTime(h_camera_, &exposure_line_time);
-        (void)exposure_line_time;  // -Wall -Werror 下避免 unused 告警
-
-        CameraSetExposureTime(h_camera_, this->declare_parameter("exposure_time", 5000));
-
-        int analog_gain = 0;
-        CameraGetAnalogGain(h_camera_, &analog_gain);
-        CameraSetAnalogGain(h_camera_, this->declare_parameter("analog_gain", analog_gain));
-
-        int r_gain = 1, g_gain = 1, b_gain = 1;
-        CameraGetGain(h_camera_, &r_gain, &g_gain, &b_gain);
-        r_gain = this->declare_parameter("rgb_gain.r", r_gain);
-        g_gain = this->declare_parameter("rgb_gain.g", g_gain);
-        b_gain = this->declare_parameter("rgb_gain.b", b_gain);
-        CameraSetGain(h_camera_, r_gain, g_gain, b_gain);
-
-        flip_image_ = this->declare_parameter("flip_image", false);
-
-        CameraPlay(h_camera_);
-        CameraSetIspOutFormat(h_camera_, CAMERA_MEDIA_TYPE_RGB8);
-
-        camera_running_ = true;
-        capture_thread_ = std::thread([this]() { captureLoop(); });
-        RCLCPP_INFO(
-            this->get_logger(), "内嵌相机已启动：SDK 出图直接调 imageCallback，跳过 /image_raw");
-#else
-        RCLCPP_ERROR(this->get_logger(), "编译时未链接相机 SDK，use_embedded_camera 不可用");
-#endif
-    }
-
-    // ===== 内嵌相机模式：采集线程 =====
-    // 只做"取图 -> 拼成 Image 消息 -> 调原回调"，识别逻辑一行不改
-    void ArmorDetectorNode::captureLoop()
-    {
-#ifdef ARMOR_DETECTOR_WITH_CAMERA
-        // 复用同一个消息对象，避免每帧重新分配
-        auto img_msg = std::make_shared<sensor_msgs::msg::Image>();
-        img_msg->encoding = "rgb8";
-        img_msg->is_bigendian = 0;
-        img_msg->header.frame_id = "camera_optical_frame";
-
-        while (rclcpp::ok() && camera_running_.load())
-        {
-            int status = CameraGetImageBuffer(h_camera_, &frame_info_, &pby_buffer_, 1000);
-            if (status != CAMERA_STATUS_SUCCESS)
-            {
-                RCLCPP_WARN_THROTTLE(
-                    this->get_logger(), *this->get_clock(), 1000,
-                    "CameraGetImageBuffer failed, status = %d", status);
-                continue;
-            }
-
-            const int w = frame_info_.iWidth;
-            const int h = frame_info_.iHeight;
-            img_msg->width = w;
-            img_msg->height = h;
-            img_msg->step = w * 3;
-            img_msg->data.resize(static_cast<size_t>(w) * h * 3);
-            img_msg->header.stamp = this->now();
-
-            CameraImageProcess(h_camera_, pby_buffer_, img_msg->data.data(), &frame_info_);
-            if (flip_image_)
-            {
-                CameraFlipFrameBuffer(img_msg->data.data(), &frame_info_, 3);
-            }
-
-            // 先还 buffer，检测期间不再占用内核缓冲，否则相机侧会被阻塞
-            CameraReleaseImageBuffer(h_camera_, pby_buffer_);
-
-            // 直接复用原来的回调：检测 / PnP / 发布全部走原逻辑
-            imageCallback(img_msg);
-        }
-#endif
     }
 
     std::unique_ptr<Detector> ArmorDetectorNode::initDetector()
