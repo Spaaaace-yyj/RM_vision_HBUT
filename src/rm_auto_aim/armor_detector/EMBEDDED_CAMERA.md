@@ -61,19 +61,20 @@ armor_detector_node（自己拿相机）
 
 ## 4. 改动清单
 
-3 个文件，+179 行：
-
 | 文件 | 改动 |
 | --- | --- |
-| `include/armor_detector/detector_node.hpp` | `CameraApi.h` include（条件编译）、析构声明、`initEmbeddedCamera()` / `captureLoop()`、相机成员变量 |
-| `src/detector_node.cpp` | 构造函数加 `use_embedded_camera` 开关、析构（停线程 + `CameraUnInit`）、两个新函数 |
+| `include/armor_detector/detector_node.hpp` | `CameraApi.h`、`camera_info_manager` include；析构；`initEmbeddedCamera()` / `captureLoop()`；相机和内参成员 |
+| `src/detector_node.cpp` | 构造里加 `use_embedded_camera` 开关、析构（停线程 + `CameraUnInit`）、两个新函数、内参加载和转发 |
 | `CMakeLists.txt` | 按 amd64/arm64 自动链接 `mvsdk`，找不到只告警 |
+| `package.xml` | 加 `camera_info_manager` 依赖 |
+| `bringup/launch/armor_embedded_launch.py` | 新文件，内嵌模式专用启动 |
 
 ### 新增的参数
 
 | 参数 | 默认 | 说明 |
 | --- | --- | --- |
 | `use_embedded_camera` | `false` | `true` = 检测节点自己调 SDK；`false` = 订阅 `/image_raw`（原行为） |
+| `camera_info_url` | `package://bringup/config/camera_info.yaml` | 内参文件，内嵌模式下自己加载 |
 | `exposure_time` | 5000 | 曝光（微秒），和 `mv_camera` 同名同义 |
 | `analog_gain` | 相机当前值 | 模拟增益 |
 | `rgb_gain.r/g/b` | 相机当前值 | RGB 增益 |
@@ -101,27 +102,57 @@ target_link_libraries(${PROJECT_NAME} "${MVSDK_LIBDIR}/libMVSDK.so")
 ```bash
 cd /home/twy/RM_vision_HBUT
 source /opt/ros/humble/setup.bash
-colcon build --packages-select armor_detector
+colcon build --packages-select armor_detector bringup
 source install/setup.bash
 ```
 
-编完看日志里有没有这一行：
+编完能看到：
 
 ```
 -- armor_detector: 内嵌相机模式可用（.../mvsdk/lib/amd64）
 ```
 
-### 运行（内嵌模式）
+### 启动
 
-**不要启动 `mv_camera` 节点**，两个进程抢同一台相机会初始化失败。
+内嵌模式单独一个 launch，别和 `armor_launch.py` 同时起（抢相机）：
+
+```bash
+ros2 launch bringup armor_embedded_launch.py
+ros2 launch bringup armor_embedded_launch.py use_serial:=False
+```
+
+和 `armor_launch.py` 只差相机那一段：不启动 `mv_camera`，detector 加
+`use_embedded_camera`。tracker、overlay、云台、串口、robot_state_publisher 都没动。
+
+### 内参
+
+内嵌模式没有 `mv_camera` 发 `/camera_info`，所以 detector 自己按
+`camera_info_url` 加载，加载完再转发 `/camera_info`，下游照常订阅。
+
+文件在 `bringup/config/camera_info.yaml`，里面有两套标定，当前启用 6mm：
+
+```yaml
+#6mm
+...
+#16mm        ← 注释着
+```
+
+换镜头就把两段注释互换。启动日志会打实际用的值：
+
+```
+内参: package://bringup/config/camera_info.yaml (fx=1576.1 fy=1566.2 cx=656.3 cy=510.5)
+```
+
+6mm 那段的 `distortion_coefficients` 是全 0，要是重新标定过，直接替换这行。
+
+### 不通过 launch
 
 ```bash
 ros2 run armor_detector armor_detector_node --ros-args \
-  -p use_embedded_camera:=true \
-  -p debug:=true
+  -p use_embedded_camera:=true -p debug:=true
 ```
 
-### 运行（原来的订阅模式，行为不变）
+### 原来的订阅模式（没改）
 
 ```bash
 ros2 run mindvision_camera mindvision_camera_node
@@ -152,6 +183,7 @@ ros2 run armor_detector armor_detector_node --ros-args \
 | 编译（`-Wall -Werror`） | ✅ 通过，`libMVSDK.so` 链接成功 |
 | 默认模式（`video_pub` 回放 + 订阅） | ✅ 无 ERROR，FPS 30~44（分进程回放），功能正常 |
 | `use_embedded_camera:=true` 但没接相机 | ✅ 打 `ERROR: use_embedded_camera:=true 但没找到相机`，**节点不崩溃、继续存活** |
+| 内参加载 | 日志会打 `内参: ... (fx=... fy=...)`；无相机时走不到这步，没测到 |
 
 ⚠️ 真机延迟对比**还没做**——需要接上相机才能测。
 
@@ -190,6 +222,7 @@ ros2 run armor_detector armor_detector_node --ros-args \
 4. **`img_msg->data` 要按 `w*h*3` resize**，`CameraImageProcess` 会按这个尺寸往外写，buffer 小了会内存越界。
 5. **曝光/增益参数要和原来一致**，否则画面亮度变了，会误判成"集成导致识别变差"。
 6. **`install/lib/libMVSDK.so` 可能是符号链接**（指向源码目录）。车上重新 `colcon build` 没问题；如果要把 `install/` 整个拷走，记得把真实 `.so` 一起带上。
+7. **内参没加载上，PnP 会静默失效**：`pnp_solver_` 为空时 `imageCallback` 直接跳过 PnP，`/detector/armors` 一条不发，但也不报错。查启动日志里有没有 `内参: ...` 那行。
 
 ---
 

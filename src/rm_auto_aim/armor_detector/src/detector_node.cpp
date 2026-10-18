@@ -83,25 +83,26 @@ namespace rm_auto_aim
         tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
         tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
-        cam_info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
-            "/camera_info", rclcpp::SensorDataQoS(),
-            [this](sensor_msgs::msg::CameraInfo::ConstSharedPtr camera_info)
-            {
-                cam_center_ = cv::Point2f(camera_info->k[2], camera_info->k[5]);
-                cam_info_ = std::make_shared<sensor_msgs::msg::CameraInfo>(*camera_info);
-                pnp_solver_ = std::make_unique<PnPSolver>(camera_info->k, camera_info->d, tf_buffer_);
-                cam_info_sub_.reset();
-            });
-
         // 图像来源：默认还是订阅 /image_raw（视频回放、分进程都能用）
         // use_embedded_camera:=true 时改为本节点直接调相机 SDK，跳过 ROS 话题
         use_embedded_camera_ = this->declare_parameter("use_embedded_camera", false);
         if (use_embedded_camera_)
         {
+            // 没有 mv_camera 发 /camera_info，内参由 initEmbeddedCamera 自己加载
             initEmbeddedCamera();
         }
         else
         {
+            cam_info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
+                "/camera_info", rclcpp::SensorDataQoS(),
+                [this](sensor_msgs::msg::CameraInfo::ConstSharedPtr camera_info)
+                {
+                    cam_center_ = cv::Point2f(camera_info->k[2], camera_info->k[5]);
+                    cam_info_ = std::make_shared<sensor_msgs::msg::CameraInfo>(*camera_info);
+                    pnp_solver_ = std::make_unique<PnPSolver>(camera_info->k, camera_info->d, tf_buffer_);
+                    cam_info_sub_.reset();
+                });
+
             std::string transport_ = this->declare_parameter("subscribe_compressed", false) ? "compressed" : "raw";
             img_sub_ = std::make_shared<image_transport::Subscriber>(image_transport::create_subscription(
                 this, "/image_raw", std::bind(&ArmorDetectorNode::imageCallback, this, std::placeholders::_1),
@@ -275,6 +276,27 @@ namespace rm_auto_aim
         CameraPlay(h_camera_);
         CameraSetIspOutFormat(h_camera_, CAMERA_MEDIA_TYPE_RGB8);
 
+        // 内嵌模式没有 mv_camera 发 /camera_info，自己加载内参并转发给下游
+        auto info_url = this->declare_parameter(
+            "camera_info_url", std::string("package://bringup/config/camera_info.yaml"));
+        camera_info_manager_ = std::make_unique<camera_info_manager::CameraInfoManager>(this, "mv_camera");
+        if (camera_info_manager_->validateURL(info_url) && camera_info_manager_->loadCameraInfo(info_url))
+        {
+            cam_info_ = std::make_shared<sensor_msgs::msg::CameraInfo>(camera_info_manager_->getCameraInfo());
+            cam_info_->header.frame_id = "camera_optical_frame";
+            cam_center_ = cv::Point2f(cam_info_->k[2], cam_info_->k[5]);
+            pnp_solver_ = std::make_unique<PnPSolver>(cam_info_->k, cam_info_->d, tf_buffer_);
+            cam_info_pub_ =
+                this->create_publisher<sensor_msgs::msg::CameraInfo>("/camera_info", rclcpp::SensorDataQoS());
+            RCLCPP_INFO(
+                this->get_logger(), "内参: %s (fx=%.1f fy=%.1f cx=%.1f cy=%.1f)", info_url.c_str(),
+                cam_info_->k[0], cam_info_->k[4], cam_info_->k[2], cam_info_->k[5]);
+        }
+        else
+        {
+            RCLCPP_ERROR(this->get_logger(), "内参加载失败: %s，PnP 将不可用", info_url.c_str());
+        }
+
         camera_running_ = true;
         capture_thread_ = std::thread([this]() { captureLoop(); });
         RCLCPP_INFO(
@@ -322,6 +344,13 @@ namespace rm_auto_aim
 
             // 先还 buffer，检测期间不再占用内核缓冲，否则相机侧会被阻塞
             CameraReleaseImageBuffer(h_camera_, pby_buffer_);
+
+            // 内参跟帧一起发，下游（tracker_overlay 等）照常能用
+            if (cam_info_ && cam_info_pub_)
+            {
+                cam_info_->header.stamp = img_msg->header.stamp;
+                cam_info_pub_->publish(*cam_info_);
+            }
 
             // 直接复用原来的回调：检测 / PnP / 发布全部走原逻辑
             imageCallback(img_msg);

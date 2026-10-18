@@ -5,6 +5,7 @@
 #define ARMOR_DETECTOR__DETECTOR_NODE_HPP_
 
 // ROS
+#include <camera_info_manager/camera_info_manager.hpp>
 #include <image_transport/image_transport.hpp>
 #include <image_transport/publisher.hpp>
 #include <image_transport/subscriber_filter.hpp>
@@ -114,6 +115,10 @@ private:
   bool flip_image_ = false;
   std::thread capture_thread_;
   std::atomic<bool> camera_running_{false};
+
+  // 内嵌模式没有 mv_camera 发 /camera_info，自己加载内参并转发给下游
+  std::unique_ptr<camera_info_manager::CameraInfoManager> camera_info_manager_;
+  rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr cam_info_pub_;
 #endif
 };
 
