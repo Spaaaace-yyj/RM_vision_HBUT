@@ -24,3 +24,8 @@ teach.md
 .bench/
 # DSH 工具目录
 .dsh-vision-router/
+.github/*
+# IDE
+.idea/
+cmake-build-*/
+compile_commands.json
