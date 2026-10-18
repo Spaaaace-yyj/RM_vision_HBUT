@@ -1,4 +1,4 @@
-#include "../include/lc_serial_test/serial_process.hpp"
+#include "lc_serial_test/serial_process.hpp"
 
 /*获取CRC8校验码*/
 uint8_t Get_CRC8_Check(uint8_t *pchMessage,uint16_t dwLength)

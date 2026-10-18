@@ -1,4 +1,4 @@
-#include "../include/lc_serial_test/crc_check.hpp"
+#include "lc_serial_test/crc_check.hpp"
 
 //=======================================CRC8====================================
 /*

@@ -1,8 +1,11 @@
-#include "../include/lc_serial_test/lc_serial_test.hpp"
+#include "lc_serial_test/lc_serial_test.hpp"
+
+#include <chrono>
+#include <cmath>
 
 LcSerialTestNode::LcSerialTestNode(const rclcpp::NodeOptions & options) 
         : Node("serial_test",  options)
-        , owned_ctx_{ new IoContext(2) }
+        , owned_ctx_{ new drivers::common::IoContext(2) }
         , serial_driver_{ new drivers::serial_driver::SerialDriver(*owned_ctx_) }
 {
 
@@ -35,7 +38,7 @@ LcSerialTestNode::LcSerialTestNode(const rclcpp::NodeOptions & options)
         (baud_rate, fc, pt, sb);
     
     try{
-        serial_driver_->init_port("/dev/ttyACM0", *device_config_);
+        serial_driver_->init_port(device_name_, *device_config_);
         if(!serial_driver_->port()->is_open()){
             serial_driver_->port()->open();
             receive_thread_ = std::thread(&LcSerialTestNode::receiveLoop, this);
@@ -101,7 +104,7 @@ void LcSerialTestNode::OpenPort(){
 }
 
 void LcSerialTestNode::DecodeData(){
-    uint16_t flags_register;
+    uint16_t flags_register = 0;
     get_protocol_info(buffer.data(), &flags_register, (uint8_t *)&recv_data.yaw);
 }
 
@@ -146,7 +149,7 @@ void LcSerialTestNode::receiveLoop()
             buffer.resize(256);
             size_t n = serial_driver_->port()->receive(buffer);
             if(n <= 10){
-                RCLCPP_WARN(this->get_logger(), "receive data is too short, skip this loop! [%d byte]", n);
+                RCLCPP_WARN(this->get_logger(), "receive data is too short, skip this loop! [%zu byte]", n);
                 continue;
             };
 
