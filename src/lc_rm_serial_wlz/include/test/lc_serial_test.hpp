@@ -22,6 +22,8 @@
 #include "lc_rm_serial_wlz/include/test/protocol.hpp"
 #include "lc_rm_serial_wlz/include/test/serial_process.hpp"
 
+#include <chrono> 
+
 namespace lc_serial
 {
 
@@ -63,10 +65,12 @@ namespace lc_serial
 
                 //协议数据
                 TxData tx_data_{};
-                uint16_t chassis_cmd_ = static_cast<uint16_t>(ChassisCmd::FOLLOWING); // 默认跟随
-                uint16_t gimbal_cmd_  = static_cast<uint16_t>(GimbalCmd::ENABLE);     // 默认使能
-                uint16_t shoot_cmd_   = static_cast<uint16_t>(ShootCmd::OFF);         // 默认关闭
+                uint16_t chassis_cmd_ ;
+                uint16_t gimbal_cmd_  ;
+                uint16_t shoot_cmd_   ;
                 RxData rx_frame_{};
+                std::chrono::steady_clock::time_point last_cmd_vel_time_;
+                std::chrono::steady_clock::time_point last_gimbal_control_time_;
 
                 //ros接口
                 rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_sub_;

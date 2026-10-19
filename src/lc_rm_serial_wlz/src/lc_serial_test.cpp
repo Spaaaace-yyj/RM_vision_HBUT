@@ -11,15 +11,29 @@ namespace lc_serial
         : Node("serial_test", options)
         {
             RCLCPP_INFO(get_logger(), "Starting lc_serial_test node...");
+           
+            // 初始化为当前时间，防止一启动就被判定超时
+            last_cmd_vel_time_ = std::chrono::steady_clock::now();
+            last_gimbal_control_time_ = std::chrono::steady_clock::now();
 
             //参数
             device_name_           = declare_parameter<std::string>("device_name", "/dev/ttyACM0");
             send_reverse_pitch_    = declare_parameter<bool>("send_reverse_pitch", false);
-            send_reverse_yaw_      = declare_parameter<bool>("send_reverse_yaw", true);
+            send_reverse_yaw_      = declare_parameter<bool>("send_reverse_yaw", false);
             recv_reverse_pitch_    = declare_parameter<bool>("recv_reverse_pitch", false);
-            recv_reverse_yaw_      = declare_parameter<bool>("recv_reverse_yaw", true);
-            recv_tf_reverse_pitch_ = declare_parameter<bool>("recv_tf_reverse_pitch", true);
+            recv_reverse_yaw_      = declare_parameter<bool>("recv_reverse_yaw", false);
+            recv_tf_reverse_pitch_ = declare_parameter<bool>("recv_tf_reverse_pitch", false);
             recv_tf_reverse_yaw_   = declare_parameter<bool>("recv_tf_reverse_yaw", false);
+            // 新增：将三个控制状态改为参数，并读取覆盖初始值
+            // 注意：ROS 2 参数通常使用 int，读取后强转为 uint16_t
+            chassis_cmd_ = static_cast<uint16_t>(declare_parameter<int>(
+                            "chassis_cmd", static_cast<int>(ChassisCmd::NO_FOLLOWING)));
+
+            gimbal_cmd_ = static_cast<uint16_t>(declare_parameter<int>(
+                            "gimbal_cmd", static_cast<int>(GimbalCmd::OFF)));
+
+            shoot_cmd_ = static_cast<uint16_t>(declare_parameter<int>(
+                            "shoot_cmd", static_cast<int>(ShootCmd::OFF)));
 
             //订阅
             cmd_vel_sub_ = create_subscription<geometry_msgs::msg::Twist>(
@@ -122,12 +136,17 @@ namespace lc_serial
             tx_data_.forward = static_cast<float>(msg->linear.x);
             tx_data_.turn    = static_cast<float>(msg->linear.y);
             tx_data_.rotate  = static_cast<float>(msg->angular.z);
+
+            // 记录最后收到指令的时间
+            last_cmd_vel_time_ = std::chrono::steady_clock::now();
         }
 
         void LcSerialTestNode::onGimbalControl(const auto_aim_interfaces::msg::GimbalControl::SharedPtr msg)
         {
             float yaw_deg = static_cast<float>(msg->yaw * (180.0 / M_PI));
             float pitch_deg = static_cast<float>(msg->pitch * (180.0 / M_PI));
+
+            
 
             if(send_reverse_yaw_)
             {
@@ -139,6 +158,8 @@ namespace lc_serial
             }
 
             std::lock_guard<std::mutex> lock(data_mutex_);
+            // 新增：只要自瞄发了数据，就自动让云台使能
+            gimbal_cmd_ = static_cast<uint16_t>(GimbalCmd::ENABLE);
             tx_data_.yaw = yaw_deg;
             tx_data_.pitch = pitch_deg;
             if (msg->is_fire) {
@@ -148,6 +169,9 @@ namespace lc_serial
             } else {
                 shoot_cmd_ = static_cast<uint16_t>(ShootCmd::OFF);
             }
+
+            //记录最后收到指令的时间
+            last_gimbal_control_time_ = std::chrono::steady_clock::now();
         }
 
         //定时发送
@@ -165,6 +189,25 @@ namespace lc_serial
                 }
             }
 
+                // 检查指令超时 (100ms)
+                {
+                    std::lock_guard<std::mutex> lock(data_mutex_);
+                    auto now = std::chrono::steady_clock::now();
+                    auto elapsed1 = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_cmd_vel_time_).count();
+                    auto elapsed2 = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_gimbal_control_time_).count();
+                    if (elapsed1 > 100) {
+                        // 超过 100ms 没收到速度，强制清零
+                        tx_data_.forward = 0.0f;
+                        tx_data_.turn = 0.0f;
+                        tx_data_.rotate = 0.0f;
+                        
+                    }
+                    if (elapsed2 > 100)
+                    {
+                        gimbal_cmd_ = static_cast<uint16_t>(GimbalCmd::OFF);
+                    }
+                }
+
             // 2. 加锁拷贝数据
             TxData local_data;
             uint16_t local_cmd_id = 0;
@@ -172,9 +215,11 @@ namespace lc_serial
                 std::lock_guard<std::mutex> lock(data_mutex_);
                 local_data = tx_data_;
                 // 动态拼装
+                
                 local_cmd_id |= (chassis_cmd_ << CHASSIS_CMD_SHIFT);
                 local_cmd_id |= (gimbal_cmd_  << GIMBAL_CMD_SHIFT);
                 local_cmd_id |= (shoot_cmd_   << SHOOT_CMD_SHIFT);
+
             }
 
             // 3. 打包
