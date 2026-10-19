@@ -99,6 +99,7 @@
 
 /gimbal_controller:
   ros__parameters:
+    use_sim_interface: true
 
     is_pitch_gain: false
     is_track: true

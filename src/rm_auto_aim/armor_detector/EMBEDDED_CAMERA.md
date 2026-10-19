@@ -1,6 +1,7 @@
 # 内嵌相机模式（`use_embedded_camera`）
 
-> 提交：`1dc9247`　分支：`dev_cameraSDK_move`
+> 分支：`dev_cameraSDK_move`
+> 核心改动 `1dc9247`，内参和 launch `15d0fd5`
 > 目的：验证"把相机 SDK 直接塞进检测节点"能不能降低延迟。
 
 ---
@@ -80,7 +81,8 @@ armor_detector_node（自己拿相机）
 | `rgb_gain.r/g/b` | 相机当前值 | RGB 增益 |
 | `flip_image` | `false` | 图像翻转 |
 
-这些参数名和 `mindvision_camera` 包保持一致，可以沿用同一份 `params.yaml`。
+参数名和 `mindvision_camera` 一样，`params.yaml` 里 `/mv_camera` 那段能直接复用。
+`params.yaml` 不用动。
 
 ### CMake 部分
 
@@ -126,10 +128,14 @@ ros2 launch bringup armor_embedded_launch.py use_serial:=False
 
 ### 内参
 
-内嵌模式没有 `mv_camera` 发 `/camera_info`，所以 detector 自己按
-`camera_info_url` 加载，加载完再转发 `/camera_info`，下游照常订阅。
+内嵌模式没有 `mv_camera` 发 `/camera_info`，detector 自己加载，加载完再转给下游。
 
-文件在 `bringup/config/camera_info.yaml`，里面有两套标定，当前启用 6mm：
+两个文件的分工：
+
+- `bringup/config/params.yaml`：相机参数（曝光、增益），不改，直接用
+- `bringup/config/camera_info.yaml`：内参（K、D），按 `camera_info_url` 读
+
+`camera_info.yaml` 里有两套标定，当前启用 6mm：
 
 ```yaml
 #6mm
@@ -183,7 +189,10 @@ ros2 run armor_detector armor_detector_node --ros-args \
 | 编译（`-Wall -Werror`） | ✅ 通过，`libMVSDK.so` 链接成功 |
 | 默认模式（`video_pub` 回放 + 订阅） | ✅ 无 ERROR，FPS 30~44（分进程回放），功能正常 |
 | `use_embedded_camera:=true` 但没接相机 | ✅ 打 `ERROR: use_embedded_camera:=true 但没找到相机`，**节点不崩溃、继续存活** |
-| 内参加载 | 日志会打 `内参: ... (fx=... fy=...)`；无相机时走不到这步，没测到 |
+| 内参加载 | 日志打 `内参: ...`；无相机走不到这步，没测到 |
+
+内参加载是必须的。订阅模式靠 `mv_camera` 发 `/camera_info`，内嵌模式没人发，
+`pnp_solver_` 就是空的，PnP 静默不跑、`/detector/armors` 一条不发，还不报错。
 
 ⚠️ 真机延迟对比**还没做**——需要接上相机才能测。
 
@@ -258,7 +267,7 @@ ros2 run armor_detector armor_detector_node --ros-args \
 
 ```bash
 git switch dev_EKF
-git cherry-pick 1dc9247
+git cherry-pick 1dc9247 15d0fd5
 ```
 
 `detector_node.cpp` 在 `dev_EKF` 上多了神经网络相关代码，可能出现冲突。
