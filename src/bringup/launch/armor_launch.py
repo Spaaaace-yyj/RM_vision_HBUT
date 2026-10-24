@@ -129,9 +129,25 @@ def generate_launch_description():
         name='armor_detector',
         output='screen',
         emulate_tty=True,
-        parameters=[detector_params, {'use_sim_time': use_sim_time}],
+        parameters=[detector_params, {'use_sim_time': use_sim_time,
+                                      # 仿真灯条受渲染抗锯齿影响，长度比真车略短；放宽配对阈值。
+                                      'armor.min_light_ratio': 0.6}],
         condition=IfCondition(use_mujoco),
         arguments=['--ros-args', '--log-level', 'armor_detector:=INFO'],
+    )
+
+    # MuJoCo 仿真里 sim_autoaim.yaml 把 base 坐标系命名为 base_link；
+    # 跟踪/弹道解算使用的 odom 必须位于 pitch 轴高度（base_link +0.12 yaw +0.14 pitch）。
+    # 该静态 TF 只在仿真模式发布，真车由 robot_state_publisher 提供 odom。
+    mujoco_odom_tf = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='mujoco_base_to_odom',
+        output='screen',
+        arguments=['--x', '0', '--y', '0', '--z', '0.26',
+                   '--frame-id', 'base_link', '--child-frame-id', 'odom'],
+        parameters=[{'use_sim_time': use_sim_time}],
+        condition=IfCondition(use_mujoco),
     )
 
     tracker_node = Node(
@@ -178,6 +194,7 @@ def generate_launch_description():
     gimbal_controller_node = Node(
         package='gimbal_controller',
         executable='gimbal_controller',
+        name='gimbal_controller',
         output='screen',
         emulate_tty=True,
         parameters=[controller_params, {'use_sim_time': use_sim_time}],
@@ -279,6 +296,7 @@ def generate_launch_description():
 
         # use_mujoco=True 时单独启动的 detector
         delay_mujoco_detector_node,
+        mujoco_odom_tf,
 
         robot_state_publisher,
         joint_state_publisher,

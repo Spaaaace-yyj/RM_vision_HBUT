@@ -811,6 +811,10 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
     {
         double dt = (lost_time - this->now()).seconds();
         control_msg.tracing = 0.0;
+        // 目标丢失时必须显式停火：仿真侧 fire_command_timeout=0 会保持上一条 true 一直连射。
+        std_msgs::msg::Bool sim_fire_msg;
+        sim_fire_msg.data = false;
+        sim_fire_pub_->publish(sim_fire_msg);
         if (sentray_mode_)
         {
             control_msg.is_fire = 0;
