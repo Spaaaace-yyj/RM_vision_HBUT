@@ -14,9 +14,9 @@ namespace lc_serial
 
             //参数
             device_name_           = declare_parameter<std::string>("device_name", "/dev/ttyACM0");
-            send_reverse_pitch_    = declare_parameter<bool>("send_reverse_pitch", false);
-            send_reverse_yaw_      = declare_parameter<bool>("send_reverse_yaw", true);
-            recv_reverse_pitch_    = declare_parameter<bool>("recv_reverse_pitch", false);
+            send_reverse_pitch_    = declare_parameter<bool>("send_reverse_pitch", true);
+            send_reverse_yaw_      = declare_parameter<bool>("send_reverse_yaw", false);
+            recv_reverse_pitch_    = declare_parameter<bool>("recv_reverse_pitch", true);
             recv_reverse_yaw_      = declare_parameter<bool>("recv_reverse_yaw", true);
             recv_tf_reverse_pitch_ = declare_parameter<bool>("recv_tf_reverse_pitch", true);
             recv_tf_reverse_yaw_   = declare_parameter<bool>("recv_tf_reverse_yaw", false);
