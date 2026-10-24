@@ -18,11 +18,11 @@ namespace lc_serial
 
             //参数
             device_name_           = declare_parameter<std::string>("device_name", "/dev/ttyACM0");
-            send_reverse_pitch_    = declare_parameter<bool>("send_reverse_pitch", false);
+            send_reverse_pitch_    = declare_parameter<bool>("send_reverse_pitch", true);
             send_reverse_yaw_      = declare_parameter<bool>("send_reverse_yaw", false);
-            recv_reverse_pitch_    = declare_parameter<bool>("recv_reverse_pitch", false);
-            recv_reverse_yaw_      = declare_parameter<bool>("recv_reverse_yaw", false);
-            recv_tf_reverse_pitch_ = declare_parameter<bool>("recv_tf_reverse_pitch", false);
+            recv_reverse_pitch_    = declare_parameter<bool>("recv_reverse_pitch", true);
+            recv_reverse_yaw_      = declare_parameter<bool>("recv_reverse_yaw", true);
+            recv_tf_reverse_pitch_ = declare_parameter<bool>("recv_tf_reverse_pitch", true);
             recv_tf_reverse_yaw_   = declare_parameter<bool>("recv_tf_reverse_yaw", false);
             // 新增：将三个控制状态改为参数，并读取覆盖初始值
             // 注意：ROS 2 参数通常使用 int，读取后强转为 uint16_t
