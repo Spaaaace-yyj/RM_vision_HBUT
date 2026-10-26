@@ -245,9 +245,9 @@ bool OpenVINODetector::waitReceive(NeuralFrameResult& result,
     if (slot.error) {
       std::rethrow_exception(slot.error);
     }
-    const auto output = slot.request.get_output_tensor();
+    auto output = slot.request.get_output_tensor();
     slot.result.armors =
-        decodeNeuralOutput(output.data<const float>(), output.get_shape()[1],
+        decodeNeuralOutput(output.data<float>(), output.get_shape()[1],
                            impl_->input_size, slot.image_size, slot.params);
   } catch (const std::exception& error) {
     slot.result.error = error.what();

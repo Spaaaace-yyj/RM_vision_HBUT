@@ -6,8 +6,9 @@
 
 ## 1. 版本与安装（Ubuntu 22.04 / NUC12 / C++17）
 
-推荐固定 **OpenVINO 2024.4.0 Ubuntu22 x86_64 C++ SDK**。
-代码使用 2024.4 的 Runtime API；其他更新版本需要自行重新编译和验证，不保证性能一致。
+已验证 **OpenVINO 2024.4.0 和 2025.2.0 Ubuntu22 x86_64 C++ SDK**。
+最低版本为 2024.4；已有 2025.2.0 且 C++ ABI=1 的安装可以直接复用，不需要降级。
+下面保留 2024.4.0 作为新安装示例；其他更新版本需要重新编译和验证，不保证性能一致。
 纯 CPU 不需要 CUDA、TensorRT、Intel GPU 驱动或 NPU。
 
 **不要把 Linux `pip install openvino==2024.4.0` 的 CMake 包直接用于本 C++/ROS 工程。**
@@ -38,6 +39,36 @@ export OpenVINO_DIR="$HOME/opt/openvino-2024.4.0/runtime/cmake"
 以后编译和运行均先 `source .../setupvars.sh`。也可使用官方 APT 的 `openvino-2024.4.0` C++ SDK。
 切换 SDK 路径后重新配置 CMake，避免沿用之前 wheel 的 `OpenVINO_DIR` 缓存。
 如果需要系统运行库，使用 SDK 的 `install_dependencies/install_openvino_dependencies.sh` 安装 CPU 依赖。
+
+### 已安装 2025.2.0 时直接复用
+
+你的 `~/.bashrc` 已经 source SDK 时，新的终端中通常已经有 `INTEL_OPENVINO_DIR` 和 `OpenVINO_DIR`。
+确认环境指向同一套 C++ SDK：
+
+```bash
+printenv INTEL_OPENVINO_DIR OpenVINO_DIR
+export OpenVINO_DIR="$INTEL_OPENVINO_DIR/runtime/cmake"
+```
+
+后续编译命令里的 `-DOpenVINO_DIR=...` 改成 `-DOpenVINO_DIR="$OpenVINO_DIR"`，
+无需执行 2024.4 安装；后续示例中的 2024.4 setupvars 命令也跳过，保留当前 2025.2 环境。
+
+**曾经编译成功不等于 OpenVINO 后端已经启用。** 旧代码使用
+`find_package(OpenVINO 2024.4 QUIET)`，但 OpenVINO 的版本配置要求请求与 SDK 的 major 年份相同，
+2025.2 不能满足这个 2024 年份请求，可能静默构建成未启用 OpenVINO 的 stub。
+现在改为先发现 SDK，再检查版本是否至少为 2024.4，允许使用已验证的 2025.2。
+更新代码后强制重新配置：
+
+```bash
+colcon build --symlink-install --packages-up-to armor_detector --cmake-force-configure \
+  --event-handlers console_direct+ \
+  --cmake-args -DCMAKE_BUILD_TYPE=Release -DARMOR_ENABLE_OPENVINO=ON \
+  -DOpenVINO_DIR="$OpenVINO_DIR"
+```
+
+应看到 `armor_detector: OpenVINO 2025.2.0, CPU async backend enabled`。
+可继续检查 `build/armor_detector/CMakeFiles/armor_detector.dir/flags.make` 中存在
+`ARMOR_DETECTOR_WITH_OPENVINO`（使用 Makefiles 生成器时），并运行独立测试确认模型实际执行。
 
 ## 2. 最快可行性测试：不编译 ROS、不接相机
 
@@ -212,9 +243,9 @@ ctest --test-dir build/openvino_test --output-on-failure
 参数快照、独立提交/消费线程、非连续 ID 按序返回、满池拒收、失败帧推进、错误模型拒绝，以及未取回任务时析构等待。
 小型生成模型只测试程序正确性，性能测试必须使用仓库的真实模型。
 
-本次开发环境验证：Ubuntu 24.04、GCC 13、OpenCV 4.6、官方 Ubuntu22 OpenVINO 2024.4.0 C++ SDK；
+本次开发环境验证：Ubuntu 24.04、GCC 13、OpenCV 4.6、官方 Ubuntu22 OpenVINO 2024.4.0 / 2025.2.0 C++ SDK；
 原 ORT 实现已通过编译和真实模型冒烟运行，未启用 SDK 的 stub 编译也已检查。
-3 项 CTest 全部通过；OpenVINO 已用仓库真实模型完成 60 帧 CPU 冒烟运行，无推理错误。
+3 项 CTest 全部通过；OpenVINO 已用仓库真实模型做 CPU 冒烟运行（2024.4：60 帧；2025.2：30 帧），无推理错误。
 当前开发环境没有 ROS2 Humble 和 NUC12 实机，完整 ROS 构建、实机相机输入、识别精度与 150 FPS 结果需在目标机验证。
 
 ## 官方参考
