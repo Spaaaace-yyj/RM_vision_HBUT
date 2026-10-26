@@ -7,6 +7,10 @@
 | `traditional`（默认） | `Detector`，二值化 + 找灯条 + PCA + 配对 + MLP 数字分类 | `Detector` 算法流程保持不变，行为与原来一致 |
 | `neural` | `NeuralDetector`，深大 RobotPilots 开源模型 | 网络直接输出四角点/颜色/编号，角点直接送入 PnP，再由 PnP 做重投影 yaw 优化 |
 
+神经网络模式新增可选的 **OpenVINO CPU 多流异步后端**，保留原 ONNX Runtime 后端。
+安装版本、独立编译、150 FPS 压测、ROS 参数和模块接口见 **[OPENVINO.md](OPENVINO.md)**。
+`detector_mode` 仍选择传统/网络；`neural_backend` 在网络模式内选择 `onnxruntime`（默认）或 `openvino`。
+
 两种模式最后都输出同一种 `Armor`，所以 PnP、tracker、串口、云台这些下游**都不用改**。
 
 ## 1. 怎么切换

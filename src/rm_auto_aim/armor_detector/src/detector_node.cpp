@@ -23,10 +23,13 @@
 #include <map>
 #include <memory>
 #include <sstream>
+#include <stdexcept>
+#include <utility>
 #include <string>
 #include <vector>
 
 #include "armor_detector/armor.hpp"
+#include "armor_detector/neural_postprocessor.hpp"
 #include "armor_detector/detector_node.hpp"
 
 namespace rm_auto_aim
@@ -130,10 +133,23 @@ namespace rm_auto_aim
                 save_video_path, cv::VideoWriter::fourcc('P', 'I', 'M', '1'), save_video_fps,
                 cv::Size(save_video_width, save_video_height), true);
         }
+        if (neural_backend_ == "openvino" && OpenVINODetector::available())
+        {
+            openvino_timer_ = this->create_wall_timer(
+                std::chrono::milliseconds(2), [this]() { drainOpenVINOResults(); });
+        }
+    }
+
+    ArmorDetectorNode::~ArmorDetectorNode()
+    {
+        img_sub_.reset();
+        openvino_timer_.reset();
+        openvino_detector_.reset();  // Join inference callbacks while all node resources still exist.
     }
 
     void ArmorDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr img_msg)
     {
+        drainOpenVINOResults();
         const bool neural_frame = neural_mode_.load();
         const auto callback_start = std::chrono::steady_clock::now();
         if (neural_frame)
@@ -157,9 +173,19 @@ namespace rm_auto_aim
             fps++;
         }
 
-        // 装甲板识别
+        if (neural_frame && neural_backend_ == "openvino" &&
+            submitOpenVINO(img_msg, callback_start))
+        {
+            return;  // Timer consumes completed frames; never wait for inference in the image callback.
+        }
         auto armors = detectArmors(img_msg);
+        completeFrame(img_msg, std::move(armors), callback_start, neural_frame);
+    }
 
+    void ArmorDetectorNode::completeFrame(
+        const sensor_msgs::msg::Image::ConstSharedPtr & img_msg, std::vector<Armor> armors,
+        std::chrono::steady_clock::time_point callback_start, bool neural_frame)
+    {
         float pnp_ms = 0.0F;
         std::size_t pnp_count = 0;
         if (pnp_solver_ != nullptr)
@@ -241,9 +267,10 @@ namespace rm_auto_aim
             neural_frame_timing_.e2e_ms = static_cast<float>(
                 (this->now() - img_msg->header.stamp).seconds() * 1000.0);
 
-            const auto & nn = neural_detector_->lastTiming();
-            RCLCPP_INFO(
-                this->get_logger(),
+            const auto & nn = neural_backend_ == "openvino" ? last_openvino_timing_ :
+                neural_detector_->lastTiming();
+            RCLCPP_INFO_THROTTLE(
+                this->get_logger(), *this->get_clock(), 2000,
                 "NN perf: age %.2f | bridge %.2f | pre %.2f | infer %.2f | post %.2f | "
                 "NN %.2f | PnP %.2f(%zu) | core %.2f | E2E %.2f ms",
                 neural_frame_timing_.input_age_ms, neural_frame_timing_.cv_bridge_ms,
@@ -309,6 +336,21 @@ namespace rm_auto_aim
             "检测模式：traditional=传统识别（默认，原有流程），neural=纯神经网络角点输出后直接进入 PnP";
         detector_mode_str_ = declare_parameter("detector_mode", std::string("traditional"), mode_desc);
 
+        rcl_interfaces::msg::ParameterDescriptor backend_desc;
+        backend_desc.read_only = true;
+        backend_desc.description = "neural backend: onnxruntime / openvino; restart to change";
+        neural_backend_ = declare_parameter("neural_backend", std::string("onnxruntime"), backend_desc);
+        if (neural_backend_ != "onnxruntime" && neural_backend_ != "openvino")
+        {
+            throw std::invalid_argument("neural_backend must be onnxruntime or openvino");
+        }
+        backend_desc.description = "CPU inference thread budget for the whole model; 0 = auto";
+        openvino_config_.threads = declare_parameter("openvino.threads", 0, backend_desc);
+        backend_desc.description = "CPU parallel inference streams; 0 = THROUGHPUT auto";
+        openvino_config_.streams = declare_parameter("openvino.streams", 0, backend_desc);
+        backend_desc.description = "Bounded request/result capacity; 0 = recommended count";
+        openvino_config_.requests = declare_parameter("openvino.requests", 0, backend_desc);
+
         rcl_interfaces::msg::ParameterDescriptor model_desc;
         model_desc.description = "神经网络模型路径，留空则用 share/armor_detector/model/shenzhen-0526.onnx";
         neural_model_path_ = declare_parameter("neural_model_path", std::string(""), model_desc);
@@ -348,7 +390,8 @@ namespace rm_auto_aim
             return false;
         }
         detector_mode_str_ = mode;
-        neural_mode_ = (mode == "neural");
+        const bool was_neural = neural_mode_.exchange(mode == "neural");
+        if (was_neural != (mode == "neural")) { ++neural_generation_; }
         if (neural_mode_)
         {
             // 允许切模式后重新尝试加载模型
@@ -357,6 +400,109 @@ namespace rm_auto_aim
         RCLCPP_INFO(
             this->get_logger(), "检测模式已切换: %s", neural_mode_ ? "neural（神经网络）" : "traditional（传统识别）");
         return true;
+    }
+
+    void ArmorDetectorNode::updateNeuralParams()
+    {
+        // 同步一次可以在线改的参数
+        neural_params_.detect_color = get_parameter("detect_color").as_int();
+        neural_params_.ignore_classes = get_parameter("ignore_classes").as_string_array();
+        neural_params_.conf_threshold =
+            static_cast<float>(get_parameter("neural_conf_threshold").as_double());
+        neural_params_.nms_threshold =
+            static_cast<float>(get_parameter("neural_nms_threshold").as_double());
+        neural_params_.swap_color = get_parameter("neural_swap_color").as_bool();
+    }
+
+    bool ArmorDetectorNode::ensureOpenVINODetector()
+    {
+        if (openvino_detector_) { return true; }
+        if (neural_load_failed_) { return false; }
+        try
+        {
+            openvino_detector_ = std::make_unique<OpenVINODetector>(neural_model_path_, openvino_config_);
+            RCLCPP_INFO(this->get_logger(), "OpenVINO CPU: threads=%d streams=%d requests=%zu",
+                openvino_detector_->threads(), openvino_detector_->streams(), openvino_detector_->capacity());
+            return true;
+        }
+        catch (const std::exception & error)
+        {
+            neural_load_failed_ = true;
+            RCLCPP_ERROR(this->get_logger(), "OpenVINO init failed: %s; using traditional detector",
+                error.what());
+            return false;
+        }
+    }
+
+    bool ArmorDetectorNode::submitOpenVINO(
+        const sensor_msgs::msg::Image::ConstSharedPtr & img_msg,
+        std::chrono::steady_clock::time_point callback_start)
+    {
+        if (!ensureOpenVINODetector()) { return false; }
+        bool accepted = false;
+        try
+        {
+            const auto bridge_start = std::chrono::steady_clock::now();
+            const auto rgb = cv_bridge::toCvShare(img_msg, "rgb8")->image;
+            NeuralFrameTiming timing;
+            timing.input_age_ms = neural_frame_timing_.input_age_ms;
+            timing.cv_bridge_ms = std::chrono::duration<float, std::milli>(
+                std::chrono::steady_clock::now() - bridge_start).count();
+            updateNeuralParams();
+            const auto id = next_neural_frame_id_++;
+            if (!openvino_detector_->submit(rgb, id, neural_params_))
+            {
+                ++openvino_rejected_;
+                RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+                    "OpenVINO full: rejected=%llu pending=%zu/%zu (frame not processed)",
+                    static_cast<unsigned long long>(openvino_rejected_),
+                    openvino_detector_->pending(), openvino_detector_->capacity());
+                return true;
+            }
+            accepted = true;
+            pending_neural_frames_.emplace(id, PendingNeuralFrame{
+                img_msg, timing, callback_start, neural_generation_.load()});
+            if (is_record_)
+            {
+                cv::Mat bgr;
+                cv::cvtColor(rgb, bgr, cv::COLOR_RGB2BGR);
+                video_writer_.write(bgr);
+            }
+            return true;
+        }
+        catch (const std::exception & error)
+        {
+            RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+                "OpenVINO frame/recording error: %s", error.what());
+            // Once accepted, never publish a second synchronous result for the same frame.
+            return accepted;
+        }
+    }
+
+    void ArmorDetectorNode::drainOpenVINOResults()
+    {
+        if (!openvino_detector_) { return; }
+        NeuralFrameResult result;
+        while (openvino_detector_->tryReceive(result))
+        {
+            auto it = pending_neural_frames_.find(result.frame_id);
+            if (it == pending_neural_frames_.end()) { continue; }
+            const auto pending = std::move(it->second);
+            pending_neural_frames_.erase(it);
+            // Switching away and back cannot publish stale results from the previous mode.
+            if (!neural_mode_ || pending.generation != neural_generation_.load()) { continue; }
+            neural_frame_timing_ = pending.timing;
+            last_openvino_timing_ = result.timing;
+            traditional_ran_ = false;
+            neural_frame_succeeded_ = result.error.empty();
+            if (!result.error.empty())
+            {
+                RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+                    "OpenVINO frame failed: %s; using traditional detector", result.error.c_str());
+                result.armors = detectArmors(pending.image);
+            }
+            completeFrame(pending.image, std::move(result.armors), pending.started, true);
+        }
     }
 
     bool ArmorDetectorNode::ensureNeuralDetector()
@@ -404,19 +550,12 @@ namespace rm_auto_aim
             return detector_->detect(img);
         };
 
-        if (!ensureNeuralDetector())
+        if (neural_backend_ == "openvino" || !ensureNeuralDetector())
         {
             return run_traditional_fallback();
         }
 
-        // 同步一次可以在线改的参数
-        neural_params_.detect_color = detector_->detect_color;
-        neural_params_.ignore_classes = get_parameter("ignore_classes").as_string_array();
-        neural_params_.conf_threshold =
-            static_cast<float>(get_parameter("neural_conf_threshold").as_double());
-        neural_params_.nms_threshold =
-            static_cast<float>(get_parameter("neural_nms_threshold").as_double());
-        neural_params_.swap_color = get_parameter("neural_swap_color").as_bool();
+        updateNeuralParams();
         neural_detector_->setParams(neural_params_);
 
         std::vector<Armor> armors;
@@ -528,17 +667,18 @@ namespace rm_auto_aim
     void ArmorDetectorNode::publishNeuralDebugImage(
         const sensor_msgs::msg::Image::ConstSharedPtr& img_msg, const std::vector<Armor>& armors)
     {
-        if (!neural_detector_)
+        if (!neural_detector_ && !openvino_detector_)
         {
             return;
         }
 
         // Debug 绘制使用独立副本，避免修改订阅到的共享图像数据。
         auto debug_img = cv_bridge::toCvCopy(img_msg, "rgb8")->image;
-        neural_detector_->drawResults(debug_img, armors);
+        drawNeuralResults(debug_img, armors);
         cv::circle(debug_img, cam_center_, 5, cv::Scalar(255, 0, 0), 2);
 
-        const auto & nn = neural_detector_->lastTiming();
+        const auto & nn = neural_backend_ == "openvino" ? last_openvino_timing_ :
+            neural_detector_->lastTiming();
         const auto put_line = [&debug_img](const std::string& text, int y, const cv::Scalar& color)
         {
             cv::putText(

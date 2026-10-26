@@ -25,6 +25,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 find_package(ament_cmake_auto REQUIRED)
 find_package(OpenCV REQUIRED)
 ament_auto_find_build_dependencies()
+find_package(Threads REQUIRED)
+include(cmake/openvino.cmake)
 
 ###########################
 ## onnxruntime（神经网络模式用）##
@@ -32,7 +34,7 @@ ament_auto_find_build_dependencies()
 
 ## 不额外安装：优先用 ARMOR_ONNXRUNTIME_ROOT 指定，
 ## 否则复用 buff_detector 里随仓库分发的那份，最后看本包的 third_party。
-## 找不到也不影响编译，只是神经网络模式不可用，传统模式照常。
+## 找不到也不影响编译，只是原 ONNX Runtime 后端不可用，OpenVINO 和传统模式独立。
 set(ARMOR_ONNXRUNTIME_ROOT "" CACHE PATH "onnxruntime 根目录（含 include/ 与 lib/）")
 if(ARMOR_ONNXRUNTIME_ROOT AND NOT EXISTS "${ARMOR_ONNXRUNTIME_ROOT}/include/onnxruntime_cxx_api.h")
   message(WARNING "armor_detector: ${ARMOR_ONNXRUNTIME_ROOT} 里没有 include/onnxruntime_cxx_api.h，改为自动查找")
@@ -57,7 +59,7 @@ if(ARMOR_ONNXRUNTIME_ROOT)
     INTERFACE_INCLUDE_DIRECTORIES "${ARMOR_ONNXRUNTIME_ROOT}/include"
   )
 else()
-  message(WARNING "armor_detector: 没找到 onnxruntime，神经网络模式不可用（传统模式不受影响）")
+  message(WARNING "armor_detector: 没找到 onnxruntime，仅原 ORT 后端不可用（OpenVINO/传统模式独立）")
 endif()
 
 ###########
@@ -69,7 +71,14 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
 )
 
 target_include_directories(${PROJECT_NAME} PUBLIC ${OpenCV_INCLUDE_DIRS})
-target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})
+target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS} Threads::Threads)
+if(OpenVINO_FOUND AND ARMOR_ENABLE_OPENVINO)
+  target_compile_definitions(${PROJECT_NAME} PRIVATE ARMOR_DETECTOR_WITH_OPENVINO)
+  target_link_libraries(${PROJECT_NAME} openvino::runtime)
+  message(STATUS "armor_detector: OpenVINO ${OpenVINO_VERSION}, CPU async backend enabled")
+else()
+  message(STATUS "armor_detector: OpenVINO unavailable/disabled; traditional and existing ORT backend remain available")
+endif()
 
 if(ARMOR_ONNXRUNTIME_ROOT)
   target_compile_definitions(${PROJECT_NAME} PUBLIC ARMOR_DETECTOR_WITH_ONNXRUNTIME)
@@ -110,6 +119,10 @@ target_include_directories(test_neural_detector PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 target_link_libraries(test_neural_detector ${PROJECT_NAME} ${OpenCV_LIBS})
+
+ament_auto_add_executable(test_openvino_detector tools/test_openvino_detector.cpp)
+target_link_libraries(test_openvino_detector ${PROJECT_NAME} ${OpenCV_LIBS} Threads::Threads)
+install(FILES OPENVINO.md DESTINATION share/${PROJECT_NAME})
 
 ament_auto_package(
   INSTALL_TO_SHARE

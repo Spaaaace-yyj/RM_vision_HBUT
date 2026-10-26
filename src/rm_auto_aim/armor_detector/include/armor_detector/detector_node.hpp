@@ -23,12 +23,16 @@
 // STD
 #include <atomic>
 #include <cstddef>
+#include <chrono>
+#include <cstdint>
+#include <unordered_map>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "armor_detector/detector.hpp"
 #include "armor_detector/neural_detector.hpp"
+#include "armor_detector/openvino_detector.hpp"
 #include "armor_detector/number_classifier.hpp"
 #include "armor_detector/pnp_solver.hpp"
 #include "auto_aim_interfaces/msg/armors.hpp"
@@ -39,9 +43,20 @@ namespace rm_auto_aim
     {
     public:
         ArmorDetectorNode(const rclcpp::NodeOptions& options);
+        ~ArmorDetectorNode() override;
 
     private:
         void imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr img_msg);
+
+        void completeFrame(
+            const sensor_msgs::msg::Image::ConstSharedPtr & img_msg, std::vector<Armor> armors,
+            std::chrono::steady_clock::time_point callback_start, bool neural_frame);
+        bool ensureOpenVINODetector();
+        bool submitOpenVINO(
+            const sensor_msgs::msg::Image::ConstSharedPtr & img_msg,
+            std::chrono::steady_clock::time_point callback_start);
+        void drainOpenVINOResults();
+        void updateNeuralParams();
 
         std::unique_ptr<Detector> initDetector();
         std::vector<Armor> detectArmors(const sensor_msgs::msg::Image::ConstSharedPtr& img_msg);
@@ -91,6 +106,23 @@ namespace rm_auto_aim
         };
 
         NeuralFrameTiming neural_frame_timing_;
+        struct PendingNeuralFrame
+        {
+            sensor_msgs::msg::Image::ConstSharedPtr image;
+            NeuralFrameTiming timing;
+            std::chrono::steady_clock::time_point started;
+            std::uint64_t generation;
+        };
+        std::string neural_backend_ = "onnxruntime";
+        OpenVINOConfig openvino_config_;
+        std::unique_ptr<OpenVINODetector> openvino_detector_;
+        rclcpp::TimerBase::SharedPtr openvino_timer_;
+        std::unordered_map<std::uint64_t, PendingNeuralFrame> pending_neural_frames_;
+        std::atomic<std::uint64_t> neural_generation_{0};
+        std::uint64_t next_neural_frame_id_ = 0;
+        std::uint64_t openvino_rejected_ = 0;
+        NeuralDetector::Timing last_openvino_timing_;
+
 
         // Detected armors publisher
         auto_aim_interfaces::msg::Armors armors_msg_;
