@@ -22,6 +22,41 @@ bash armor_bringup.sh
 ros2 launch rosbridge_server rosbridge_websocket_launch.xml
 ros2 param load /armor_detector src/bringup/config/params.yaml
 ```
+### MuJoCo 仿真
+
+先启动 MuJoCo 仿真器，再在本仓库运行：
+
+```bash
+colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
+bash armor_mujoco.sh
+# 使用 OpenVINO 神经网络识别：
+bash armor_mujoco.sh detector_mode:=neural neural_backend:=openvino
+```
+
+脚本可从任意目录执行，自动加载 ROS Humble 和本工作空间环境；额外参数会传给 launch。
+等价的直接启动方式是：
+
+```bash
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+ros2 launch bringup armor_launch.py use_mujoco:=True use_sim_time:=True use_serial:=False
+```
+
+此入口沿用 main 的 ROS 侧仿真启动方式，不包含 MuJoCo 仿真器本体。
+它启动独立 detector、tracker、可选 overlay、gimbal_controller，以及
+`base_link -> odom` 的静态 TF（z=0.26 m，与 main 的仿真模型一致）。
+仿真器负责发布 `/clock`、`/image_raw`、`/camera_info` 和其余相机/云台 TF。
+detector 强制关闭内嵌相机，默认订阅原始图像；若仿真器发布压缩图像，追加
+`mujoco_subscribe_compressed:=True`。
+
+控制器在仿真模式订阅 `/gimbal/pitch`、`/gimbal/yaw`（`std_msgs/Float64`，rad），
+发布 `/gimbal/target_pitch`、`/gimbal/target_yaw`（同类型）和 `/gimbal/fire`
+（`std_msgs/Bool`），沿用 main 的 yaw 方向转换。实车模式使用 `/gimbal_feed`。
+识别、跟踪和弹道参数继续读取 dev_EKF 的 `src/bringup/config/params.yaml`；
+仅仿真灯条配对阈值覆盖为 `armor.min_light_ratio=0.6`。
+需要 overlay 图像时在该 YAML 中启用 detector 的 `debug`；关闭 overlay 可传
+`tracker_overlay_debug:=False`。仿真启动时不会运行实体相机、串口和实车模型的状态发布节点。
+
 ### 相机标定
 相机节点
 

@@ -33,6 +33,7 @@ GimbalControllerNode::GimbalControllerNode() : Node("GimbalControllerNode")
     mpc_half_horizon_ = declare_parameter("mpc.half_horizon", 50);
     mpc_dt_ = declare_parameter("mpc.dt", 0.01);
     mpc_enable_ = declare_parameter("mpc.enable", true);
+    use_sim_interface_ = declare_parameter("use_sim_interface", false);
 
     if (mpc_horizon_ < 4)
     {
@@ -84,14 +85,30 @@ GimbalControllerNode::GimbalControllerNode() : Node("GimbalControllerNode")
     target_sub_ = this->create_subscription<auto_aim_interfaces::msg::Target>(
         "/tracker/target", rclcpp::SensorDataQoS(),
         std::bind(&GimbalControllerNode::TargetCallback, this, std::placeholders::_1));
-    gimbal_feed_sub_ = this->create_subscription<auto_aim_interfaces::msg::GimbalFeed>(
-        "/gimbal_feed", rclcpp::SensorDataQoS(),
-        std::bind(&GimbalControllerNode::GimbalFeedCallback, this, std::placeholders::_1));
+    if (use_sim_interface_)
+    {
+        sim_gimbal_pitch_sub_ = this->create_subscription<std_msgs::msg::Float64>(
+            "/gimbal/pitch", rclcpp::SensorDataQoS(),
+            std::bind(&GimbalControllerNode::SimGimbalPitchCallback, this, std::placeholders::_1));
+        sim_gimbal_yaw_sub_ = this->create_subscription<std_msgs::msg::Float64>(
+            "/gimbal/yaw", rclcpp::SensorDataQoS(),
+            std::bind(&GimbalControllerNode::SimGimbalYawCallback, this, std::placeholders::_1));
+        sim_gimbal_pitch_pub_ = this->create_publisher<std_msgs::msg::Float64>("/gimbal/target_pitch", 10);
+        sim_gimbal_yaw_pub_ = this->create_publisher<std_msgs::msg::Float64>("/gimbal/target_yaw", 10);
+        sim_fire_pub_ = this->create_publisher<std_msgs::msg::Bool>("/gimbal/fire", 10);
+    }
+    else
+    {
+        gimbal_feed_sub_ = this->create_subscription<auto_aim_interfaces::msg::GimbalFeed>(
+            "/gimbal_feed", rclcpp::SensorDataQoS(),
+            std::bind(&GimbalControllerNode::GimbalFeedCallback, this, std::placeholders::_1));
+    }
     //publisher
     control_pub_ = this->create_publisher<auto_aim_interfaces::msg::GimbalControl>("control/gimbal_control", 10);
     marker_array_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("debug/control_visuallize", 10);
     debug_pub_ = this->create_publisher<auto_aim_interfaces::msg::DebugController>("debug/controller", 10);
 
+    lost_time = this->now();
     RCLCPP_INFO(this->get_logger(), "Gimbal Controller Init!");
 }
 
@@ -793,7 +810,32 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
                 control_msg.yaw += 2.0 * M_PI;
         }
     }
+    if (use_sim_interface_)
+    {
+        // 沿用 main 的坐标方向。丢失目标时显式停火，避免仿真保持上一条 true。
+        std_msgs::msg::Bool fire;
+        fire.data = control_msg.tracing > 0.0 && control_msg.is_fire > 0.0;
+        sim_fire_pub_->publish(fire);
+        if (control_msg.tracing > 0.0 || sentray_mode_)
+        {
+            std_msgs::msg::Float64 pitch, yaw;
+            pitch.data = control_msg.pitch;
+            yaw.data = -control_msg.yaw;
+            sim_gimbal_pitch_pub_->publish(pitch);
+            sim_gimbal_yaw_pub_->publish(yaw);
+        }
+    }
     control_pub_->publish(control_msg);
+}
+
+void GimbalControllerNode::SimGimbalPitchCallback(std_msgs::msg::Float64::SharedPtr msg)
+{
+    gimbal_pitch_ = msg->data;
+}
+
+void GimbalControllerNode::SimGimbalYawCallback(std_msgs::msg::Float64::SharedPtr msg)
+{
+    gimbal_yaw_ = -msg->data;
 }
 
 void GimbalControllerNode::GimbalFeedCallback(auto_aim_interfaces::msg::GimbalFeed::SharedPtr msg)
