@@ -11,6 +11,7 @@
 // STD
 #include <algorithm>
 #include <cmath>
+#include <chrono>
 #include <vector>
 
 #include "armor_detector/detector.hpp"
@@ -27,16 +28,31 @@ Detector::Detector(
 
 std::vector<Armor> Detector::detect(const cv::Mat & input)
 {
+  using Clock = std::chrono::steady_clock;
+  const auto begin = Clock::now();
+  auto stage = begin;
+  const auto elapsed = [&stage]()
+  {
+    const auto now = Clock::now();
+    const double ms = std::chrono::duration<double, std::milli>(now - stage).count();
+    stage = now;
+    return ms;
+  };
+  last_timing_ = {};
   binary_img = preprocessImage(input);
+  last_timing_.preprocess_ms = elapsed();
   lights_ = findLights(input, binary_img, gray_img);
+  last_timing_.lights_ms = elapsed();
   armors_ = matchLights(lights_);
+  last_timing_.match_ms = elapsed();
 
   if (!armors_.empty()) {
     classifier->extractNumbers(input, armors_);
+    last_timing_.extract_ms = elapsed();
     classifier->classify(armors_);
+    last_timing_.classify_ms = elapsed();
   }
-
-
+  last_timing_.total_ms = std::chrono::duration<double, std::milli>(Clock::now() - begin).count();
   return armors_;
 }
 

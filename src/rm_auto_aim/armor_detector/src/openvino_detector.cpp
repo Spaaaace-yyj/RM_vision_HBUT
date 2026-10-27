@@ -31,7 +31,7 @@ struct OpenVINODetector::Impl {
     NeuralFrameResult result;
     NeuralDetectorParams params;
     cv::Size image_size;
-    Clock::time_point submitted, inference_start;
+    Clock::time_point submitted, inference_start, finished;
     std::exception_ptr error;
     bool ready = false;
   };
@@ -55,6 +55,7 @@ struct OpenVINODetector::Impl {
       std::lock_guard<std::mutex> lock(state_mutex);
       auto& slot = *slots[index];
       slot.result.timing.inference_ms = elapsedMs(slot.inference_start);
+      slot.finished = Clock::now();
       slot.error = error;
       slot.ready = true;
     }
@@ -240,6 +241,7 @@ bool OpenVINODetector::waitReceive(NeuralFrameResult& result,
   // Slot remains occupied until decoding is complete, protecting output storage
   // from reuse.
   lock.unlock();
+  slot.result.result_wait_ms = elapsedMs(slot.finished);
   const auto postprocess_start = Clock::now();
   try {
     if (slot.error) {

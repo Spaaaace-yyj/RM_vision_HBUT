@@ -146,7 +146,7 @@ target_link_libraries(test_neural_detector ${PROJECT_NAME} ${OpenCV_LIBS})
 
 ament_auto_add_executable(test_openvino_detector tools/test_openvino_detector.cpp)
 target_link_libraries(test_openvino_detector ${PROJECT_NAME} ${OpenCV_LIBS} Threads::Threads)
-install(FILES OPENVINO.md EMBEDDED_CAMERA.md DESTINATION share/${PROJECT_NAME})
+install(FILES OPENVINO.md EMBEDDED_CAMERA.md TIMING_DEBUG.md DESTINATION share/${PROJECT_NAME})
 
 ament_auto_package(
   INSTALL_TO_SHARE

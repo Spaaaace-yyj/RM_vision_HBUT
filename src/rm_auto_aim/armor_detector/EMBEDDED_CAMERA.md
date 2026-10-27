@@ -58,8 +58,9 @@ ros2 param set /armor_detector detector_mode neural
 ```
 
 `/detector/armors` 包括零检出帧，可以观察完成频率；无 TF 时不能据此验证目标位姿正确性。
-原 `ArmorDetector FPS` 日志仅在 debug 打开时输出，仍是进入图像回调的频率，
-不是异步完成率。`NN perf` 的 age 从 SDK 取到原始帧时记录的 ROS 时间戳开始，
+现在用 `/detector/debug_fps` 每秒分别发布输入、接收、完成、发布和拒收频率，
+用 `/detector/debug_timing` 逐帧发布各阶段耗时。二者都不受 debug 绘图开关影响。
+具体计时边界见 [TIMING_DEBUG.md](TIMING_DEBUG.md)。原图时间戳从 SDK 取到原始帧时记录，
 包含随后 ISP 转换，不是传感器硬件曝光时间戳。
 性能对比时保持曝光、模型、CPU 线程/流/请求数一致，并关闭 debug 和录像。
 嵌入 SDK 不增加 CPU 推理算力，是否达到相机帧率仍需目标机实测。

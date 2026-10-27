@@ -1,5 +1,8 @@
 # OpenVINO CPU 多流异步装甲板识别
 
+逐帧耗时现通过 `/detector/debug_timing` 发布，每秒吞吐统计通过 `/detector/debug_fps` 发布，
+不依赖 debug 绘图开关。计时边界、字段与新消息的编译步骤见 [TIMING_DEBUG.md](TIMING_DEBUG.md)。
+
 保留 `detector_mode: traditional / neural`，在网络模式中新增 `neural_backend: openvino`。
 原来的 `onnxruntime` 同步后端仍是默认值。传统 `Detector`、Armor 格式、PnP 和 tracker 算法不变。
 本模块专用于仓库的 RobotPilots 角点模型，不是通用 YOLOv8/YOLO11 解码器。

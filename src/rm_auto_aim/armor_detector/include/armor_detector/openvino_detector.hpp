@@ -26,6 +26,7 @@ struct NeuralFrameResult {
   NeuralDetector::Timing timing;
   float latency_ms =
       0;  // submit -> ordered receive; includes waiting behind earlier frames.
+  float result_wait_ms = 0;  // completion callback -> ordered decoding starts
   std::string
       error;  // An accepted failed frame still produces one ordered result.
 };

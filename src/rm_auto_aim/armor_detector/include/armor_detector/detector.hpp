@@ -47,6 +47,12 @@ public:
   Detector(const int & bin_thres, const int & color, const LightParams & l, const ArmorParams & a);
 
   std::vector<Armor> detect(const cv::Mat & input);
+  struct Timing
+  {
+    double preprocess_ms = 0.0, lights_ms = 0.0, match_ms = 0.0;
+    double extract_ms = 0.0, classify_ms = 0.0, total_ms = 0.0;
+  };
+  const Timing & lastTiming() const { return last_timing_; }
 
   cv::Mat preprocessImage(const cv::Mat & input);
   std::vector<Light> findLights(const cv::Mat & rbg_img, const cv::Mat & binary_img, const cv::Mat & gray_img);
@@ -78,6 +84,7 @@ public:
   auto_aim_interfaces::msg::DebugArmors debug_armors;
 
 private:
+  Timing last_timing_;
   bool isLight(const Light & possible_light);
   bool containLight(
     const Light & light_1, const Light & light_2, const std::vector<Light> & lights);

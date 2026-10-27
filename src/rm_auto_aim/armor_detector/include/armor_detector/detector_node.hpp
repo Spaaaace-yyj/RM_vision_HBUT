@@ -34,12 +34,15 @@
 #include <vector>
 
 #include "armor_detector/detector.hpp"
+#include "armor_detector/detector_throughput.hpp"
 #include "armor_detector/embedded_camera.hpp"
 #include "armor_detector/neural_detector.hpp"
 #include "armor_detector/openvino_detector.hpp"
 #include "armor_detector/number_classifier.hpp"
 #include "armor_detector/pnp_solver.hpp"
 #include "auto_aim_interfaces/msg/armors.hpp"
+#include "auto_aim_interfaces/msg/debug_detector_timing.hpp"
+#include "auto_aim_interfaces/msg/debug_detector_fps.hpp"
 
 namespace rm_auto_aim
 {
@@ -50,7 +53,20 @@ namespace rm_auto_aim
         ~ArmorDetectorNode() override;
 
     private:
+        struct CaptureTiming
+        {
+            bool embedded = false;
+            std::chrono::steady_clock::time_point ready;
+            double wait_ms = 0.0, process_ms = 0.0, info_publish_ms = 0.0;
+        };
         void imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr img_msg);
+        void processImage(
+            const sensor_msgs::msg::Image::ConstSharedPtr & img_msg, const CaptureTiming & capture);
+        void publishFrameTiming(bool completed);
+        void publishThroughput();
+        void markFrameFailure(const std::string & error);
+        void setNeuralTiming(const NeuralDetector::Timing & timing);
+        std::vector<Armor> runTraditional(const cv::Mat & img);
         void initEmbeddedCamera();
         void captureLoop();
 
@@ -101,22 +117,17 @@ namespace rm_auto_aim
         bool traditional_ran_ = false;
         bool neural_frame_succeeded_ = false;
 
-        struct NeuralFrameTiming
-        {
-            float input_age_ms = 0.0F; // 图像时间戳 -> callback 开始
-            float cv_bridge_ms = 0.0F; // ROS Image -> cv::Mat 共享视图
-            float pnp_ms = 0.0F; // 所有 solvePnP + yaw 重投影优化累计
-            float core_ms = 0.0F; // callback 开始 -> PnP/结果发布完成（不含 debug 绘制）
-            float e2e_ms = 0.0F; // 图像时间戳 -> PnP/结果发布完成
-            std::size_t pnp_count = 0;
-        };
-
-        NeuralFrameTiming neural_frame_timing_;
+        auto_aim_interfaces::msg::DebugDetectorTiming frame_timing_;
+        std::chrono::steady_clock::time_point frame_entered_, frame_ready_;
+        DetectorThroughput throughput_;
+        rclcpp::Publisher<auto_aim_interfaces::msg::DebugDetectorTiming>::SharedPtr timing_pub_;
+        rclcpp::Publisher<auto_aim_interfaces::msg::DebugDetectorFps>::SharedPtr fps_pub_;
+        rclcpp::TimerBase::SharedPtr fps_timer_;
         struct PendingNeuralFrame
         {
             sensor_msgs::msg::Image::ConstSharedPtr image;
-            NeuralFrameTiming timing;
-            std::chrono::steady_clock::time_point started;
+            auto_aim_interfaces::msg::DebugDetectorTiming timing;
+            std::chrono::steady_clock::time_point started, entered, ready;
             std::uint64_t generation;
         };
         std::string neural_backend_ = "onnxruntime";
@@ -125,7 +136,7 @@ namespace rm_auto_aim
         rclcpp::TimerBase::SharedPtr openvino_timer_;
         std::unordered_map<std::uint64_t, PendingNeuralFrame> pending_neural_frames_;
         std::atomic<std::uint64_t> neural_generation_{0};
-        std::uint64_t next_neural_frame_id_ = 0;
+        std::uint64_t next_frame_id_ = 0;
         std::uint64_t openvino_rejected_ = 0;
         NeuralDetector::Timing last_openvino_timing_;
 

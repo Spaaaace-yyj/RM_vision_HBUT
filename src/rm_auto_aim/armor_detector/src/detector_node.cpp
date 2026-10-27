@@ -21,6 +21,7 @@
 #include <exception>
 #include <iomanip>
 #include <map>
+#include <limits>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
@@ -34,6 +35,15 @@
 
 namespace rm_auto_aim
 {
+    namespace
+    {
+        using SteadyClock = std::chrono::steady_clock;
+        double elapsedMs(SteadyClock::time_point start)
+        {
+            return std::chrono::duration<double, std::milli>(SteadyClock::now() - start).count();
+        }
+    }  // namespace
+
     ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions& options)
         : Node("armor_detector", options)
     {
@@ -48,6 +58,12 @@ namespace rm_auto_aim
         // Armors Publisher
         armors_pub_ = this->create_publisher<auto_aim_interfaces::msg::Armors>(
             "/detector/armors", rclcpp::SensorDataQoS());
+
+        timing_pub_ = create_publisher<auto_aim_interfaces::msg::DebugDetectorTiming>(
+            "/detector/debug_timing", rclcpp::SensorDataQoS());
+        fps_pub_ = create_publisher<auto_aim_interfaces::msg::DebugDetectorFps>(
+            "/detector/debug_fps", rclcpp::SensorDataQoS());
+        fps_timer_ = create_wall_timer(std::chrono::seconds(1), [this]() { publishThroughput(); });
 
         // Visualization Marker Publisher
         // See http://wiki.ros.org/rviz/DisplayTypes/Marker
@@ -169,6 +185,8 @@ namespace rm_auto_aim
         if (capture_thread_.joinable()) { capture_thread_.join(); }
         embedded_camera_.reset();
         img_sub_.reset();
+        if (fps_timer_) { fps_timer_->cancel(); }
+        fps_timer_.reset();
         if (openvino_timer_) { openvino_timer_->cancel(); }
         openvino_timer_.reset();
         openvino_detector_.reset();  // Join inference callbacks while all node resources still exist.
@@ -231,9 +249,20 @@ namespace rm_auto_aim
                     img_msg->is_bigendian = 0;
                     img_msg->header.frame_id = camera_frame_id_;
                 }
+                CaptureTiming capture;
+                capture.embedded = true;
+                const auto read_started = SteadyClock::now();
+                auto acquired = read_started;
                 const bool received = embedded_camera_->read(
                     img_msg->data, img_msg->width, img_msg->height,
-                    [this, &img_msg]() { img_msg->header.stamp = now(); });
+                    [this, &img_msg, &acquired]()
+                    {
+                        acquired = SteadyClock::now();
+                        img_msg->header.stamp = now();
+                    });
+                capture.ready = SteadyClock::now();
+                capture.wait_ms = std::chrono::duration<double, std::milli>(acquired - read_started).count();
+                capture.process_ms = std::chrono::duration<double, std::milli>(capture.ready - acquired).count();
                 if (!camera_running_.load()) { break; }
                 if (!received)
                 {
@@ -244,9 +273,11 @@ namespace rm_auto_aim
                 // Publish a copy; the calibration stored by the node remains immutable.
                 auto camera_info = *cam_info_;
                 camera_info.header = img_msg->header;
+                const auto info_started = SteadyClock::now();
                 cam_info_pub_->publish(camera_info);
+                capture.info_publish_ms = elapsedMs(info_started);
                 // SDK buffer is already released. This never waits for async inference.
-                imageCallback(img_msg);
+                processImage(img_msg, capture);
             }
             catch (const std::exception & error)
             {
@@ -259,44 +290,67 @@ namespace rm_auto_aim
 
     void ArmorDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr img_msg)
     {
+        processImage(img_msg, CaptureTiming{});
+    }
+
+    void ArmorDetectorNode::processImage(
+        const sensor_msgs::msg::Image::ConstSharedPtr & img_msg, const CaptureTiming & capture)
+    {
+        const auto entered = SteadyClock::now();
+        const auto entered_ros = now();
         const std::lock_guard<std::mutex> lock(processing_mutex_);
+        const double mutex_wait_ms = elapsedMs(entered);
+        throughput_.add(DetectorThroughput::INPUT);
+        const auto drain_started = SteadyClock::now();
         drainOpenVINOResults();
+        const double drain_ms = elapsedMs(drain_started);
+        const auto callback_start = SteadyClock::now();
         const bool neural_frame = neural_mode_.load();
-        const auto callback_start = std::chrono::steady_clock::now();
-        if (neural_frame)
-        {
-            neural_frame_timing_ = {};
-            neural_frame_succeeded_ = false;
-            neural_frame_timing_.input_age_ms = static_cast<float>(
-                (this->now() - img_msg->header.stamp).seconds() * 1000.0);
-        }
+        frame_timing_ = auto_aim_interfaces::msg::DebugDetectorTiming();
+        frame_timing_.header = img_msg->header;
+        frame_timing_.frame_id = next_frame_id_++;
+        frame_timing_.detector_mode = neural_frame ? "neural" : "traditional";
+        frame_timing_.neural_backend = neural_frame ? neural_backend_ : "";
+        frame_timing_.embedded_camera = capture.embedded;
+        frame_timing_.camera_wait_ms = capture.wait_ms;
+        frame_timing_.camera_process_ms = capture.process_ms;
+        frame_timing_.camera_info_publish_ms = capture.info_publish_ms;
+        frame_timing_.input_age_ms = (entered_ros - img_msg->header.stamp).seconds() * 1000.0;
+        frame_timing_.mutex_wait_ms = mutex_wait_ms;
+        frame_timing_.drain_previous_ms = drain_ms;
+        frame_timing_.e2e_ms = std::numeric_limits<double>::quiet_NaN();
+        frame_timing_.frame_ready_to_output_ms = std::numeric_limits<double>::quiet_NaN();
+        frame_timing_.callback_to_output_ms = std::numeric_limits<double>::quiet_NaN();
+        frame_entered_ = entered;
+        frame_ready_ = capture.ready;
+        neural_frame_succeeded_ = false;
+        traditional_ran_ = false;
 
-        if (debug_)
+        try
         {
-            static int fps = 0;
-            static auto start_time = this->now();
-            if (this->now() - start_time >= rclcpp::Duration::from_seconds(1.0))
+            if (neural_frame && neural_backend_ == "openvino" && submitOpenVINO(img_msg, callback_start))
             {
-                RCLCPP_INFO(rclcpp::get_logger("armor_detector"), "ArmorDetector FPS: %d", fps);
-                fps = 0;
-                start_time = this->now();
+                return;  // Accepted or explicitly rejected; result timer never blocks on inference.
             }
-            fps++;
+            throughput_.add(DetectorThroughput::ACCEPTED);
+            auto armors = detectArmors(img_msg);
+            completeFrame(img_msg, std::move(armors), callback_start, neural_frame);
         }
-
-        if (neural_frame && neural_backend_ == "openvino" &&
-            submitOpenVINO(img_msg, callback_start))
+        catch (const std::exception & error)
         {
-            return;  // Timer consumes completed frames; never wait for inference in the image callback.
+            markFrameFailure(error.what());
+            if (!frame_timing_.result_published) { frame_timing_.core_ms = elapsedMs(callback_start); }
+            publishFrameTiming(false);
+            RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 2000,
+                "Detector cycle failed: %s", error.what());
         }
-        auto armors = detectArmors(img_msg);
-        completeFrame(img_msg, std::move(armors), callback_start, neural_frame);
     }
 
     void ArmorDetectorNode::completeFrame(
         const sensor_msgs::msg::Image::ConstSharedPtr & img_msg, std::vector<Armor> armors,
         std::chrono::steady_clock::time_point callback_start, bool neural_frame)
     {
+        frame_timing_.detected_armors = static_cast<std::uint32_t>(armors.size());
         float pnp_ms = 0.0F;
         std::size_t pnp_count = 0;
         if (pnp_solver_ != nullptr)
@@ -364,36 +418,97 @@ namespace rm_auto_aim
                 }
             }
 
+            const auto publish_started = SteadyClock::now();
             armors_pub_->publish(armors_msg_);
-            publishMarkers();
-        }
-
-        // 神经网络模式的性能统计在 PnP 之后截止，debug 绘制/图像发布不计入核心链路。
-        if (neural_frame && neural_frame_succeeded_ && !traditional_ran_)
-        {
-            neural_frame_timing_.pnp_ms = pnp_ms;
-            neural_frame_timing_.pnp_count = pnp_count;
-            neural_frame_timing_.core_ms = std::chrono::duration<float, std::milli>(
-                std::chrono::steady_clock::now() - callback_start).count();
-            neural_frame_timing_.e2e_ms = static_cast<float>(
-                (this->now() - img_msg->header.stamp).seconds() * 1000.0);
-
-            const auto & nn = neural_backend_ == "openvino" ? last_openvino_timing_ :
-                neural_detector_->lastTiming();
-            RCLCPP_INFO_THROTTLE(
-                this->get_logger(), *this->get_clock(), 2000,
-                "NN perf: age %.2f | bridge %.2f | pre %.2f | infer %.2f | post %.2f | "
-                "NN %.2f | PnP %.2f(%zu) | core %.2f | E2E %.2f ms",
-                neural_frame_timing_.input_age_ms, neural_frame_timing_.cv_bridge_ms,
-                nn.preprocess_ms, nn.inference_ms, nn.postprocess_ms, nn.total_ms,
-                neural_frame_timing_.pnp_ms, neural_frame_timing_.pnp_count,
-                neural_frame_timing_.core_ms, neural_frame_timing_.e2e_ms);
-
-            if (debug_)
+            const auto output_end = SteadyClock::now();
+            const auto output_ros = now();
+            frame_timing_.result_publish_ms =
+                std::chrono::duration<double, std::milli>(output_end - publish_started).count();
+            frame_timing_.output_stamp = output_ros;
+            frame_timing_.result_published = true;
+            frame_timing_.published_armors = static_cast<std::uint32_t>(armors_msg_.armors.size());
+            frame_timing_.core_ms =
+                std::chrono::duration<double, std::milli>(output_end - callback_start).count();
+            frame_timing_.callback_to_output_ms =
+                std::chrono::duration<double, std::milli>(output_end - frame_entered_).count();
+            frame_timing_.e2e_ms = (output_ros - img_msg->header.stamp).seconds() * 1000.0;
+            if (frame_timing_.embedded_camera)
             {
-                publishNeuralDebugImage(img_msg, armors);
+                frame_timing_.frame_ready_to_output_ms =
+                    std::chrono::duration<double, std::milli>(output_end - frame_ready_).count();
             }
+            throughput_.add(DetectorThroughput::PUBLISHED);
+            const auto marker_started = SteadyClock::now();
+            publishMarkers();
+            frame_timing_.marker_publish_ms = elapsedMs(marker_started);
         }
+
+        if (!frame_timing_.result_published) { frame_timing_.core_ms = elapsedMs(callback_start); }
+        frame_timing_.pnp_ms = pnp_ms;
+        frame_timing_.pnp_count = static_cast<std::uint32_t>(pnp_count);
+        if (neural_frame && neural_frame_succeeded_ && !traditional_ran_ && debug_)
+        {
+            const auto debug_started = SteadyClock::now();
+            publishNeuralDebugImage(img_msg, armors);
+            frame_timing_.debug_ms += elapsedMs(debug_started);
+        }
+        publishFrameTiming(true);
+    }
+
+    void ArmorDetectorNode::publishFrameTiming(bool completed)
+    {
+        frame_timing_.completed = completed;
+        frame_timing_.traditional_fallback = frame_timing_.detector_mode == "neural" && traditional_ran_;
+        frame_timing_.cycle_ms = elapsedMs(frame_entered_);
+        frame_timing_.finished_stamp = now();
+        if (completed) { throughput_.add(DetectorThroughput::COMPLETED); }
+        timing_pub_->publish(frame_timing_);
+    }
+
+    void ArmorDetectorNode::markFrameFailure(const std::string & error)
+    {
+        if (frame_timing_.error.empty()) { throughput_.add(DetectorThroughput::FAILED); }
+        frame_timing_.error = error;
+    }
+
+    void ArmorDetectorNode::setNeuralTiming(const NeuralDetector::Timing & timing)
+    {
+        frame_timing_.preprocess_ms = timing.preprocess_ms;
+        frame_timing_.inference_ms = timing.inference_ms;
+        frame_timing_.postprocess_ms = timing.postprocess_ms;
+        frame_timing_.neural_total_ms = timing.total_ms;
+    }
+
+    void ArmorDetectorNode::publishThroughput()
+    {
+        const std::lock_guard<std::mutex> lock(processing_mutex_);
+        const auto sample = throughput_.sample();
+        auto_aim_interfaces::msg::DebugDetectorFps msg;
+        msg.header.stamp = now();
+        msg.window_seconds = sample.seconds;
+        msg.input_fps = sample.fps[DetectorThroughput::INPUT];
+        msg.accepted_fps = sample.fps[DetectorThroughput::ACCEPTED];
+        msg.completed_fps = sample.fps[DetectorThroughput::COMPLETED];
+        msg.published_fps = sample.fps[DetectorThroughput::PUBLISHED];
+        msg.rejected_fps = sample.fps[DetectorThroughput::REJECTED];
+        msg.failed_fps = sample.fps[DetectorThroughput::FAILED];
+        msg.discarded_fps = sample.fps[DetectorThroughput::DISCARDED];
+        msg.input_total = sample.totals[DetectorThroughput::INPUT];
+        msg.accepted_total = sample.totals[DetectorThroughput::ACCEPTED];
+        msg.completed_total = sample.totals[DetectorThroughput::COMPLETED];
+        msg.published_total = sample.totals[DetectorThroughput::PUBLISHED];
+        msg.rejected_total = sample.totals[DetectorThroughput::REJECTED];
+        msg.failed_total = sample.totals[DetectorThroughput::FAILED];
+        msg.discarded_total = sample.totals[DetectorThroughput::DISCARDED];
+        if (openvino_detector_)
+        {
+            msg.pending = static_cast<std::uint32_t>(openvino_detector_->pending());
+            msg.capacity = static_cast<std::uint32_t>(openvino_detector_->capacity());
+        }
+        fps_pub_->publish(msg);
+        RCLCPP_INFO(get_logger(),
+            "Detector FPS: input %.1f | accepted %.1f | completed %.1f | published %.1f | rejected %.1f",
+            msg.input_fps, msg.accepted_fps, msg.completed_fps, msg.published_fps, msg.rejected_fps);
     }
 
     std::unique_ptr<Detector> ArmorDetectorNode::initDetector()
@@ -515,6 +630,7 @@ namespace rm_auto_aim
 
     void ArmorDetectorNode::updateNeuralParams()
     {
+        const auto started = SteadyClock::now();
         // 同步一次可以在线改的参数
         neural_params_.detect_color = get_parameter("detect_color").as_int();
         neural_params_.ignore_classes = get_parameter("ignore_classes").as_string_array();
@@ -523,6 +639,7 @@ namespace rm_auto_aim
         neural_params_.nms_threshold =
             static_cast<float>(get_parameter("neural_nms_threshold").as_double());
         neural_params_.swap_color = get_parameter("neural_swap_color").as_bool();
+        frame_timing_.parameter_update_ms += elapsedMs(started);
     }
 
     bool ArmorDetectorNode::ensureOpenVINODetector()
@@ -539,6 +656,7 @@ namespace rm_auto_aim
         catch (const std::exception & error)
         {
             neural_load_failed_ = true;
+            markFrameFailure(error.what());
             RCLCPP_ERROR(this->get_logger(), "OpenVINO init failed: %s; using traditional detector",
                 error.what());
             return false;
@@ -549,21 +667,29 @@ namespace rm_auto_aim
         const sensor_msgs::msg::Image::ConstSharedPtr & img_msg,
         std::chrono::steady_clock::time_point callback_start)
     {
-        if (!ensureOpenVINODetector()) { return false; }
+        const auto model_started = SteadyClock::now();
+        const bool model_ready = ensureOpenVINODetector();
+        frame_timing_.model_init_ms += elapsedMs(model_started);
+        if (!model_ready)
+        {
+            if (frame_timing_.error.empty())
+            {
+                markFrameFailure("OpenVINO backend unavailable; using traditional detector");
+            }
+            return false;
+        }
         bool accepted = false;
         try
         {
             const auto bridge_start = std::chrono::steady_clock::now();
             const auto rgb = cv_bridge::toCvShare(img_msg, "rgb8")->image;
-            NeuralFrameTiming timing;
-            timing.input_age_ms = neural_frame_timing_.input_age_ms;
-            timing.cv_bridge_ms = std::chrono::duration<float, std::milli>(
-                std::chrono::steady_clock::now() - bridge_start).count();
+            frame_timing_.cv_bridge_ms += elapsedMs(bridge_start);
             updateNeuralParams();
-            const auto id = next_neural_frame_id_++;
+            const auto id = frame_timing_.frame_id;
             if (!openvino_detector_->submit(rgb, id, neural_params_))
             {
                 ++openvino_rejected_;
+                throughput_.add(DetectorThroughput::REJECTED);
                 RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
                     "OpenVINO full: rejected=%llu pending=%zu/%zu (frame not processed)",
                     static_cast<unsigned long long>(openvino_rejected_),
@@ -571,13 +697,21 @@ namespace rm_auto_aim
                 return true;
             }
             accepted = true;
-            pending_neural_frames_.emplace(id, PendingNeuralFrame{
-                img_msg, timing, callback_start, neural_generation_.load()});
+            throughput_.add(DetectorThroughput::ACCEPTED);
+            auto inserted = pending_neural_frames_.emplace(id, PendingNeuralFrame{
+                img_msg, frame_timing_, callback_start, frame_entered_, frame_ready_, neural_generation_.load()});
             if (is_record_)
             {
-                cv::Mat bgr;
-                cv::cvtColor(rgb, bgr, cv::COLOR_RGB2BGR);
-                video_writer_.write(bgr);
+                const auto record_started = SteadyClock::now();
+                try
+                {
+                    cv::Mat bgr;
+                    cv::cvtColor(rgb, bgr, cv::COLOR_RGB2BGR);
+                    video_writer_.write(bgr);
+                }
+                catch (const std::exception & error) { markFrameFailure(error.what()); }
+                frame_timing_.record_ms += elapsedMs(record_started);
+                inserted.first->second.timing = frame_timing_;
             }
             return true;
         }
@@ -585,6 +719,7 @@ namespace rm_auto_aim
         {
             RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
                 "OpenVINO frame/recording error: %s", error.what());
+            markFrameFailure(error.what());
             // Once accepted, never publish a second synchronous result for the same frame.
             return accepted;
         }
@@ -597,22 +732,46 @@ namespace rm_auto_aim
         while (openvino_detector_->tryReceive(result))
         {
             auto it = pending_neural_frames_.find(result.frame_id);
-            if (it == pending_neural_frames_.end()) { continue; }
+            if (it == pending_neural_frames_.end())
+            {
+                throughput_.add(DetectorThroughput::DISCARDED);
+                continue;
+            }
             const auto pending = std::move(it->second);
             pending_neural_frames_.erase(it);
-            // Switching away and back cannot publish stale results from the previous mode.
-            if (!neural_mode_ || pending.generation != neural_generation_.load()) { continue; }
-            neural_frame_timing_ = pending.timing;
+            if (!neural_mode_ || pending.generation != neural_generation_.load())
+            {
+                throughput_.add(DetectorThroughput::DISCARDED);
+                continue;
+            }
+            frame_timing_ = pending.timing;
+            frame_entered_ = pending.entered;
+            frame_ready_ = pending.ready;
             last_openvino_timing_ = result.timing;
+            setNeuralTiming(result.timing);
+            frame_timing_.neural_latency_ms = result.latency_ms;
+            frame_timing_.result_wait_ms = result.result_wait_ms;
             traditional_ran_ = false;
             neural_frame_succeeded_ = result.error.empty();
-            if (!result.error.empty())
+            try
             {
-                RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
-                    "OpenVINO frame failed: %s; using traditional detector", result.error.c_str());
-                result.armors = detectArmors(pending.image);
+                if (!result.error.empty())
+                {
+                    markFrameFailure(result.error);
+                    RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 2000,
+                        "OpenVINO frame failed: %s; using traditional detector", result.error.c_str());
+                    result.armors = detectArmors(pending.image);
+                }
+                completeFrame(pending.image, std::move(result.armors), pending.started, true);
             }
-            completeFrame(pending.image, std::move(result.armors), pending.started, true);
+            catch (const std::exception & error)
+            {
+                markFrameFailure(error.what());
+                if (!frame_timing_.result_published) { frame_timing_.core_ms = elapsedMs(pending.started); }
+                publishFrameTiming(false);
+                RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 2000,
+                    "OpenVINO result cycle failed: %s", error.what());
+            }
         }
     }
 
@@ -643,10 +802,30 @@ namespace rm_auto_aim
         catch (const std::exception& e)
         {
             neural_load_failed_ = true;
+            markFrameFailure(e.what());
             RCLCPP_ERROR(
                 this->get_logger(), "神经网络模型加载失败：%s（本帧起自动退回传统识别）", e.what());
             return false;
         }
+    }
+
+    std::vector<Armor> ArmorDetectorNode::runTraditional(const cv::Mat & img)
+    {
+        const auto params_started = SteadyClock::now();
+        detector_->binary_thres = get_parameter("binary_thres").as_int();
+        detector_->detect_color = get_parameter("detect_color").as_int();
+        detector_->classifier->threshold = get_parameter("classifier_threshold").as_double();
+        frame_timing_.parameter_update_ms += elapsedMs(params_started);
+        traditional_ran_ = true;
+        auto armors = detector_->detect(img);
+        const auto & timing = detector_->lastTiming();
+        frame_timing_.traditional_preprocess_ms = timing.preprocess_ms;
+        frame_timing_.traditional_lights_ms = timing.lights_ms;
+        frame_timing_.traditional_match_ms = timing.match_ms;
+        frame_timing_.traditional_extract_ms = timing.extract_ms;
+        frame_timing_.traditional_classify_ms = timing.classify_ms;
+        frame_timing_.traditional_total_ms = timing.total_ms;
+        return armors;
     }
 
     std::vector<Armor> ArmorDetectorNode::detectArmorsByNeural(const cv::Mat& img, bool& traditional_ran)
@@ -654,15 +833,20 @@ namespace rm_auto_aim
         // 这里只保留“模型不可用/运行异常”的安全退回；NN 正常但零检出时不会跑传统视觉。
         const auto run_traditional_fallback = [this, &img, &traditional_ran]()
         {
-            detector_->binary_thres = get_parameter("binary_thres").as_int();
-            detector_->detect_color = get_parameter("detect_color").as_int();
-            detector_->classifier->threshold = get_parameter("classifier_threshold").as_double();
             traditional_ran = true;
-            return detector_->detect(img);
+            return runTraditional(img);
         };
 
-        if (neural_backend_ == "openvino" || !ensureNeuralDetector())
+        if (neural_backend_ == "openvino") { return run_traditional_fallback(); }
+        const auto model_started = SteadyClock::now();
+        const bool model_ready = ensureNeuralDetector();
+        frame_timing_.model_init_ms += elapsedMs(model_started);
+        if (!model_ready)
         {
+            if (frame_timing_.error.empty())
+            {
+                markFrameFailure("ONNX Runtime backend unavailable; using traditional detector");
+            }
             return run_traditional_fallback();
         }
 
@@ -671,6 +855,7 @@ namespace rm_auto_aim
 
         std::vector<Armor> armors;
         neural_frame_succeeded_ = false;
+        const auto neural_started = SteadyClock::now();
         try
         {
             // 纯神经网络检测：网络角点直接送 PnP，不再执行传统角点精修。
@@ -679,12 +864,16 @@ namespace rm_auto_aim
         }
         catch (const std::exception& e)
         {
+            frame_timing_.neural_latency_ms = elapsedMs(neural_started);
+            markFrameFailure(e.what());
             RCLCPP_ERROR_THROTTLE(
                 this->get_logger(), *this->get_clock(), 2000, "神经网络推理异常：%s", e.what());
             return run_traditional_fallback();
         }
 
         const auto & timing = neural_detector_->lastTiming();
+        setNeuralTiming(timing);
+        frame_timing_.neural_latency_ms = elapsedMs(neural_started);
         RCLCPP_DEBUG(
             this->get_logger(),
             "神经网络: %zu 个, pre %.2fms | infer %.2fms | post %.2fms | NN total %.2fms",
@@ -702,18 +891,16 @@ namespace rm_auto_aim
         // ROS Image -> cv::Mat toCvShare 不复制像素；单独计时方便排查编码转换/传输问题。
         const auto bridge_start = std::chrono::steady_clock::now();
         auto img = cv_bridge::toCvShare(img_msg, "rgb8")->image;
-        if (use_neural)
-        {
-            neural_frame_timing_.cv_bridge_ms = std::chrono::duration<float, std::milli>(
-                std::chrono::steady_clock::now() - bridge_start).count();
-        }
+        frame_timing_.cv_bridge_ms += elapsedMs(bridge_start);
 
         // 录制视频（会占用 callback 时间，正式性能测试建议关闭 is_record）。
         if (is_record_)
         {
+            const auto record_started = SteadyClock::now();
             cv::Mat save_img;
             cv::cvtColor(img, save_img, cv::COLOR_RGB2BGR);
             video_writer_.write(save_img);
+            frame_timing_.record_ms += elapsedMs(record_started);
         }
 
         traditional_ran_ = false;
@@ -727,17 +914,14 @@ namespace rm_auto_aim
         else
         {
             // 传统视觉流程保持原样。
-            detector_->binary_thres = get_parameter("binary_thres").as_int();
-            detector_->detect_color = get_parameter("detect_color").as_int();
-            detector_->classifier->threshold = get_parameter("classifier_threshold").as_double();
-            armors = detector_->detect(img);
-            traditional_ran_ = true;
+            armors = runTraditional(img);
         }
 
         // 传统模式（以及 NN 故障安全退回传统）保持原来的 debug 发布流程。
         // 纯 NN 模式的 result_img 延迟到 PnP 完成后发布，这样才能显示完整 PnP/E2E 时间。
         if (debug_ && (!use_neural || traditional_ran_))
         {
+            const auto debug_started = SteadyClock::now();
             const auto final_time = this->now();
             const auto latency = (final_time - img_msg->header.stamp).seconds() * 1000.0;
             RCLCPP_DEBUG_STREAM(this->get_logger(), "Latency: " << latency << "ms");
@@ -770,6 +954,7 @@ namespace rm_auto_aim
                 img, latency_ss.str(), cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 1.0,
                 cv::Scalar(0, 255, 0), 2);
             result_img_pub_.publish(cv_bridge::CvImage(img_msg->header, "rgb8", img).toImageMsg());
+            frame_timing_.debug_ms += elapsedMs(debug_started);
         }
 
         return armors;
@@ -799,9 +984,9 @@ namespace rm_auto_aim
 
         std::ostringstream line1;
         line1 << std::fixed << std::setprecision(2)
-              << "E2E " << neural_frame_timing_.e2e_ms << " ms  |  input age "
-              << neural_frame_timing_.input_age_ms << " ms  |  core "
-              << neural_frame_timing_.core_ms << " ms";
+              << "E2E " << frame_timing_.e2e_ms << " ms  |  input age "
+              << frame_timing_.input_age_ms << " ms  |  core "
+              << frame_timing_.core_ms << " ms";
         put_line(line1.str(), 28, cv::Scalar(0, 255, 0));
 
         std::ostringstream line2;
@@ -812,8 +997,8 @@ namespace rm_auto_aim
 
         std::ostringstream line3;
         line3 << std::fixed << std::setprecision(2)
-              << "cv_bridge " << neural_frame_timing_.cv_bridge_ms << " ms  |  PnP "
-              << neural_frame_timing_.pnp_ms << " ms (" << neural_frame_timing_.pnp_count
+              << "cv_bridge " << frame_timing_.cv_bridge_ms << " ms  |  PnP "
+              << frame_timing_.pnp_ms << " ms (" << frame_timing_.pnp_count
               << " armors)";
         put_line(line3.str(), 80, cv::Scalar(255, 255, 0));
 
