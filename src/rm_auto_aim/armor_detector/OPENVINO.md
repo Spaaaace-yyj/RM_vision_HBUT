@@ -138,6 +138,10 @@ NUC12 先比较 `--threads=8/10/12`，保留 streams/requests 为 0；
 
 ## 3. ROS 集成与模式选择
 
+现已支持从 detector 内直接通过 MindVision SDK 取流，兼容此异步后端。
+编译、相机参数及仅启动 detector 的测试入口见 [EMBEDDED_CAMERA.md](EMBEDDED_CAMERA.md)。
+最快测试命令：`ros2 launch bringup armor_embedded_launch.py detector_only:=True detector_mode:=neural neural_backend:=openvino`。
+
 ```bash
 source /opt/ros/humble/setup.bash
 source "$HOME/opt/openvino-2024.4.0/setupvars.sh"

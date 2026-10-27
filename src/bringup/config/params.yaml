@@ -15,6 +15,9 @@
 /armor_detector:
   ros__parameters:
     debug: false
+    # 内嵌 SDK 取流入口见 armor_embedded_launch.py（自动启用并合并 /mv_camera 参数）。
+    # false 保留 /image_raw 订阅，视频回放不受影响。
+    use_embedded_camera: false
     #traditional=传统识别，neural=神经网络模式
     detector_mode: traditional
     # neural 模式的后端：onnxruntime（原同步实现）/ openvino（CPU 多流异步）

@@ -90,6 +90,30 @@ if(ARMOR_ONNXRUNTIME_ROOT)
   )
 endif()
 
+## main's embedded MindVision SDK input (optional, independent of inference backend).
+option(ARMOR_ENABLE_CAMERA "Enable direct MindVision SDK camera input when available" ON)
+set(MVSDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../driver/mindvision_camera/mvsdk"
+  CACHE PATH "MindVision SDK root containing include/ and lib/amd64 or lib/arm64")
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
+  set(MVSDK_LIBDIR "${MVSDK_ROOT}/lib/arm64")
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")
+  set(MVSDK_LIBDIR "${MVSDK_ROOT}/lib/amd64")
+endif()
+if(ARMOR_ENABLE_CAMERA AND MVSDK_LIBDIR AND
+   EXISTS "${MVSDK_ROOT}/include/CameraApi.h" AND EXISTS "${MVSDK_LIBDIR}/libMVSDK.so")
+  message(STATUS "armor_detector: embedded MindVision camera enabled (${MVSDK_LIBDIR})")
+  # Public headers use PIMPL, so downstream consumers need neither this define nor SDK headers.
+  target_compile_definitions(${PROJECT_NAME} PRIVATE ARMOR_DETECTOR_WITH_CAMERA)
+  target_include_directories(${PROJECT_NAME} PRIVATE "${MVSDK_ROOT}/include")
+  target_link_libraries(${PROJECT_NAME} "${MVSDK_LIBDIR}/libMVSDK.so")
+  # Append: do not overwrite the existing ONNX Runtime search path.
+  set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY BUILD_RPATH "${MVSDK_LIBDIR}")
+  set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY INSTALL_RPATH "$ORIGIN")
+  install(FILES "${MVSDK_LIBDIR}/libMVSDK.so" DESTINATION lib)
+else()
+  message(STATUS "armor_detector: embedded MindVision camera unavailable/disabled; ROS image input remains available")
+endif()
+
 rclcpp_components_register_node(${PROJECT_NAME}
   PLUGIN rm_auto_aim::ArmorDetectorNode
   EXECUTABLE armor_detector_node
@@ -122,7 +146,7 @@ target_link_libraries(test_neural_detector ${PROJECT_NAME} ${OpenCV_LIBS})
 
 ament_auto_add_executable(test_openvino_detector tools/test_openvino_detector.cpp)
 target_link_libraries(test_openvino_detector ${PROJECT_NAME} ${OpenCV_LIBS} Threads::Threads)
-install(FILES OPENVINO.md DESTINATION share/${PROJECT_NAME})
+install(FILES OPENVINO.md EMBEDDED_CAMERA.md DESTINATION share/${PROJECT_NAME})
 
 ament_auto_package(
   INSTALL_TO_SHARE

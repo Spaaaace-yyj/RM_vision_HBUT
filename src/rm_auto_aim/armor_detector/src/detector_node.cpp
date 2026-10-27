@@ -86,6 +86,7 @@ namespace rm_auto_aim
         debug_cb_handle_ =
             debug_param_sub_->add_parameter_callback("debug", [this](const rclcpp::Parameter& p)
             {
+                const std::lock_guard<std::mutex> lock(processing_mutex_);
                 debug_ = p.as_bool();
                 debug_ ? createDebugPublishers() : destroyDebugPublishers();
             });
@@ -93,10 +94,11 @@ namespace rm_auto_aim
         // 检测模式可以在线切换：
         //   ros2 param set /armor_detector detector_mode neural
         //   ros2 param set /armor_detector detector_mode traditional
-        // 参数回调里只改标志位，模型在图像回调线程里懒加载，避免两个线程同时碰检测器。
+        // 事件回调与采集/结果回调共用 processing_mutex_；模型仍在处理帧时懒加载。
         mode_cb_handle_ = debug_param_sub_->add_parameter_callback(
             "detector_mode", [this](const rclcpp::Parameter& p)
             {
+                const std::lock_guard<std::mutex> lock(processing_mutex_);
                 setDetectorMode(p.as_string());
             });
 
@@ -104,22 +106,33 @@ namespace rm_auto_aim
         tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
         tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
-        cam_info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
-            "/camera_info", rclcpp::SensorDataQoS(),
-            [this](sensor_msgs::msg::CameraInfo::ConstSharedPtr camera_info)
-            {
-                cam_center_ = cv::Point2f(camera_info->k[2], camera_info->k[5]);
-                cam_info_ = std::make_shared<sensor_msgs::msg::CameraInfo>(*camera_info);
-                pnp_solver_ = std::make_unique<PnPSolver>(camera_info->k, camera_info->d, tf_buffer_);
-                cam_info_sub_.reset();
-            });
+        rcl_interfaces::msg::ParameterDescriptor source_desc;
+        source_desc.read_only = true;
+        use_embedded_camera_ = this->declare_parameter("use_embedded_camera", false, source_desc);
+        if (use_embedded_camera_)
+        {
+            initEmbeddedCamera();
+        }
+        else
+        {
+            cam_info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
+                "/camera_info", rclcpp::SensorDataQoS(),
+                [this](sensor_msgs::msg::CameraInfo::ConstSharedPtr camera_info)
+                {
+                    const std::lock_guard<std::mutex> lock(processing_mutex_);
+                    cam_center_ = cv::Point2f(camera_info->k[2], camera_info->k[5]);
+                    cam_info_ = std::make_shared<sensor_msgs::msg::CameraInfo>(*camera_info);
+                    pnp_solver_ = std::make_unique<PnPSolver>(camera_info->k, camera_info->d, tf_buffer_);
+                    cam_info_sub_.reset();
+                });
 
-        std::string transport_ = this->declare_parameter("subscribe_compressed", false) ? "compressed" : "raw";
-        auto qos_image_sub = rmw_qos_profile_sensor_data;
-        qos_image_sub.depth = 1;
-        img_sub_ = std::make_shared<image_transport::Subscriber>(image_transport::create_subscription(
-            this, "/image_raw", std::bind(&ArmorDetectorNode::imageCallback, this, std::placeholders::_1),
-            transport_, qos_image_sub));
+            std::string transport_ = this->declare_parameter("subscribe_compressed", false) ? "compressed" : "raw";
+            auto qos_image_sub = rmw_qos_profile_sensor_data;
+            qos_image_sub.depth = 1;
+            img_sub_ = std::make_shared<image_transport::Subscriber>(image_transport::create_subscription(
+                this, "/image_raw", std::bind(&ArmorDetectorNode::imageCallback, this, std::placeholders::_1),
+                transport_, qos_image_sub));
+        }
 
         // 用opencv录制视频,图像类型为rgb8
         is_record_ = this->declare_parameter("is_record", false);
@@ -136,19 +149,117 @@ namespace rm_auto_aim
         if (neural_backend_ == "openvino" && OpenVINODetector::available())
         {
             openvino_timer_ = this->create_wall_timer(
-                std::chrono::milliseconds(2), [this]() { drainOpenVINOResults(); });
+                std::chrono::milliseconds(2), [this]()
+                {
+                    const std::lock_guard<std::mutex> lock(processing_mutex_);
+                    drainOpenVINOResults();
+                });
+        }
+        // Start last: camera callbacks must not observe partly initialized node state.
+        if (use_embedded_camera_)
+        {
+            camera_running_ = true;
+            capture_thread_ = std::thread([this]() { captureLoop(); });
         }
     }
 
     ArmorDetectorNode::~ArmorDetectorNode()
     {
+        camera_running_ = false;
+        if (capture_thread_.joinable()) { capture_thread_.join(); }
+        embedded_camera_.reset();
         img_sub_.reset();
+        if (openvino_timer_) { openvino_timer_->cancel(); }
         openvino_timer_.reset();
         openvino_detector_.reset();  // Join inference callbacks while all node resources still exist.
     }
 
+    void ArmorDetectorNode::initEmbeddedCamera()
+    {
+        // Reuse /mv_camera settings supplied by armor_embedded_launch.py.
+        // These describe SDK startup state; changes require restarting the node.
+        rcl_interfaces::msg::ParameterDescriptor desc;
+        desc.read_only = true;
+        EmbeddedCameraParams params;
+        params.exposure_time = declare_parameter("exposure_time", 5000, desc);
+        params.analog_gain = declare_parameter("analog_gain", -1, desc);
+        params.r_gain = declare_parameter("rgb_gain.r", -1, desc);
+        params.g_gain = declare_parameter("rgb_gain.g", -1, desc);
+        params.b_gain = declare_parameter("rgb_gain.b", -1, desc);
+        params.gamma = declare_parameter("gamma", -1, desc);
+        params.saturation = declare_parameter("saturation", -1, desc);
+        params.flip_image = declare_parameter("flip_image", false, desc);
+        camera_frame_id_ = declare_parameter("frame_id", std::string("camera_optical_frame"), desc);
+        const auto camera_name = declare_parameter("camera_name", std::string("mv_camera"), desc);
+        const auto info_url = declare_parameter(
+            "camera_info_url", std::string("package://bringup/config/camera_info.yaml"), desc);
+        camera_info_manager_ =
+            std::make_unique<camera_info_manager::CameraInfoManager>(this, camera_name);
+        if (!camera_info_manager_->validateURL(info_url) || !camera_info_manager_->loadCameraInfo(info_url))
+        {
+            throw std::runtime_error("Embedded camera calibration cannot be loaded: " + info_url);
+        }
+        cam_info_ = std::make_shared<sensor_msgs::msg::CameraInfo>(camera_info_manager_->getCameraInfo());
+        if (cam_info_->k[0] <= 0.0 || cam_info_->k[4] <= 0.0)
+        {
+            throw std::runtime_error("Embedded camera calibration has invalid focal lengths: " + info_url);
+        }
+        cam_info_->header.frame_id = camera_frame_id_;
+        cam_center_ = cv::Point2f(cam_info_->k[2], cam_info_->k[5]);
+        pnp_solver_ = std::make_unique<PnPSolver>(cam_info_->k, cam_info_->d, tf_buffer_);
+        cam_info_pub_ = create_publisher<sensor_msgs::msg::CameraInfo>("/camera_info", rclcpp::SensorDataQoS());
+        embedded_camera_ = std::make_unique<EmbeddedCamera>(params);
+        RCLCPP_INFO(get_logger(),
+            "Embedded MindVision camera: SDK -> detector, no /image_raw subscription; "
+            "calibration=%s (fx=%.1f fy=%.1f cx=%.1f cy=%.1f)",
+            info_url.c_str(), cam_info_->k[0], cam_info_->k[4], cam_info_->k[2], cam_info_->k[5]);
+    }
+
+    void ArmorDetectorNode::captureLoop()
+    {
+        sensor_msgs::msg::Image::SharedPtr img_msg;
+        while (rclcpp::ok() && camera_running_.load())
+        {
+            try
+            {
+                // A pending OpenVINO result retains its source image/header for PnP and debug.
+                // Reuse storage only when no in-flight frame still owns it (main was synchronous).
+                if (!img_msg || img_msg.use_count() != 1)
+                {
+                    img_msg = std::make_shared<sensor_msgs::msg::Image>();
+                    img_msg->encoding = "rgb8";
+                    img_msg->is_bigendian = 0;
+                    img_msg->header.frame_id = camera_frame_id_;
+                }
+                const bool received = embedded_camera_->read(
+                    img_msg->data, img_msg->width, img_msg->height,
+                    [this, &img_msg]() { img_msg->header.stamp = now(); });
+                if (!camera_running_.load()) { break; }
+                if (!received)
+                {
+                    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000, "Embedded camera frame timeout");
+                    continue;
+                }
+                img_msg->step = img_msg->width * 3;
+                // Publish a copy; the calibration stored by the node remains immutable.
+                auto camera_info = *cam_info_;
+                camera_info.header = img_msg->header;
+                cam_info_pub_->publish(camera_info);
+                // SDK buffer is already released. This never waits for async inference.
+                imageCallback(img_msg);
+            }
+            catch (const std::exception & error)
+            {
+                RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 2000,
+                    "Embedded camera/detector frame error: %s", error.what());
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+        }
+    }
+
     void ArmorDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr img_msg)
     {
+        const std::lock_guard<std::mutex> lock(processing_mutex_);
         drainOpenVINOResults();
         const bool neural_frame = neural_mode_.load();
         const auto callback_start = std::chrono::steady_clock::now();

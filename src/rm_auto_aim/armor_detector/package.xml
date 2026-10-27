@@ -21,6 +21,7 @@
   <depend>visualization_msgs</depend>
   <depend>message_filters</depend>
   <depend>cv_bridge</depend>
+  <depend>camera_info_manager</depend>
   <depend>image_transport</depend>
   <depend>image_transport_plugins</depend>
   <depend>auto_aim_interfaces</depend>

@@ -5,6 +5,7 @@
 #define ARMOR_DETECTOR__DETECTOR_NODE_HPP_
 
 // ROS
+#include <camera_info_manager/camera_info_manager.hpp>
 #include <image_transport/image_transport.hpp>
 #include <image_transport/publisher.hpp>
 #include <image_transport/subscriber_filter.hpp>
@@ -27,10 +28,13 @@
 #include <cstdint>
 #include <unordered_map>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "armor_detector/detector.hpp"
+#include "armor_detector/embedded_camera.hpp"
 #include "armor_detector/neural_detector.hpp"
 #include "armor_detector/openvino_detector.hpp"
 #include "armor_detector/number_classifier.hpp"
@@ -47,6 +51,8 @@ namespace rm_auto_aim
 
     private:
         void imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr img_msg);
+        void initEmbeddedCamera();
+        void captureLoop();
 
         void completeFrame(
             const sensor_msgs::msg::Image::ConstSharedPtr & img_msg, std::vector<Armor> armors,
@@ -82,7 +88,7 @@ namespace rm_auto_aim
         std::unique_ptr<Detector> detector_;
 
         // 检测模式：traditional=传统识别（默认，行为与以前完全一致），neural=神经网络模式。
-        // 只用一个原子标志控制，图像回调里读，参数回调里写，避免两个线程抢对象。
+        // 模式标志与 generation 过滤在途旧帧；节点共享状态由 processing_mutex_ 串行保护。
         std::atomic<bool> neural_mode_{false};
         std::string detector_mode_str_ = "traditional";
         std::shared_ptr<rclcpp::ParameterCallbackHandle> mode_cb_handle_;
@@ -143,6 +149,18 @@ namespace rm_auto_aim
 
         // Image subscrpition
         std::shared_ptr<image_transport::Subscriber> img_sub_;
+
+        // main's direct SDK input, with independent frame ownership for async inference.
+        bool use_embedded_camera_ = false;
+        std::string camera_frame_id_;
+        std::unique_ptr<EmbeddedCamera> embedded_camera_;
+        std::unique_ptr<camera_info_manager::CameraInfoManager> camera_info_manager_;
+        rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr cam_info_pub_;
+        std::atomic<bool> camera_running_{false};
+        std::thread capture_thread_;
+        // Protect node state shared by SDK capture, result timer and parameter callbacks.
+        // OpenVINO inference itself remains concurrent inside its own request pool.
+        std::mutex processing_mutex_;
 
         // Debug information
         bool debug_;
