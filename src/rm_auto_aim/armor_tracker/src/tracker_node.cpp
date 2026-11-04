@@ -1,5 +1,6 @@
 // Copyright 2022 Chen Jun
 #include "armor_tracker/tracker_node.hpp"
+#include "armor_tracker/outpost_tracker.hpp"
 
 // STD
 #include <memory>
@@ -21,6 +22,15 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions & options)
   tracker_ = std::make_unique<Tracker>(max_match_distance, max_match_yaw_diff);
   tracker_->tracking_thres = this->declare_parameter("tracker.tracking_thres", 5);
   lost_time_thres_ = this->declare_parameter("tracker.lost_time_thres", 0.3);
+
+  // 前哨站专用跟踪器（三块不同高度装甲板绕同一竖直轴旋转）
+  outpost_mode_ = this->declare_parameter("outpost_mode", false);
+  if (outpost_mode_) {
+    outpost_tracker_ = std::make_unique<OutpostTracker>(
+      max_match_distance, max_match_yaw_diff,
+      tracker_->tracking_thres, static_cast<int>(lost_time_thres_ * 10));
+    RCLCPP_INFO(this->get_logger(), "前哨站跟踪模式已启用（outpost_mode=true）");
+  }
 
   // EKF
   // 11D whole-robot model
@@ -199,6 +209,22 @@ void ArmorTrackerNode::armorsCallback(const auto_aim_interfaces::msg::Armors::Sh
   rclcpp::Time time = armors_msg->header.stamp;
   target_msg.header.stamp = time;
   target_msg.header.frame_id = target_frame_;
+
+  // ===== 前哨站路径：使用专用 OutpostTracker（三块不同高度板）=====
+  if (outpost_mode_ && outpost_tracker_) {
+    if (outpost_tracker_->tracker_state == Tracker::LOST) {
+      outpost_tracker_->init(armors_msg);
+      target_msg.tracking = false;
+    } else {
+      outpost_tracker_->update(armors_msg);
+      outpost_tracker_->fillTargetMsg(target_msg);
+      target_msg.type = outpost_tracker_->tracked_armor.type;
+    }
+    last_time_ = time;
+    target_pub_->publish(target_msg);
+    publishMarkers(target_msg);
+    return;
+  }
 
   // Update tracker
   if (tracker_->tracker_state == Tracker::LOST) {

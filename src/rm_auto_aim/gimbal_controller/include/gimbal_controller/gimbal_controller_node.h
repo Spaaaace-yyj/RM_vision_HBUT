@@ -256,6 +256,10 @@ private:
     double pitch_ref_ = 0;
     double yaw_ref_ = 0;
 
+    // 前哨站模式：三块装甲板高度各不相同（相对板0 的高度差）
+    bool outpost_mode_ = false;
+    static constexpr double kOutpostHeight[3] = {0.0, 0.102, 0.204};
+
     bool use_sim_interface_ = false;
 };
 

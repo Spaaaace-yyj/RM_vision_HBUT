@@ -28,6 +28,7 @@
 
 namespace rm_auto_aim
 {
+class OutpostTracker;
 using tf2_filter = tf2_ros::MessageFilter<auto_aim_interfaces::msg::Armors>;
 class ArmorTrackerNode : public rclcpp::Node
 {
@@ -55,6 +56,10 @@ private:
   double r_xyz_factor, r_yaw, r_v_yaw;
   double lost_time_thres_;
   std::unique_ptr<Tracker> tracker_;
+
+  // 前哨站专用跟踪器（outpost_mode=true 时启用）
+  bool outpost_mode_ = false;
+  std::unique_ptr<OutpostTracker> outpost_tracker_;
 
   // Subscriber with tf2 message_filter
   std::string target_frame_;

@@ -36,6 +36,10 @@ GimbalControllerNode::GimbalControllerNode() : Node("GimbalControllerNode")
 
     use_sim_interface_ = declare_parameter("use_sim_interface", false);
 
+    // 前哨站模式：三块装甲板绕同一竖直轴旋转、高度各不相同。
+    // 该模式下按板序号给每块板加固定的高度偏移（仿真实测值）。
+    outpost_mode_ = declare_parameter("outpost_mode", false);
+
     if (mpc_horizon_ < 4)
     {
         mpc_horizon_ = 100;
@@ -362,6 +366,12 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
                 p_a.z = za + (is_current_pair ? 0 : dz);
                 is_current_pair = !is_current_pair;
             }
+            else if (outpost_mode_ && a_n == 3)
+            {
+                // 前哨站：三块装甲板高度各不相同，按板序号取固定高度偏移
+                r = r1;
+                p_a.z = za + kOutpostHeight[i];
+            }
             else
             {
                 r = r1;
@@ -422,6 +432,12 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
                 r = is_current_pair ? r1 : r2;
                 p_a.z = za + (is_current_pair ? 0 : dz);
                 is_current_pair = !is_current_pair;
+            }
+            else if (outpost_mode_ && a_n == 3)
+            {
+                // 前哨站：三块装甲板高度各不相同，按板序号取固定高度偏移
+                r = r1;
+                p_a.z = za + kOutpostHeight[i];
             }
             else
             {

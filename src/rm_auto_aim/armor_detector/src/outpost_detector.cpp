@@ -33,6 +33,7 @@ std::vector<Armor> OutpostDetector::detect(const cv::Mat & input)
   const std::vector<Light> lights =
     detector->findLights(input, binary_img, detector->gray_img);
   lights_ = lights;
+  fprintf(stderr, "[outpost] lights=%zu\n", lights.size());
 
   // 2) 灯条配对：与普通装甲板唯一的区别 —— 不检查灯条颜色
   for (auto light_1 = lights.begin(); light_1 != lights.end(); ++light_1) {
@@ -43,6 +44,19 @@ std::vector<Armor> OutpostDetector::detect(const cv::Mat & input)
       }
 
       ArmorType type = ArmorType::INVALID;
+      // ---- 调试输出 ----
+      {
+        const auto & a = detector->a;
+        float lr = light_1->length < light_2->length ? light_1->length / light_2->length
+                                                     : light_2->length / light_1->length;
+        float avg = (light_1->length + light_2->length) / 2.0f;
+        float cd = cv::norm(light_1->center - light_2->center) / std::max(avg, 1e-6f);
+        cv::Point2f d = light_1->center - light_2->center;
+        float ang = std::abs(std::atan(d.y / (std::abs(d.x) < 1e-6f ? 1e-6f : d.x))) / CV_PI * 180.0f;
+        fprintf(stderr, "[outpost] pair: len_ratio=%.3f(>%.2f) cd=%.3f([%.2f,%.2f]|[%.2f,%.2f]) ang=%.1f(<%.0f)\n",
+                lr, a.min_light_ratio, cd, a.min_small_center_distance, a.max_small_center_distance,
+                a.min_large_center_distance, a.max_large_center_distance, ang, a.max_angle);
+      }
       if (!pickArmor(*light_1, *light_2, type)) {
         continue;
       }
