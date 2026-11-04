@@ -40,6 +40,7 @@
 
 namespace rm_auto_aim
 {
+class OutpostDetector;
 
 class ArmorDetectorNode : public rclcpp::Node
 {
@@ -70,6 +71,10 @@ private:
 
   // Armor Detector
   std::unique_ptr<Detector> detector_;
+
+  // 前哨站检测器（outpost_mode=true 时启用）
+  bool outpost_mode_ = false;
+  std::unique_ptr<OutpostDetector> outpost_detector_;
 
   // Detected armors publisher
   auto_aim_interfaces::msg::Armors armors_msg_;

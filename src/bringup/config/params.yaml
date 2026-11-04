@@ -17,6 +17,8 @@
     debug: true
 
     detect_color: 0
+    # 前哨站模式：三块不同高度装甲板绕同一竖直轴旋转，检测结果标记为 outpost
+    outpost_mode: true
     binary_thres: 140
 
     classifier_threshold: 0.6

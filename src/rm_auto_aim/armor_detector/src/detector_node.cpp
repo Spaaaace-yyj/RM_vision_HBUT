@@ -23,6 +23,7 @@
 
 #include "armor_detector/armor.hpp"
 #include "armor_detector/detector_node.hpp"
+#include "armor_detector/outpost_detector.hpp"
 
 namespace rm_auto_aim
 {
@@ -33,6 +34,30 @@ namespace rm_auto_aim
 
         // Detector
         detector_ = initDetector();
+
+        // 前哨站检测器：三块不同高度装甲板绕同一竖直轴旋转（圆心投影重合）。
+        // 复用普通检测的预处理与灯条提取，只把"灯条配对"改成不限颜色，
+        // 结果统一标记为 outpost。由 outpost_mode 参数使能。
+        outpost_mode_ = this->declare_parameter("outpost_mode", false);
+        if (outpost_mode_) {
+            // 注意：这些参数已在 initDetector() 中声明过，这里只能用 get_parameter 读取
+            outpost_detector_ = std::make_unique<OutpostDetector>(
+                static_cast<int>(this->get_parameter("binary_thres").as_int()),
+                // 前哨站不区分蓝红；OutpostDetector 内部配对时不检查颜色，此值仅占位
+                -1,
+                Detector::LightParams{
+                    .min_ratio = this->get_parameter("light.min_ratio").as_double(),
+                    .max_ratio = this->get_parameter("light.max_ratio").as_double(),
+                    .max_angle = this->get_parameter("light.max_angle").as_double()},
+                Detector::ArmorParams{
+                    .min_light_ratio = this->get_parameter("armor.min_light_ratio").as_double(),
+                    .min_small_center_distance = this->get_parameter("armor.min_small_center_distance").as_double(),
+                    .max_small_center_distance = this->get_parameter("armor.max_small_center_distance").as_double(),
+                    .min_large_center_distance = this->get_parameter("armor.min_large_center_distance").as_double(),
+                    .max_large_center_distance = this->get_parameter("armor.max_large_center_distance").as_double(),
+                    .max_angle = this->get_parameter("armor.max_angle").as_double()});
+            RCLCPP_INFO(this->get_logger(), "前哨站检测模式已启用（outpost_mode=true）");
+        }
 
         // Armors Publisher
         armors_pub_ = this->create_publisher<auto_aim_interfaces::msg::Armors>(
@@ -421,9 +446,10 @@ namespace rm_auto_aim
         detector_->binary_thres = get_parameter("binary_thres").as_int();
         detector_->detect_color = get_parameter("detect_color").as_int();
         detector_->classifier->threshold = get_parameter("classifier_threshold").as_double();
-
-        auto armors = detector_->detect(img);
-
+            // outpost_mode 时改用前哨站检测器（不限灯条颜色，结果标记为 outpost）
+            auto armors = outpost_mode_ && outpost_detector_
+                            ? outpost_detector_->detect(img)
+                            : detector_->detect(img);
         auto final_time = this->now();
         auto latency = (final_time - img_msg->header.stamp).seconds() * 1000;
         RCLCPP_DEBUG_STREAM(this->get_logger(), "Latency: " << latency << "ms");
@@ -452,7 +478,13 @@ namespace rm_auto_aim
                     *cv_bridge::CvImage(img_msg->header, "mono8", all_num_img).toImageMsg());
             }
 
-            detector_->drawResults(img);
+            // 按当前模式绘制：前哨站模式画 OutpostDetector 的结果，
+            // 否则画普通 Detector 的结果（两者绘制风格一致）
+            if (outpost_mode_ && outpost_detector_) {
+                outpost_detector_->drawResults(img);
+            } else {
+                detector_->drawResults(img);
+            }
             // Draw camera center
             cv::circle(img, cam_center_, 5, cv::Scalar(255, 0, 0), 2);
             // Draw latency
