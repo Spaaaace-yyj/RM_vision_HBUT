@@ -72,6 +72,28 @@ std::vector<Armor> OutpostDetector::detect(const cv::Mat & input)
     }
   }
 
+  // 前哨站三块板 120° 排布，任一时刻最多只有一块板正对相机。
+  // 灯条多了以后配对组合会爆炸（5 条灯条 = 10 种配对），产生大量假装甲板，
+  // 导致 tracker 匹配混乱、云台乱追。这里只保留"最像小装甲板"的那一个配对：
+  // 判据是 center_distance 最接近同板理论值（≈1.0）。
+  if (outpost_armors.size() > 1) {
+    const Detector::ArmorParams & a = detector->a;
+    auto score = [&a](const Armor & arm) -> double {
+        const double len1 = arm.left_light.length;
+        const double len2 = arm.right_light.length;
+        const double avg = std::max((len1 + len2) * 0.5, 1e-6);
+        const double cd = cv::norm(arm.left_light.center - arm.right_light.center) / avg;
+        (void)a;
+        return std::abs(cd - 1.0);   // 越接近 1 越像同板左右灯条
+      };
+    auto best = std::min_element(
+      outpost_armors.begin(), outpost_armors.end(),
+      [&score](const Armor & x, const Armor & y) { return score(x) < score(y); });
+    Armor keep = *best;
+    outpost_armors.clear();
+    outpost_armors.push_back(keep);
+  }
+
   outpost_armors_ = outpost_armors;
   return outpost_armors;
 }
