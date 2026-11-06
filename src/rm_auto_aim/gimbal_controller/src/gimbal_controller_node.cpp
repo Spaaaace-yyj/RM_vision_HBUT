@@ -154,9 +154,14 @@ GimbalControllerNode::AimReference GimbalControllerNode::calcAimReferenceAtTime(
 
     double yaw_pre = yaw + v_yaw * yaw_t;
 
-    int best_index = 0;
+    int best_index = -1;   // -1 表示"没有板落在瞄准窗口内"
     double min_yaw = 2.0 * M_PI;
     double c_yaw = std::atan2(yc_pre, xc_pre);
+
+    // 只在瞄准窗口（max_move_yaw）内选板。
+    // 前哨站三块板间隔 120°，若不加窗口限制，当前板一转出视野就会去追 120° 外
+    // 的那块，云台猛转 -> 检测丢失 -> tracker 断 -> 更乱（恶性循环）。
+    const double window_rad = max_move_yaw_ * M_PI / 180.0;
 
     for (size_t i = 0; i < a_n; ++i)
     {
@@ -167,11 +172,26 @@ GimbalControllerNode::AimReference GimbalControllerNode::calcAimReferenceAtTime(
         double delta_to_2pi = std::fabs(tmp_yaw - (c_yaw + 2.0 * M_PI));
         double delta_to_zero = std::min(delta_to_0, delta_to_2pi);
 
-        if (delta_to_zero < min_yaw)
+        if (delta_to_zero < min_yaw && delta_to_zero < window_rad)
         {
             min_yaw = delta_to_zero;
             best_index = static_cast<int>(i);
         }
+    }
+
+    if (best_index < 0)
+    {
+        // 没有板在窗口内：朝目标旋转中心（保证目标仍在视野里、云台不乱转），
+        // min_yaw 保持 2π 以便上层判定"不开火"，等下一块板转进窗口。
+        const double z_center = za_pre;
+        ref.yaw = -c_yaw;
+        ref.pitch = std::atan2(z_center, std::sqrt(xc_pre * xc_pre + yc_pre * yc_pre));
+        ref.x = xc_pre;
+        ref.y = yc_pre;
+        ref.z = z_center;
+        ref.armor_index = -1;
+        ref.min_yaw = 2.0 * M_PI;
+        return ref;
     }
 
     bool use_second_pair = false;

@@ -74,7 +74,7 @@
 
       # 连续检测多少帧后进入 TRACKING
       # 新模型初期建议小一点，先让它稳定进入 tracking
-      tracking_thres: 3
+      tracking_thres: 1
 
       # 临时丢失时间，单位 s
       lost_time_thres: 0.3
@@ -110,6 +110,11 @@
 
 /gimbal_controller:
   ros__parameters:
+    # MPC 会追"装甲板"轨迹；前哨站板会转到背面，云台就被一路带跑。
+    # 关闭后改用 calcAimReferenceAtTime 的"朝圆心"逻辑（见该函数里
+    # 没有板落在 max_move_yaw 窗口内时的分支）。
+    mpc:
+      enable: false
     # 前哨站模式：三块装甲板高度各不相同
     outpost_mode: true
     use_sim_interface: true
@@ -135,9 +140,9 @@
     pitch_gain_factor: 0.02
 
     sentray_mode: false
-    pitch_scan_range: 10.0
-    pitch_scan_f: 2.0
-    yaw_scan_speed: 70.0
+    pitch_scan_range: 0.0
+    pitch_scan_f: 0.0
+    yaw_scan_speed: 0.0
     
     # 龙格库塔法求解落点的迭代次数
     R_K_iter: 50
