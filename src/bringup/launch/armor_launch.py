@@ -131,7 +131,7 @@ def generate_launch_description():
         emulate_tty=True,
         parameters=[detector_params, {'use_sim_time': use_sim_time,
                                       # 仿真灯条受渲染抗锯齿影响，长度比真车略短；放宽配对阈值。
-                                      'armor.min_light_ratio': 0.70}],
+                                      'armor.min_light_ratio': 0.6}],
         condition=IfCondition(use_mujoco),
         arguments=['--ros-args', '--log-level', 'armor_detector:=INFO'],
     )

@@ -40,22 +40,25 @@ namespace rm_auto_aim
         // 结果统一标记为 outpost。由 outpost_mode 参数使能。
         outpost_mode_ = this->declare_parameter("outpost_mode", false);
         if (outpost_mode_) {
-            // 注意：这些参数已在 initDetector() 中声明过，这里只能用 get_parameter 读取
+            // 前哨站使用一套独立的检测参数（outpost.* 前缀），与四板靶标的
+            // binary_thres / armor.* 完全隔离 —— 两者的灯条宽度、板间距、
+            // 板面倾角差别很大，共用一套参数必然有一方失效。
+            // 默认值即前哨站的标定值（仿真 4 m、三块板 120° 排布实测）。
             outpost_detector_ = std::make_unique<OutpostDetector>(
-                static_cast<int>(this->get_parameter("binary_thres").as_int()),
+                static_cast<int>(this->declare_parameter("outpost.binary_thres", 60)),
                 // 前哨站不区分蓝红；OutpostDetector 内部配对时不检查颜色，此值仅占位
                 -1,
                 Detector::LightParams{
-                    .min_ratio = this->get_parameter("light.min_ratio").as_double(),
-                    .max_ratio = this->get_parameter("light.max_ratio").as_double(),
-                    .max_angle = this->get_parameter("light.max_angle").as_double()},
+                    .min_ratio = this->declare_parameter("outpost.light.min_ratio", 0.05),
+                    .max_ratio = this->declare_parameter("outpost.light.max_ratio", 1.0),
+                    .max_angle = this->declare_parameter("outpost.light.max_angle", 40.0)},
                 Detector::ArmorParams{
-                    .min_light_ratio = this->get_parameter("armor.min_light_ratio").as_double(),
-                    .min_small_center_distance = this->get_parameter("armor.min_small_center_distance").as_double(),
-                    .max_small_center_distance = this->get_parameter("armor.max_small_center_distance").as_double(),
-                    .min_large_center_distance = this->get_parameter("armor.min_large_center_distance").as_double(),
-                    .max_large_center_distance = this->get_parameter("armor.max_large_center_distance").as_double(),
-                    .max_angle = this->get_parameter("armor.max_angle").as_double()});
+                    .min_light_ratio = this->declare_parameter("outpost.armor.min_light_ratio", 0.70),
+                    .min_small_center_distance = this->declare_parameter("outpost.armor.min_small_center_distance", 0.2),
+                    .max_small_center_distance = this->declare_parameter("outpost.armor.max_small_center_distance", 2.0),
+                    .min_large_center_distance = this->declare_parameter("outpost.armor.min_large_center_distance", 3.2),
+                    .max_large_center_distance = this->declare_parameter("outpost.armor.max_large_center_distance", 5.0),
+                    .max_angle = this->declare_parameter("outpost.armor.max_angle", 75.0)});
             RCLCPP_INFO(this->get_logger(), "前哨站检测模式已启用（outpost_mode=true）");
         }
 

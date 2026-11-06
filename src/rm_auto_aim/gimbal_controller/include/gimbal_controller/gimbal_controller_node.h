@@ -259,6 +259,8 @@ private:
     // 前哨站模式：三块装甲板高度各不相同（相对板0 的高度差）
     bool outpost_mode_ = false;
     static constexpr double kOutpostHeight[3] = {0.0, 0.102, 0.204};
+    double outpost_max_move_yaw_ = 10.0;   // 前哨站开火窗口（板偏圆心角）[deg]
+    double outpost_lock_c_yaw_ = 1e9;       // 前哨站圆心方位角（低通滤波后，1e9=未初始化）
 
     bool use_sim_interface_ = false;
 };

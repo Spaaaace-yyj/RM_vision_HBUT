@@ -14,21 +14,36 @@
 
 /armor_detector:
   ros__parameters:
-    # 前哨站板间隔 120°，灯条中心距（以灯条长为单位）远大于四板靶标，
-    # 放宽配对中心距；四板靶标时不影响（其 cd 约 1~2）
+    # ── 四板靶标检测参数（改动会直接影响四板命中率，勿随意调）──
     armor:
-      max_small_center_distance: 2.0
-      # 前哨站同板两灯条实测 cd≈0.75~1.4，下限放宽到 0.6
-      min_small_center_distance: 0.2
+      min_small_center_distance: 0.8
+      max_small_center_distance: 3.2
+      min_large_center_distance: 3.2
       max_large_center_distance: 5.0
-      # 前哨站板有 15° 倾角且 120° 排布，灯条连线倾角可达 70°+
-      max_angle: 75.0
+      max_angle: 35.0
     debug: true
 
     detect_color: 0
     # 前哨站模式：三块不同高度装甲板绕同一竖直轴旋转，检测结果标记为 outpost
     outpost_mode: true
-    binary_thres: 60
+    binary_thres: 140
+
+    # ── 前哨站检测参数（独立一套，与上面的四板参数互不影响）──
+    # 前哨站灯条比四板靶标窄、板间隔 120°、板面下倾 15°，
+    # 用四板那套参数会一个都配不上。默认值已在代码里给出，这里写出来便于调整。
+    outpost:
+      binary_thres: 60
+      light:
+        min_ratio: 0.05
+        max_ratio: 1.0
+        max_angle: 40.0
+      armor:
+        min_light_ratio: 0.70
+        min_small_center_distance: 0.2
+        max_small_center_distance: 2.0
+        min_large_center_distance: 3.2
+        max_large_center_distance: 5.0
+        max_angle: 75.0
 
     classifier_threshold: 0.6
     ignore_classes: ["negative"]
@@ -114,7 +129,7 @@
     # 关闭后改用 calcAimReferenceAtTime 的"朝圆心"逻辑（见该函数里
     # 没有板落在 max_move_yaw 窗口内时的分支）。
     mpc:
-      enable: false
+      enable: true
     # 前哨站模式：三块装甲板高度各不相同
     outpost_mode: true
     use_sim_interface: true
@@ -129,6 +144,11 @@
     gimbal_delay: 0.0
 
     max_move_yaw: 20.0
+    # 前哨站专用开火窗口 [deg]：云台固定朝圆心，板偏圆心角小于该值时开火
+    outpost_max_move_yaw: 2.0
+    # 前哨站对准阈值倍率（相对装甲板半宽角）。四板用 fire_angle_threshold 0.5，
+    # 前哨站云台固定朝圆心、不追板，需要放宽才能开火。
+    outpost_fire_angle_threshold: 1.0
     fire_angle_threshold: 0.5
     timestamp_offset: 0.005
     # shoot_speed: 14.4
