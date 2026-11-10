@@ -46,12 +46,9 @@ GimbalControllerNode::GimbalControllerNode() : Node("GimbalControllerNode")
     // 云台会被一路带跑到看不见目标的地方。四板靶标仍走 MPC。
     if (outpost_mode_)
     {
-        mpc_enable_ = false;
-        // 前哨站云台固定朝旋转中心、靠"板经过圆心方向"开火，
-        // 云台不需要精确对准某块板，所以对准阈值要单独放大
-        // （四板的 0.5° 门槛在前哨站上几乎永远不满足，一发都打不出去）。
-        fire_angle_threshold_ = declare_parameter("outpost_fire_angle_threshold", 5.0);
-        RCLCPP_INFO(this->get_logger(), "前哨站模式：MPC 已强制关闭（避免云台追板跑到背面）");
+        RCLCPP_INFO(
+            this->get_logger(),
+            "前哨站模式：只做三块板的高度补偿，其余逻辑与四板完全相同");
     }
 
     if (mpc_horizon_ < 4)
@@ -191,50 +188,6 @@ GimbalControllerNode::AimReference GimbalControllerNode::calcAimReferenceAtTime(
     }
 
     int best_index = min_index;
-
-    // ===== 前哨站：云台只朝旋转中心，不追板 =====
-    // 前哨站三块板以 120° 间隔绕同一竖直轴匀速旋转。若云台去追板，板一直在跑，
-    // 云台永远差一点点对不准（实测误差始终大于开火阈值），结果一发都打不出去。
-    // 因此前哨站模式下 yaw 固定朝旋转中心、pitch 取"当前最接近圆心那块板"的高度，
-    // 云台稳定不动；等某块板转到圆心方向（min_yaw 小于 max_move_yaw）时开火。
-    if (outpost_mode_ && a_n == 3)
-    {
-        // 前哨站是固定不动的，用 TargetCallback 里做过限速滤波的圆心方位角。
-        // 单块板观测下 tracker 的圆心估计会抖（实测 x 在 2.1~4.7 m 之间跳、
-        // 方位角抖 ±12°），直接用它算云台角会让云台来回摆、甚至转出视野。
-        // 注意：本函数每帧会被 MPC 轨迹构建调用 100 次，所以滤波必须放在
-        // TargetCallback 里做，不能放这里。
-        const double c_lock = (outpost_lock_c_yaw_ <= 1e8) ? outpost_lock_c_yaw_ : c_yaw;
-
-        // 用滤波后的圆心方位角重新找最近板，得到"板偏离圆心方向"的角度
-        int nearest = 0;
-        double min_yaw_lock = 2.0 * M_PI;
-        for (size_t i = 0; i < a_n; ++i)
-        {
-            double tmp_yaw = yaw_pre + i * (2.0 * M_PI / static_cast<double>(a_n));
-            tmp_yaw = std::fmod(tmp_yaw + 2.0 * M_PI, 2.0 * M_PI);
-            const double d0 = std::fabs(tmp_yaw - c_lock);
-            const double d2 = std::fabs(tmp_yaw - (c_lock + 2.0 * M_PI));
-            const double d = std::min(d0, d2);
-            if (d < min_yaw_lock)
-            {
-                min_yaw_lock = d;
-                nearest = static_cast<int>(i);
-            }
-        }
-
-        const double h = kOutpostHeight[nearest];
-        const double dist_xy = std::sqrt(xc_pre * xc_pre + yc_pre * yc_pre);
-
-        ref.x = xc_pre;
-        ref.y = yc_pre;
-        ref.z = za_pre + h;
-        ref.yaw = -c_lock;
-        ref.pitch = std::atan2(za_pre + h, dist_xy);
-        ref.armor_index = nearest;
-        ref.min_yaw = min_yaw_lock;   // 板偏圆心角，供开火判断
-        return ref;
-    }
 
     bool use_second_pair = false;
     if (a_n == 4)
@@ -615,24 +568,6 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
         double yaw_start_vel = 0.0;
         double pitch_start_vel = 0.0;
 
-        // 前哨站：对圆心方位角做限速滤波（每帧最多 0.5°）。
-        // tracker 在单块板观测下的圆心估计抖动很大，不滤波会把云台摆出视野。
-        if (outpost_mode_)
-        {
-            const double c_yaw_now = std::atan2(point_c.y, point_c.x);
-            if (outpost_lock_c_yaw_ > 1e8)
-            {
-                outpost_lock_c_yaw_ = c_yaw_now;
-            }
-            else
-            {
-                const double d = shortestAngularDistance(outpost_lock_c_yaw_, c_yaw_now);
-                const double max_step = 0.5 * M_PI / 180.0;
-                outpost_lock_c_yaw_ = limitRad(
-                    outpost_lock_c_yaw_ + std::clamp(d, -max_step, max_step));
-            }
-        }
-
         double mpc_yaw_center_time = is_track_ ? delay_spin : 0.0;
         double mpc_pos_center_time = is_track_ ? delay_translation : 0.0;
         bool trajectory_ready = buildOpenSourceStyleMpcTrajectory(
@@ -805,12 +740,7 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
         //开火窗口范围，max_move_yaw_单位度，只有在窗口内的装甲板才开火
         //TODO：是不是可以当超出窗口的时候直接去追下一个装甲板，而不是只不开火
         max_move_yaw_ = get_parameter("max_move_yaw").as_double();
-        if (outpost_mode_)
-        {
-            // 前哨站用独立窗口（板 120° 间隔，窗口太大会把子弹打到板外）
-            outpost_max_move_yaw_ = get_parameter("outpost_max_move_yaw").as_double();
-            max_move_yaw_ = outpost_max_move_yaw_;
-        }
+
         if (min_yaw > max_move_yaw_ * M_PI / 180)
         {
             // RCLCPP_WARN(rclcpp::get_logger("lc_serial"), "No optimal armor, now min yaw: %f", min_yaw * 180 / M_PI);

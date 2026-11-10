@@ -46,6 +46,17 @@ OutpostTracker::OutpostTracker(
 {
 }
 
+void OutpostTracker::setProcessNoise(
+  double sigma2_q_xyz, double sigma2_q_yaw, double dt, double initial_v_yaw)
+{
+  s2qxyz_ = sigma2_q_xyz;
+  s2qyaw_ = sigma2_q_yaw;
+  initial_v_yaw_ = initial_v_yaw;
+  if (dt > 1e-6) {
+    dt_ = dt;
+  }
+}
+
 void OutpostTracker::init(const Armors::SharedPtr & armors_msg)
 {
   if (armors_msg->armors.empty()) {
@@ -73,8 +84,14 @@ void OutpostTracker::initEKF(const Armor & a)
   const double ya = a.pose.position.y;
   const double za = a.pose.position.z;
 
-  last_yaw_ = 0.0;
-  const double yaw = getRawYaw(a.pose.orientation);
+  // yaw 初值不能用 PnP 解出的板姿态：前哨站任一时刻只可能看到"正对相机"
+  // 的那块板，而板面正对相机时绕法线的旋转（yaw）在几何上不可观测，
+  // PnP 会输出随机值（实测在 -87°~-35° 之间乱跳）。yaw 初值错 50°，
+  // gc 按它算出的板位置也错 50°，云台直接转到看不见目标的地方。
+  //
+  // 但"能完整看到的那块板一定在圆心靠近相机的一侧"这个几何关系是确定的，
+  // 所以用板位置的方位角作为 yaw 初值：从板指向圆心的方向 = 远离相机的方向。
+  const double yaw = std::atan2(ya, xa);
   last_yaw_ = yaw;
 
   // 由单块板反推旋转中心：板在圆周上，圆心 = 板位置 + r * (cos/sin)
@@ -85,7 +102,7 @@ void OutpostTracker::initEKF(const Armor & a)
   // 初始认为观测到的这块是板0（高度基准），另外两块按固定高度差建模；
   // 由于三块板高度固定且已知，h1/h2 直接给标称值，靠后续观测微调。
   target_state = Eigen::VectorXd::Zero(kStateDim);
-  target_state << xc, 0.0, yc, 0.0, za, 0.0, yaw, 0.0, r, kH1, kH2;
+  target_state << xc, 0.0, yc, 0.0, za, 0.0, yaw, initial_v_yaw_, r, kH1, kH2;
 
   // 初始协方差（对角）
   Eigen::MatrixXd P0 = Eigen::MatrixXd::Identity(kStateDim, kStateDim);
@@ -94,7 +111,72 @@ void OutpostTracker::initEKF(const Armor & a)
     1.0, 25.0,                              // yaw, v_yaw
     0.01, 0.0025, 0.0025;                   // r, h1, h2
 
-  // 用默认构造的 EKF（内部已有匀速模型与默认 Q/R），只设置状态与协方差
+  // 11D CV 模型，过程噪声形式与四板 Tracker 完全一致。
+  // 之前这里用默认构造的 EKF（Q 未设置），导致圆心估计抖动极大
+  // （实测 x 在 2.1~4.7 m 间跳、yaw 抖 ±12°），云台按错误的 yaw 追板就越追越偏。
+  const double dt = dt_;
+  auto f = [dt](const Eigen::VectorXd & x) -> Eigen::VectorXd {
+      Eigen::VectorXd x_new = x;
+      x_new(0) += x(1) * dt;
+      x_new(2) += x(3) * dt;
+      x_new(4) += x(5) * dt;
+      x_new(6) = limitRad(x(6) + x(7) * dt);
+      return x_new;
+    };
+
+  auto j_f = [dt](const Eigen::VectorXd &) -> Eigen::MatrixXd {
+      Eigen::MatrixXd F = Eigen::MatrixXd::Identity(kStateDim, kStateDim);
+      F(0, 1) = dt;
+      F(2, 3) = dt;
+      F(4, 5) = dt;
+      F(6, 7) = dt;
+      return F;
+    };
+
+  // h / j_h 是占位，实际观测函数在 updateOneArmor 里按板 id 传入
+  auto h = [](const Eigen::VectorXd &) -> Eigen::VectorXd {
+      return Eigen::VectorXd::Zero(4);
+    };
+  auto j_h = [](const Eigen::VectorXd &) -> Eigen::MatrixXd {
+      return Eigen::MatrixXd::Zero(4, kStateDim);
+    };
+
+  auto u_q = [this]() -> Eigen::MatrixXd {
+      const double t = dt_;
+      // 关键：前哨站是固定在地面上的，圆心位置（xc/yc）基本不动，
+      // 而四板靶标装在车体上、圆心会随车移动。
+      // 如果用四板那样大的圆心过程噪声，EKF 会用"平移圆心"来解释板的位置
+      // 变化（实测圆心 x 在 2.6~4.0 之间抖），而不是让 yaw 转起来，
+      // 结果 v_yaw 永远学不到、yaw 斜率只有 0.02 rad/s（真实 1.0）。
+      // 这里把圆心/高度的过程噪声压到极小，EKF 只能靠"转 yaw"来拟合观测。
+      const double v1 = 0.01;
+      const double v2 = s2qyaw_;
+      const double a = std::pow(t, 4) / 4.0;
+      const double b = std::pow(t, 3) / 2.0;
+      const double c = std::pow(t, 2);
+
+      Eigen::MatrixXd q = Eigen::MatrixXd::Zero(kStateDim, kStateDim);
+      auto fill_cv_noise = [&](int pos, int vel, double var) {
+        q(pos, pos) = a * var;
+        q(pos, vel) = b * var;
+        q(vel, pos) = b * var;
+        q(vel, vel) = c * var;
+      };
+      fill_cv_noise(0, 1, v1);  // xc / vx
+      fill_cv_noise(2, 3, v1);  // yc / vy
+      fill_cv_noise(4, 5, v1);  // za / vz
+      fill_cv_noise(6, 7, v2);  // yaw / v_yaw
+      // 前哨站转速是固定的已知量，v_yaw 几乎不允许漂移（否则角度会乱飘）
+      q(7, 7) = 1e-6;
+      // r / h1 / h2 是固定几何量，过程噪声为 0，靠观测修正
+      return q;
+    };
+
+  auto u_r = [](const Eigen::VectorXd &) -> Eigen::MatrixXd {
+      return Eigen::MatrixXd::Identity(4, 4);
+    };
+
+  ekf_ = ExtendedKalmanFilter(f, h, j_f, j_h, u_q, u_r, P0);
   ekf_.setState(target_state, P0);
 }
 
@@ -202,14 +284,27 @@ bool OutpostTracker::updateOneArmor(const Armor & a)
 
 int OutpostTracker::matchArmorId(const Armor & a, const Eigen::VectorXd & x) const
 {
-  // 在 3 块板里找一个与观测最接近的
-  const Eigen::Vector3d meas(a.pose.position.x, a.pose.position.y, a.pose.position.z);
+  // 关键：用"高度"判定是第几块板，不能用位置。
+  //
+  // 前哨站三块板规格完全相同（都是小装甲板），任一时刻只能看到一块，
+  // 位置上有 120° 的三重歧义 —— 无法从位置判断看到的是 0/1/2 号板，
+  // 于是 EKF 的 yaw 完全不可观测（实测 v_yaw 恒为 0，真实 1.0 rad/s）。
+  // 四板靶标没这个问题是因为 4 块板是 2 大 2 小交替排布，靠 armor.type
+  // 就能区分板编号。
+  //
+  // 前哨站有一个四板没有的特征：三块板中心高度各不相同
+  // （仿真里 1.114 / 1.216 / 1.318 m，互差 0.102 m），
+  // PnP 解出的 z 足够区分它们，所以用高度来消除歧义。
+  const double az = a.pose.position.z;
+  const double za = x[4];
+  const double z_of_id[3] = {za, za + x[9], za + x[10]};
+
   int best_id = 0;
-  double best_dist = DBL_MAX;
+  double best_dz = DBL_MAX;
   for (int id = 0; id < kArmorsNum; ++id) {
-    const double d = (hArmorXYZ(x, id) - meas).norm();
-    if (d < best_dist) {
-      best_dist = d;
+    const double d = std::abs(z_of_id[id] - az);
+    if (d < best_dz) {
+      best_dz = d;
       best_id = id;
     }
   }
@@ -267,7 +362,13 @@ Eigen::Matrix4d OutpostTracker::makeYpdaMeasurementNoiseR(const Eigen::Vector3d 
   R(0, 0) = r_azimuth_ * distance * distance;
   R(1, 1) = r_pitch_ * distance * distance;
   R(2, 2) = r_distance_base_ * distance * distance;
-  R(3, 3) = r_yaw_base_;
+  // 第 4 维是 PnP 解出的板朝向。前哨站任一时刻只能看到"正对相机"的那块板，
+  // 板面正对时绕法线的旋转在几何上不可观测，PnP 输出的是噪声
+  // （实测 -87°~-35° 随机跳）。把它按正常权重喂进去，v_yaw 会被压成 0
+  // （实测 yaw 斜率只有 0.05 rad/s，真实 1.0）。
+  // 位置观测本身可以通过"板在圆周上"的几何约束解出 yaw，所以这里直接
+  // 把这一维的权重放到极大，等价于不使用该观测。
+  R(3, 3) = 1e6;
   return R;
 }
 

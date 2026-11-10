@@ -78,6 +78,14 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions & options)
   // update_Q - process noise covariance matrix
   s2qxyz_ = declare_parameter("ekf.sigma2_q_xyz", 100.0);
   s2qyaw_ = declare_parameter("ekf.sigma2_q_yaw", 400.0);
+
+  // 前哨站跟踪器同样使用 11D CV 过程噪声（之前漏了这步，
+  // 导致圆心/yaw 估计抖动极大、云台按错误 yaw 追板越追越偏）
+  if (outpost_tracker_) {
+    outpost_tracker_->setProcessNoise(
+      s2qxyz_, s2qyaw_, 0.02,
+      declare_parameter("outpost_v_yaw", 1.0));
+  }
   auto u_q = [this]() {
     Eigen::MatrixXd q = Eigen::MatrixXd::Zero(11, 11);
     const double t = dt_;

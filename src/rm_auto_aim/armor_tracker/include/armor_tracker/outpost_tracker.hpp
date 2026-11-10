@@ -46,6 +46,10 @@ public:
     double max_match_distance, double max_match_yaw_diff,
     int tracking_thres, int lost_thres);
 
+  /// 设置过程噪声参数（与四板 Tracker 一致的 11D CV 模型），必须在 init 之前调用
+  void setProcessNoise(
+    double sigma2_q_xyz, double sigma2_q_yaw, double dt, double initial_v_yaw = 0.0);
+
   void init(const Armors::SharedPtr & armors_msg);
   void update(const Armors::SharedPtr & armors_msg);
 
@@ -83,6 +87,12 @@ private:
   int lost_count_ = 0;
   double last_yaw_ = 0.0;
   int last_model_id = 0;
+
+  // 过程噪声参数（CV 模型，与四板 Tracker 相同形式）
+  double s2qxyz_ = 30.0;
+  double s2qyaw_ = 10.0;
+  double dt_ = 0.02;
+  double initial_v_yaw_ = 0.0;   // 前哨站转速先验 [rad/s]
 
   // 测量噪声参数
   double r_azimuth_ = 4e-3;

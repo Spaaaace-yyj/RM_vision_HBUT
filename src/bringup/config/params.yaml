@@ -75,6 +75,12 @@
   ros__parameters:
     target_frame: odom
 
+    # 前哨站模式：使用 OutpostTracker（三块不同高度板的 11D EKF）。
+    # 漏掉这个开关会让前哨站错误地使用四板的 4 板模型跟踪 3 块板。
+    outpost_mode: true
+    # 前哨站转速先验 [rad/s]，与 sim.yaml 的 outpost_angular_speed 保持一致
+    outpost_v_yaw: 1.0
+
     # 最大装甲板距离，超过这个距离直接滤掉
     max_armor_distance: 10.0
 
@@ -92,7 +98,7 @@
       tracking_thres: 1
 
       # 临时丢失时间，单位 s
-      lost_time_thres: 0.3
+      lost_time_thres: 0.8
 
     ekf:
       # 平移过程噪声：xc/yc/za 的加速度噪声
@@ -144,11 +150,7 @@
     gimbal_delay: 0.0
 
     max_move_yaw: 20.0
-    # 前哨站专用开火窗口 [deg]：云台固定朝圆心，板偏圆心角小于该值时开火
-    outpost_max_move_yaw: 2.0
-    # 前哨站对准阈值倍率（相对装甲板半宽角）。四板用 fire_angle_threshold 0.5，
     # 前哨站云台固定朝圆心、不追板，需要放宽才能开火。
-    outpost_fire_angle_threshold: 1.0
     fire_angle_threshold: 0.5
     timestamp_offset: 0.005
     # shoot_speed: 14.4
