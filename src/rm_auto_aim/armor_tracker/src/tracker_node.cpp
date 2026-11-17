@@ -24,13 +24,47 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions & options)
   lost_time_thres_ = this->declare_parameter("tracker.lost_time_thres", 0.3);
 
   // 前哨站专用跟踪器（三块不同高度装甲板绕同一竖直轴旋转）
+  // 常驻创建：运行中可跟随仿真器靶标开关切换，无需重启节点。
   outpost_mode_ = this->declare_parameter("outpost_mode", false);
+  outpost_tracker_ = std::make_unique<OutpostTracker>(
+    max_match_distance, max_match_yaw_diff,
+    tracker_->tracking_thres, static_cast<int>(lost_time_thres_ * 10));
   if (outpost_mode_) {
-    outpost_tracker_ = std::make_unique<OutpostTracker>(
-      max_match_distance, max_match_yaw_diff,
-      tracker_->tracking_thres, static_cast<int>(lost_time_thres_ * 10));
     RCLCPP_INFO(this->get_logger(), "前哨站跟踪模式已启用（outpost_mode=true）");
   }
+
+  // ===== 跟随仿真器靶标开关（与 detector 同一套规则）=====
+  sim_armor_enabled_ = !outpost_mode_;
+  sim_outpost_enabled_ = outpost_mode_;
+  {
+    const auto sim_qos = rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable();
+    sim_armor_sub_ = this->create_subscription<std_msgs::msg::Bool>(
+      "/sim/armor_enabled", sim_qos,
+      [this](const std_msgs::msg::Bool::SharedPtr msg) {
+        sim_armor_enabled_ = msg->data;
+        applyTargetMode(sim_armor_enabled_, sim_outpost_enabled_);
+      });
+    sim_outpost_sub_ = this->create_subscription<std_msgs::msg::Bool>(
+      "/sim/outpost_enabled", sim_qos,
+      [this](const std_msgs::msg::Bool::SharedPtr msg) {
+        sim_outpost_enabled_ = msg->data;
+        applyTargetMode(sim_armor_enabled_, sim_outpost_enabled_);
+      });
+  }
+  param_callback_handle_ = this->add_on_set_parameters_callback(
+    [this](const std::vector<rclcpp::Parameter> & params) {
+      rcl_interfaces::msg::SetParametersResult result;
+      result.successful = true;
+      for (const auto & p : params) {
+        if (p.get_name() != "outpost_mode") continue;
+        const bool want = p.as_bool();
+        if (want == outpost_mode_) continue;
+        outpost_mode_ = want;
+        RCLCPP_INFO(this->get_logger(), "跟踪模式手动切换为 %s",
+                    want ? "OUTPOST" : "ARMOR");
+      }
+      return result;
+    });
 
   // EKF
   // 11D whole-robot model
@@ -178,6 +212,27 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions & options)
   armor_marker_.color.a = 1.0;
   armor_marker_.color.r = 1.0;
   marker_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("/tracker/marker", 10);
+}
+
+// 跟随仿真器靶标开关：只有"恰好勾选一个"时才切换模式。
+// 两个都勾（场景里同时有四板和前哨站）或都不勾时保持原模式。
+void ArmorTrackerNode::applyTargetMode(bool armor_on, bool outpost_on)
+{
+  if (armor_on == outpost_on) {
+    if (armor_on) {
+      RCLCPP_WARN(this->get_logger(),
+                  "ARMOR 与 OUTPOST 同时启用，跟踪模式保持不变（%s）",
+                  outpost_mode_ ? "OUTPOST" : "ARMOR");
+    }
+    return;
+  }
+  const bool want_outpost = outpost_on;
+  if (want_outpost == outpost_mode_) return;
+  outpost_mode_ = want_outpost;
+  // 同步刷新参数存储，这样 ros2 param get 看到的就是真实生效的模式
+  this->set_parameter(rclcpp::Parameter("outpost_mode", want_outpost));
+  RCLCPP_INFO(this->get_logger(), "跟踪模式已切换为 %s（跟随仿真器靶标开关）",
+              want_outpost ? "OUTPOST" : "ARMOR");
 }
 
 void ArmorTrackerNode::armorsCallback(const auto_aim_interfaces::msg::Armors::SharedPtr armors_msg)

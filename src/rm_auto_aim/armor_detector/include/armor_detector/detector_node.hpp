@@ -13,6 +13,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/image.hpp>
+#include <std_msgs/msg/bool.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <message_filters/subscriber.h>
@@ -72,9 +73,17 @@ private:
   // Armor Detector
   std::unique_ptr<Detector> detector_;
 
-  // 前哨站检测器（outpost_mode=true 时启用）
+  // 前哨站检测器（常驻创建，运行中可切换；outpost_mode=true 时使用）
   bool outpost_mode_ = false;
   std::unique_ptr<OutpostDetector> outpost_detector_;
+
+  // 跟随仿真器的靶标开关：只勾一个时切换检测模式，两个都勾/都不勾则保持原模式。
+  void applyTargetMode(bool armor_on, bool outpost_on);
+  bool sim_armor_enabled_ = true;
+  bool sim_outpost_enabled_ = false;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr sim_armor_sub_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr sim_outpost_sub_;
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_callback_handle_;
 
   // Detected armors publisher
   auto_aim_interfaces::msg::Armors armors_msg_;

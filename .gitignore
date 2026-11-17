@@ -18,6 +18,8 @@ __pycache__/
 .claude/
 # 本地教学文档，不上传
 teach.md
+# 本地仿真使用手册，不上传
+SIMULATION.md
 # vscode 本地路径配置
 .vscode/c_cpp_properties.json
 # 性能测试脚本与数据（相机链路 A/B、延迟测量等，见 .bench/REPORT.md）

@@ -39,7 +39,8 @@ namespace rm_auto_aim
         // 复用普通检测的预处理与灯条提取，只把"灯条配对"改成不限颜色，
         // 结果统一标记为 outpost。由 outpost_mode 参数使能。
         outpost_mode_ = this->declare_parameter("outpost_mode", false);
-        if (outpost_mode_) {
+        {
+            // 常驻创建：运行中切换模式（跟仿真器靶标开关）时不必重建节点。
             // 前哨站使用一套独立的检测参数（outpost.* 前缀），与四板靶标的
             // binary_thres / armor.* 完全隔离 —— 两者的灯条宽度、板间距、
             // 板面倾角差别很大，共用一套参数必然有一方失效。
@@ -59,8 +60,47 @@ namespace rm_auto_aim
                     .min_large_center_distance = this->declare_parameter("outpost.armor.min_large_center_distance", 3.2),
                     .max_large_center_distance = this->declare_parameter("outpost.armor.max_large_center_distance", 5.0),
                     .max_angle = this->declare_parameter("outpost.armor.max_angle", 75.0)});
+        }
+        if (outpost_mode_) {
             RCLCPP_INFO(this->get_logger(), "前哨站检测模式已启用（outpost_mode=true）");
         }
+
+        // ===== 跟随仿真器的靶标开关 =====
+        // 仿真器在 ARMOR / OUTPOST 面板勾选 Enabled 时会发布这两个话题（transient local，
+        // 后启动的节点也能收到当前值）。规则：只勾一个时自动切到对应模式；两个都勾或都不勾
+        // 则保持当前模式不变，避免检测器跑出与场景不一致的结果。
+        sim_armor_enabled_ = !outpost_mode_;
+        sim_outpost_enabled_ = outpost_mode_;
+        {
+            const auto sim_qos = rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable();
+            sim_armor_sub_ = this->create_subscription<std_msgs::msg::Bool>(
+                "/sim/armor_enabled", sim_qos,
+                [this](const std_msgs::msg::Bool::SharedPtr msg) {
+                    sim_armor_enabled_ = msg->data;
+                    applyTargetMode(sim_armor_enabled_, sim_outpost_enabled_);
+                });
+            sim_outpost_sub_ = this->create_subscription<std_msgs::msg::Bool>(
+                "/sim/outpost_enabled", sim_qos,
+                [this](const std_msgs::msg::Bool::SharedPtr msg) {
+                    sim_outpost_enabled_ = msg->data;
+                    applyTargetMode(sim_armor_enabled_, sim_outpost_enabled_);
+                });
+        }
+        // 也允许运行中 ros2 param set /armor_detector outpost_mode true 手动切
+        param_callback_handle_ = this->add_on_set_parameters_callback(
+            [this](const std::vector<rclcpp::Parameter> & params) {
+                rcl_interfaces::msg::SetParametersResult result;
+                result.successful = true;
+                for (const auto & p : params) {
+                    if (p.get_name() != "outpost_mode") continue;
+                    const bool want = p.as_bool();
+                    if (want == outpost_mode_) continue;
+                    outpost_mode_ = want;
+                    RCLCPP_INFO(this->get_logger(), "检测模式手动切换为 %s",
+                                want ? "OUTPOST" : "ARMOR");
+                }
+                return result;
+            });
 
         // Armors Publisher
         armors_pub_ = this->create_publisher<auto_aim_interfaces::msg::Armors>(
@@ -384,6 +424,28 @@ namespace rm_auto_aim
             imageCallback(img_msg);
         }
 #endif
+    }
+
+    // 跟随仿真器靶标开关：只有"恰好勾选一个"时才切换模式。
+    // 两个都勾（场景里同时有四板和前哨站）或都不勾时保持原模式，
+    // 否则检测器会拿到与自身模式不匹配的灯条，配对必然失败。
+    void ArmorDetectorNode::applyTargetMode(bool armor_on, bool outpost_on)
+    {
+        if (armor_on == outpost_on) {
+            if (armor_on) {
+                RCLCPP_WARN(this->get_logger(),
+                            "ARMOR 与 OUTPOST 同时启用，检测模式保持不变（%s）",
+                            outpost_mode_ ? "OUTPOST" : "ARMOR");
+            }
+            return;
+        }
+        const bool want_outpost = outpost_on;
+        if (want_outpost == outpost_mode_) return;
+        outpost_mode_ = want_outpost;
+        // 同步刷新参数存储，这样 ros2 param get 看到的就是真实生效的模式
+        this->set_parameter(rclcpp::Parameter("outpost_mode", want_outpost));
+        RCLCPP_INFO(this->get_logger(), "检测模式已切换为 %s（跟随仿真器靶标开关）",
+                    want_outpost ? "OUTPOST" : "ARMOR");
     }
 
     std::unique_ptr<Detector> ArmorDetectorNode::initDetector()

@@ -11,6 +11,7 @@
 #include <tf2_ros/transform_listener.h>
 
 #include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/bool.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
@@ -57,9 +58,17 @@ private:
   double lost_time_thres_;
   std::unique_ptr<Tracker> tracker_;
 
-  // 前哨站专用跟踪器（outpost_mode=true 时启用）
+  // 前哨站专用跟踪器（常驻创建，运行中可切换；outpost_mode=true 时使用）
   bool outpost_mode_ = false;
   std::unique_ptr<OutpostTracker> outpost_tracker_;
+
+  // 跟随仿真器的靶标开关：只勾一个时切换跟踪模式，两个都勾/都不勾则保持原模式。
+  void applyTargetMode(bool armor_on, bool outpost_on);
+  bool sim_armor_enabled_ = true;
+  bool sim_outpost_enabled_ = false;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr sim_armor_sub_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr sim_outpost_sub_;
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_callback_handle_;
 
   // Subscriber with tf2 message_filter
   std::string target_frame_;

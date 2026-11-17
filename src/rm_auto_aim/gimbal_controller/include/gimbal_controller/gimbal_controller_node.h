@@ -258,6 +258,14 @@ private:
 
     // 前哨站模式：三块装甲板高度各不相同（相对板0 的高度差）
     bool outpost_mode_ = false;
+    // 跟随仿真器的靶标开关：只勾一个时切换模式，两个都勾/都不勾则保持原模式。
+    void applyTargetMode(bool armor_on, bool outpost_on);
+    bool mpc_enable_param_ = true;   // 参数里的原始值，切回四板时恢复
+    bool sim_armor_enabled_ = true;
+    bool sim_outpost_enabled_ = false;
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr sim_armor_sub_;
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr sim_outpost_sub_;
+    rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_callback_handle_;
     static constexpr double kOutpostHeight[3] = {0.0, 0.102, 0.204};
     double outpost_max_move_yaw_ = 10.0;   // 前哨站开火窗口（板偏圆心角）[deg]
     double outpost_lock_c_yaw_ = 1e9;       // 前哨站圆心方位角（低通滤波后，1e9=未初始化）

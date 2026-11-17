@@ -36,6 +36,7 @@ GimbalControllerNode::GimbalControllerNode() : Node("GimbalControllerNode")
     mpc_half_horizon_ = declare_parameter("mpc.half_horizon", 50);
     mpc_dt_ = declare_parameter("mpc.dt", 0.01);
     mpc_enable_ = declare_parameter("mpc.enable", true);
+    mpc_enable_param_ = mpc_enable_;
 
     use_sim_interface_ = declare_parameter("use_sim_interface", false);
 
@@ -46,10 +47,53 @@ GimbalControllerNode::GimbalControllerNode() : Node("GimbalControllerNode")
     // 云台会被一路带跑到看不见目标的地方。四板靶标仍走 MPC。
     if (outpost_mode_)
     {
+        mpc_enable_ = false;
         RCLCPP_INFO(
             this->get_logger(),
-            "前哨站模式：只做三块板的高度补偿，其余逻辑与四板完全相同");
+            "前哨站模式：只做三块板的高度补偿，其余逻辑与四板完全相同（已强制关闭 MPC）");
     }
+
+    // ===== 跟随仿真器的靶标开关（/sim/armor_enabled、/sim/outpost_enabled）=====
+    sim_armor_enabled_ = !outpost_mode_;
+    sim_outpost_enabled_ = outpost_mode_;
+    {
+        const auto sim_qos = rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable();
+        sim_armor_sub_ = this->create_subscription<std_msgs::msg::Bool>(
+            "/sim/armor_enabled", sim_qos,
+            [this](const std_msgs::msg::Bool::SharedPtr msg) {
+                sim_armor_enabled_ = msg->data;
+                applyTargetMode(sim_armor_enabled_, sim_outpost_enabled_);
+            });
+        sim_outpost_sub_ = this->create_subscription<std_msgs::msg::Bool>(
+            "/sim/outpost_enabled", sim_qos,
+            [this](const std_msgs::msg::Bool::SharedPtr msg) {
+                sim_outpost_enabled_ = msg->data;
+                applyTargetMode(sim_armor_enabled_, sim_outpost_enabled_);
+            });
+    }
+    param_callback_handle_ = this->add_on_set_parameters_callback(
+        [this](const std::vector<rclcpp::Parameter> & params) {
+            rcl_interfaces::msg::SetParametersResult result;
+            result.successful = true;
+            for (const auto & p : params) {
+                if (p.get_name() == "mpc.enable") {
+                    // 前哨站模式下 MPC 被强制关闭，此时外部写入的值只记录为“切回四板后要恢复的值”
+                    if (!outpost_mode_) {
+                        mpc_enable_param_ = p.as_bool();
+                        mpc_enable_ = mpc_enable_param_;
+                    }
+                    continue;
+                }
+                if (p.get_name() != "outpost_mode") continue;
+                const bool want = p.as_bool();
+                if (want == outpost_mode_) continue;
+                outpost_mode_ = want;
+                mpc_enable_ = want ? false : mpc_enable_param_;
+                RCLCPP_INFO(this->get_logger(), "云台模式手动切换为 %s（MPC %s）",
+                            want ? "OUTPOST" : "ARMOR", mpc_enable_ ? "on" : "off");
+            }
+            return result;
+        });
 
     if (mpc_horizon_ < 4)
     {
@@ -118,6 +162,33 @@ GimbalControllerNode::GimbalControllerNode() : Node("GimbalControllerNode")
     sim_gimbal_yaw_pub_ = this->create_publisher<std_msgs::msg::Float64>("/gimbal/target_yaw", 10); //mujoco sim topic
     sim_fire_pub_ = this->create_publisher<std_msgs::msg::Bool>("/gimbal/fire", 10);
     RCLCPP_INFO(this->get_logger(), "Gimbal Controller Init!");
+}
+
+// 跟随仿真器靶标开关：只有"恰好勾选一个"时才切换模式。
+// 两个都勾（场景里同时有四板和前哨站）或都不勾时保持原模式。
+void GimbalControllerNode::applyTargetMode(bool armor_on, bool outpost_on)
+{
+    if (armor_on == outpost_on)
+    {
+        if (armor_on)
+        {
+            RCLCPP_WARN(
+                this->get_logger(),
+                "ARMOR 与 OUTPOST 同时启用，云台模式保持不变（%s，MPC %s）",
+                outpost_mode_ ? "OUTPOST" : "ARMOR", mpc_enable_ ? "on" : "off");
+        }
+        return;
+    }
+    const bool want_outpost = outpost_on;
+    if (want_outpost == outpost_mode_) return;
+    outpost_mode_ = want_outpost;
+    // 前哨站模式下 MPC 会追装甲板轨迹把云台带跑，强制关闭；切回四板恢复参数值
+    mpc_enable_ = want_outpost ? false : mpc_enable_param_;
+    // 同步刷新参数存储，这样 ros2 param get 看到的就是真实生效的模式
+    this->set_parameter(rclcpp::Parameter("outpost_mode", want_outpost));
+    this->set_parameter(rclcpp::Parameter("mpc.enable", mpc_enable_));
+    RCLCPP_INFO(this->get_logger(), "云台模式已切换为 %s（MPC %s，跟随仿真器靶标开关）",
+                want_outpost ? "OUTPOST" : "ARMOR", mpc_enable_ ? "on" : "off");
 }
 
 static double shortestAngularDistance(double from, double to)
