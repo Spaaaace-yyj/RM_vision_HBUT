@@ -406,6 +406,21 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
     size_t a_n = msg->armors_num;
     // if (!msg->tracking) lock_armor_idx_ = -1;
 
+    // 前哨站没锁定的时候不许瞄、不许开火。
+    // 原来这里完全不看 tracking，跟踪器发什么位置就当目标，于是没锁定也会
+    // 对着错误位置开火，云台还被带着往反方向转。四板不在这里改，保持原逻辑。
+    // 判据用云台自己的 outpost_mode_，不看 msg->id。跟踪器没初始化时 id 是空的，
+    // 拿 id 判断会漏掉，结果就是没锁定照样开火。
+    if (outpost_mode_ && !msg->tracking) {
+        send_is_fire = 0.0;
+        hold_fire_ = true;                  // 控制循环里也要看这个标志
+        std_msgs::msg::Bool stop_fire;
+        stop_fire.data = false;
+        sim_fire_pub_->publish(stop_fire);  // 仿真那边收到 false 会立刻停火
+        return;
+    }
+    hold_fire_ = false;  // 锁定了，恢复正常瞄准和开火
+
     sentray_mode_ = get_parameter("sentray_mode").as_bool();
     if (a_n > 0)
     {
@@ -824,12 +839,15 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
 
         std_msgs::msg::Float64 sim_pitch_msg, sim_yaw_msg;
         std_msgs::msg::Bool sim_fire_msg;
-        sim_fire_msg.data = control_msg.is_fire > 0 ? true : false;
+        // 前哨站挂起时强制停火，角度也不再下发，云台就停在原地不乱转
+        sim_fire_msg.data = (!hold_fire_ && control_msg.is_fire > 0);
         sim_yaw_msg.data = -send_yaw;
         sim_pitch_msg.data = send_pitch;
 
-        sim_gimbal_pitch_pub_->publish(sim_pitch_msg);
-        sim_gimbal_yaw_pub_->publish(sim_yaw_msg);
+        if (!hold_fire_) {
+            sim_gimbal_pitch_pub_->publish(sim_pitch_msg);
+            sim_gimbal_yaw_pub_->publish(sim_yaw_msg);
+        }
         sim_fire_pub_->publish(sim_fire_msg);
 
         //===================DEBUG=======================

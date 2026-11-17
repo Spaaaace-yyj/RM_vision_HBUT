@@ -1,16 +1,20 @@
-// 前哨站（outpost）专用跟踪器
+// 前哨站专用跟踪器
 //
 // 前哨站运动模型：三块装甲板绕同一竖直轴旋转，轨迹圆的圆心在地面投影重合：
-//   - 三块板半径相同        r = 0.275 m
+//   - 三块板半径相同        固定常数 kRadius
 //   - 三块板间隔 120°       angle_i = yaw + i * 2π/3
 //   - 三块板高度各不相同     h_0 = 0, h_1 = +0.102, h_2 = +0.204（相对基准高度）
 //   - 圆心高度固定（不上下运动）
 //
-// 与普通四板 EKF（11 维 [xc,vx,yc,vy,za,vz,yaw,v_yaw,r,l,h]）的差别：
+// 与普通四板 EKF 的差别：
 //   普通四板：r1/r2 两组半径 + za/za+dza 两组高度（大板与小板的差异）
-//   前哨站  ：半径只有一个；高度有三档，用 h1/h2 两个偏移量描述
-// 因此本 EKF 状态改为：
-//   [xc, vx, yc, vy, za, vz, yaw, v_yaw, r, h1, h2]
+//   前哨站  ：半径只有一个且写死；高度有三档，用 h1/h2 两个偏移量描述
+//
+// 半径不放进状态。单看一块板时半径不可观，交给滤波估会一路塌到几毫米，
+// 圆心也跟着被带偏。半径本来就是机械尺寸，直接当常数用。
+//
+// 因此本 EKF 状态为 10 维：
+//   [xc, vx, yc, vy, za, vz, yaw, v_yaw, h1, h2]
 // 观测仍与普通 EKF 一致：[ypd_yaw, ypd_pitch, ypd_distance, armor_yaw]（4 维）
 
 #ifndef ARMOR_TRACKER__OUTPOST_TRACKER_HPP_
@@ -46,9 +50,25 @@ public:
     double max_match_distance, double max_match_yaw_diff,
     int tracking_thres, int lost_thres);
 
-  /// 设置过程噪声参数（与四板 Tracker 一致的 11D CV 模型），必须在 init 之前调用
+  /// 设置过程噪声参数（10 维匀速模型），必须在 init 之前调用
   void setProcessNoise(
     double sigma2_q_xyz, double sigma2_q_yaw, double dt, double initial_v_yaw = 0.0);
+
+  /// 更新门限。预测的板位置和实测位置差超过这个值就丢掉本次观测，不喂给滤波器。
+  /// 前哨站要比四板严得多，默认 0.1 米，四板用的是 max_match_distance，两者互不影响。
+  void setPositionGate(double gate) { position_gate_ = gate; }
+
+  /// 检测态用的宽门限，默认 1.0 米
+  void setAcquireGate(double gate) { acquire_gate_ = gate; }
+
+  /// 是否强制转速。默认关闭，因为判方向要用板朝向，而我们解出来的朝向基本是噪声，
+  /// 判错方向比不判更糟。等朝向估计可信了再打开。
+  void setFixSpin(bool on) { fix_spin_ = on; }
+
+  /// 转向符号。仿真里前哨站逆时针转，但本模型 yaw 的正方向与它相反，所以是 -1。
+  /// 自动判方向依赖板朝向，而我们的朝向估计基本是噪声，判反了命中率直接归零，
+  /// 所以做成参数，实测一下定死。
+  void setSpinSign(double sign) { spin_sign_ = sign; }
 
   void init(const Armors::SharedPtr & armors_msg);
   void update(const Armors::SharedPtr & armors_msg);
@@ -58,7 +78,7 @@ public:
 
   Tracker::State tracker_state = Tracker::LOST;
   std::string tracked_id;
-  Eigen::VectorXd target_state;   ///< 11 维状态
+  Eigen::VectorXd target_state;   ///< 10 维状态
   Armor tracked_armor;
 
 private:
@@ -76,6 +96,17 @@ private:
   static double limitRad(double angle);
   static double getRawYaw(const geometry_msgs::msg::Quaternion & q);
 
+  // 转速方向判定。前哨站的转速大小是已知的，方向靠攒一批板朝向来投票。
+  // 判出来之后直接把 v_yaw 写成正负常量，不再交给滤波去估。
+  void calDirection(double orient_yaw);
+  int spin_direction_ = 0;            // 1 逆时针，-1 顺时针，0 还没判出来
+  std::vector<double> direction_data_;
+
+  double position_gate_ = 0.1;        // 跟踪态门限 [m]，收紧防拖
+  double acquire_gate_ = 1.0;         // 检测态门限 [m]，放松好锁上
+  bool fix_spin_ = true;              // 是否强制转速，实测有效，默认开
+  double spin_sign_ = -1.0;           // 转速符号，默认 -1
+
   ExtendedKalmanFilter ekf_;
 
   double max_match_distance_;
@@ -84,6 +115,7 @@ private:
   int lost_thres_;
 
   int detect_count_ = 0;
+  int detect_miss_ = 0;   // 检测态连续丢帧数
   int lost_count_ = 0;
   double last_yaw_ = 0.0;
   int last_model_id = 0;

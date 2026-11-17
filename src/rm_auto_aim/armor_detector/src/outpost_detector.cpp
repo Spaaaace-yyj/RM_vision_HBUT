@@ -14,6 +14,28 @@
 namespace rm_auto_aim
 {
 
+namespace
+{
+
+// 同一块板的左右两条灯条高度基本一致，上下端点在竖直方向上叠得很齐。灯条被二值化
+// 打碎之后拼出来的假配对往往是一上一下，竖直方向几乎不重叠，用这个条件把它们挡掉。
+// 图像 y 轴朝下，两端都取最小和最大值，避免灯条倾斜时判反。
+bool verticalOverlapOk(const Light & a, const Light & b, double min_ratio)
+{
+  const double a_top = std::min(a.top.y, a.bottom.y);
+  const double a_bottom = std::max(a.top.y, a.bottom.y);
+  const double b_top = std::min(b.top.y, b.bottom.y);
+  const double b_bottom = std::max(b.top.y, b.bottom.y);
+  const double overlap = std::min(a_bottom, b_bottom) - std::max(a_top, b_top);
+  const double shorter = std::min(a_bottom - a_top, b_bottom - b_top);
+  if (shorter <= 1e-6) {
+    return false;
+  }
+  return overlap > min_ratio * shorter;
+}
+
+}  // namespace
+
 OutpostDetector::OutpostDetector(
   const int & binary_thres, const int & detect_color,
   const Detector::LightParams & l, const Detector::ArmorParams & a)
@@ -43,6 +65,11 @@ std::vector<Armor> OutpostDetector::detect(const cv::Mat & input)
         continue;
       }
 
+      // 竖直方向对不齐的也不是同一块板，交给下面的长度比和中心距判断之前先挡掉
+      if (!verticalOverlapOk(*light_1, *light_2, 0.5)) {
+        continue;
+      }
+
       ArmorType type = ArmorType::INVALID;
       // ---- 调试输出 ----
       {
@@ -62,7 +89,10 @@ std::vector<Armor> OutpostDetector::detect(const cv::Mat & input)
       }
 
       Armor armor(*light_1, *light_2);
-      armor.type = type;
+      // 前哨站三块板都是小装甲板，没有大板。这里直接钉死成 small，不让它有机会
+      // 被判成 large。判成 large 会按 0.23 米的板宽去解 PnP，距离立刻缩水到六成，
+      // 之前跟踪器半径收敛到 0 就是这么来的。
+      armor.type = ArmorType::SMALL;
       // 前哨站数字贴图无意义，直接固定 number，tracker 会据此使用
       // initialRadius() 中 outpost 分支的 0.2765 m 旋转半径
       armor.number = OUTPOST_NUMBER;
@@ -73,9 +103,14 @@ std::vector<Armor> OutpostDetector::detect(const cv::Mat & input)
   }
 
   // 前哨站三块板 120° 排布，任一时刻最多只有一块板正对相机。
-  // 灯条多了以后配对组合会爆炸（5 条灯条 = 10 种配对），产生大量假装甲板，
-  // 导致 tracker 匹配混乱、云台乱追。这里只保留"最像小装甲板"的那一个配对：
-  // 判据是 center_distance 最接近同板理论值（≈1.0）。
+  // 灯条多了以后配对组合会爆炸，5 条灯条就有 10 种配对，会配出一堆假装甲板，
+  // tracker 拿去做匹配就会乱追。所以这里只留一个最像真板的配对。
+  //
+  // 判据用的是 center_distance 最接近同板理论值。这个理论值不能再按 1.0 算了，
+  // 实测小装甲板两条灯条中心间距 0.1283 m，灯条长 0.0596 m，比值是 2.15。
+  // 之前按 1.0 去挑，挑中的全是灯条被阈值打碎后拼出来的假板，解出来的距离
+  // 只有真实值的一半，tracker 的半径收敛到 0，前哨站就转不起来了。
+  constexpr double kSamePlateCenterDistance = 2.15;
   if (outpost_armors.size() > 1) {
     const Detector::ArmorParams & a = detector->a;
     auto score = [&a](const Armor & arm) -> double {
@@ -84,7 +119,7 @@ std::vector<Armor> OutpostDetector::detect(const cv::Mat & input)
         const double avg = std::max((len1 + len2) * 0.5, 1e-6);
         const double cd = cv::norm(arm.left_light.center - arm.right_light.center) / avg;
         (void)a;
-        return std::abs(cd - 1.0);   // 越接近 1 越像同板左右灯条
+        return std::abs(cd - kSamePlateCenterDistance);
       };
     auto best = std::min_element(
       outpost_armors.begin(), outpost_armors.end(),

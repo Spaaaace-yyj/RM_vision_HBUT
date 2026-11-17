@@ -113,12 +113,23 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions & options)
   s2qxyz_ = declare_parameter("ekf.sigma2_q_xyz", 100.0);
   s2qyaw_ = declare_parameter("ekf.sigma2_q_yaw", 400.0);
 
-  // 前哨站跟踪器同样使用 11D CV 过程噪声（之前漏了这步，
+  // 前哨站跟踪器同样使用 CV 过程噪声（之前漏了这步，
   // 导致圆心/yaw 估计抖动极大、云台按错误 yaw 追板越追越偏）
   if (outpost_tracker_) {
     outpost_tracker_->setProcessNoise(
       s2qxyz_, s2qyaw_, 0.02,
       declare_parameter("outpost_v_yaw", 1.0));
+    // 前哨站专用更新门限。四板用的是 tracker.max_match_distance，是另一个参数，
+    // 这里单独起一个名字，保证调前哨站不会连带改到四板。
+    outpost_tracker_->setPositionGate(
+      declare_parameter("outpost_match_distance", 0.1));
+    // 检测态的入场门限故意放松，先让跟踪锁上，之后再用上面那个窄门限守住
+    outpost_tracker_->setAcquireGate(
+      declare_parameter("outpost_acquire_distance", 1.0));
+    // 强制转速需要板朝向可信，我们那边朝向基本是噪声，默认先关着
+    outpost_tracker_->setFixSpin(declare_parameter("outpost_fix_spin", true));
+    // 转向符号。仿真里前哨站逆时针转，而模型 yaw 的正方向与它相反，所以默认 -1。
+    outpost_tracker_->setSpinSign(declare_parameter("outpost_spin_sign", -1.0));
   }
   auto u_q = [this]() {
     Eigen::MatrixXd q = Eigen::MatrixXd::Zero(11, 11);
@@ -277,6 +288,9 @@ void ArmorTrackerNode::armorsCallback(const auto_aim_interfaces::msg::Armors::Sh
   if (outpost_mode_ && outpost_tracker_) {
     if (outpost_tracker_->tracker_state == Tracker::LOST) {
       outpost_tracker_->init(armors_msg);
+      // 初始化完也要把状态发出去。原来这里只发 tracking=false，位置全是零，
+      // 云台拿到一个零目标反而会往错误方向动，不如发一个刚初始化的估计。
+      outpost_tracker_->fillTargetMsg(target_msg);
       target_msg.tracking = false;
     } else {
       outpost_tracker_->update(armors_msg);
@@ -331,6 +345,8 @@ void ArmorTrackerNode::armorsCallback(const auto_aim_interfaces::msg::Armors::Sh
       target_msg.radius_1 = state(8);
       target_msg.radius_2 = state(8) + state(9);
       target_msg.dz = state(10);
+      // 四板是两大小交替，高度只有低高两组，按板序号摊开给成四个
+      target_msg.dz_list = {0.0, target_msg.dz, 0.0, target_msg.dz};
       target_msg.type = tracker_->tracked_armor.type;
     }
   }
@@ -390,10 +406,15 @@ void ArmorTrackerNode::publishMarkers(const auto_aim_interfaces::msg::Target & t
       // Only 4 armors has 2 radius and height
       if (a_n == 4) {
         r = is_current_pair ? r1 : r2;
-        p_a.z = za + (is_current_pair ? 0 : dz);
         is_current_pair = !is_current_pair;
       } else {
         r = r1;
+      }
+      // 高度优先用逐板偏移。四板给的是两组交替，前哨站给的是三块各不同，
+      // 老的单标量 dz 只够四板用，前哨站三块会被画成同一高度。
+      if (i < target_msg.dz_list.size()) {
+        p_a.z = za + target_msg.dz_list[i];
+      } else {
         p_a.z = za;
       }
       p_a.x = xc - r * cos(tmp_yaw);

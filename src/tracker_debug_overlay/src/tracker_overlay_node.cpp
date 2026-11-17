@@ -241,8 +241,18 @@ namespace rm_auto_aim
                 if (armor_num == 4)
                 {
                     r = is_current_pair ? r1 : r2;
-                    z = za + (is_current_pair ? 0.0 : dz);
                     is_current_pair = !is_current_pair;
+                }
+
+                // 高度优先用逐板偏移。四板是两组交替，前哨站是三块各不相同，
+                // 只读老的单标量 dz 的话前哨站三块会被画成同一个高度。
+                if (i < static_cast<int>(target_msg.dz_list.size()))
+                {
+                    z = za + target_msg.dz_list[i];
+                }
+                else if (armor_num == 4)
+                {
+                    z = za + ((i % 2) ? dz : 0.0);
                 }
 
                 ArmorDrawInfo info;

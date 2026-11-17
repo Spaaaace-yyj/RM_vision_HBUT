@@ -271,6 +271,9 @@ private:
     double outpost_lock_c_yaw_ = 1e9;       // 前哨站圆心方位角（低通滤波后，1e9=未初始化）
 
     bool use_sim_interface_ = false;
+
+    // 前哨站没锁定时挂起。挂起期间不瞄也不打，避免对着错误位置开火。
+    bool hold_fire_ = false;
 };
 
 #endif //BUILD_GIMBAL_CONTROLLER_NODE_H
