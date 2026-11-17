@@ -25,7 +25,7 @@
 
     detect_color: 0
     # 前哨站模式：三块不同高度装甲板绕同一竖直轴旋转，检测结果标记为 outpost
-    outpost_mode: false
+    outpost_mode: true
     binary_thres: 140
 
     # ── 前哨站检测参数（独立一套，与上面的四板参数互不影响）──
@@ -77,7 +77,7 @@
 
     # 前哨站模式：使用 OutpostTracker（三块不同高度板的 11D EKF）。
     # 漏掉这个开关会让前哨站错误地使用四板的 4 板模型跟踪 3 块板。
-    outpost_mode: false
+    outpost_mode: true
     # 前哨站转速先验 [rad/s]，与 sim.yaml 的 outpost_angular_speed 保持一致
     outpost_v_yaw: 1.0
 
@@ -135,9 +135,9 @@
     # 关闭后改用 calcAimReferenceAtTime 的"朝圆心"逻辑（见该函数里
     # 没有板落在 max_move_yaw 窗口内时的分支）。
     mpc:
-      enable: true
+      enable: false
     # 前哨站模式：三块装甲板高度各不相同
-    outpost_mode: false
+    outpost_mode: true
     use_sim_interface: true
 
     is_pitch_gain: false
