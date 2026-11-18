@@ -241,6 +241,19 @@ namespace rm_auto_aim
                 cv::Mat rvec, tvec;
                 //todo:要把时间改回图像时间，使用系统时间仅供调试，记得改回来！
                 bool success = pnp_solver_->solvePnP(armor, rvec, tvec, img_msg->header.stamp);
+                // 临时诊断：把选中配对的几何量和解出来的距离一起打出来，
+                // 用来看真假配对在哪个量上能分开。
+                if (outpost_mode_) {
+                    const double l1 = armor.left_light.length;
+                    const double l2 = armor.right_light.length;
+                    const double avg_len = std::max(0.5 * (l1 + l2), 1e-6);
+                    const double cd =
+                        cv::norm(armor.left_light.center - armor.right_light.center) / avg_len;
+                    const double * t = tvec.ptr<double>();
+                    const double dist = std::sqrt(t[0] * t[0] + t[1] * t[1] + t[2] * t[2]);
+                    fprintf(stderr, "[outpost_cd] cd=%.3f dist=%.2f len1=%.1f len2=%.1f\n",
+                            cd, dist, l1, l2);
+                }
                 // bool success = pnp_solver_->solvePnP(armor, rvec, tvec, this->get_clock()->now());
                 if (success)
                 {

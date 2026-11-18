@@ -42,8 +42,8 @@
         # 两灯条中心间距 0.1283 m 除以灯条长度 0.0596 m，同板配对的理论比值是 2.15。
         # 之前 max_small 只给到 2.0，正对相机的板刚好掉进 2.0 到 3.2 的空档被拒掉，
         # 只剩斜着的板能过，于是检测时有时无、解出来的距离在 1 米到 42 米之间乱跳。
-        min_small_center_distance: 0.2
-        max_small_center_distance: 2.8
+        min_small_center_distance: 0.1
+        max_small_center_distance: 0.6
         # 前哨站三块板全是小装甲板，没有大板。把 large 区间挪到够不着的地方，
         # 免得某几帧被判成大板，按 0.23 m 板宽解算，距离直接缩水到六成。
         min_large_center_distance: 9.0

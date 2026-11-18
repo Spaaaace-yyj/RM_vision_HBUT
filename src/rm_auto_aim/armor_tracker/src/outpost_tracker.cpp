@@ -147,7 +147,8 @@ void OutpostTracker::initEKF(const Armor & a)
   // 抖得厉害，x 在两米一到四米七之间跳，云台拿着错的 yaw 追板，越追越偏。
   const double dt = dt_;  // 周期
 
-  auto f = [dt](const Eigen::VectorXd & x) -> Eigen::VectorXd {  // 状态转移
+  auto 
+  f = [dt](const Eigen::VectorXd & x) -> Eigen::VectorXd {  // 状态转移
       Eigen::VectorXd x_new = x;                 // 拷一份出来改
       x_new(0) += x(1) * dt;                     // 圆心 x 往前走
       x_new(2) += x(3) * dt;                     // 圆心 y 往前走
@@ -179,7 +180,8 @@ void OutpostTracker::initEKF(const Armor & a)
       // 不动；四板的圆心会跟着车跑。照四板那样给大的圆心噪声，滤波器就会用平移
       // 圆心去解释板上位置的变化，yaw 转不起来，v_yaw 永远学不到。实测那时 yaw
       // 斜率只有每秒零点零二弧度，真实是一弧度每秒。所以这里把圆心压死。
-      const double v1 = 0.01;                    // 圆心和高度噪声
+      //const double v1 = 0.01;                    // 圆心和高度噪声
+      const double v1 = s2qxyz_;                 //把圆心和高度噪声改成和四板一样的量级，滤波器就能学到转速了吧～
       const double v2 = s2qyaw_;                 // 角度噪声
       const double a = std::pow(t, 4) / 4.0;     // t 的四次项系数
       const double b = std::pow(t, 3) / 2.0;     // t 的三次项系数
