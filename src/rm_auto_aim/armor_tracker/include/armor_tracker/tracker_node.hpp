@@ -41,6 +41,10 @@ private:
 
   void publishMarkers(const auto_aim_interfaces::msg::Target & target_msg);
 
+  // 前哨站的固定频率传播与发布。检测回调只负责融合，时序和检测解耦，
+  // 免得检测断一下框就停一下。
+  void outpostTimerCallback();
+
   double computeQr(double vyaw);
 
   // Maximum allowable armor distance in the XOY plane
@@ -48,6 +52,10 @@ private:
 
   // The time when the last message was received
   rclcpp::Time last_time_;
+
+  // 前哨站专用：固定频率的传播定时器和上一次传播的时刻
+  rclcpp::TimerBase::SharedPtr outpost_timer_;
+  rclcpp::Time last_propagate_time_;
   double dt_;
 
   // Armor tracker

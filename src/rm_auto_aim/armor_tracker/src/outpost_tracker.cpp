@@ -228,6 +228,7 @@ void OutpostTracker::initEKF(const Armor & a)
 
   ekf_ = ExtendedKalmanFilter(f, h, j_f, j_h, u_q, u_r, P0);  // 建滤波器
   ekf_.setState(target_state, P0);                            // 灌初值
+  initialized_ = true;                                       // 模型函数和状态都齐了
 }
 
 void OutpostTracker::update(const Armors::SharedPtr & armors_msg)
@@ -248,7 +249,9 @@ void OutpostTracker::update(const Armors::SharedPtr & armors_msg)
   // 只有真值的三成，画面上就是框比真板转得慢一大截。
   dt_ = frame_dt_;
 
-  target_state = ekf_.predict();  // 先按运动模型预测一步
+  // 预测已经搬到固定频率的定时器里做了，这里只负责融合这一帧观测。
+  // 检测输出间隔中位三十八毫秒、尾部五百多毫秒，跟着检测节拍预测的话，
+  // 框会停一下再猛冲一段，看起来就是转速时快时慢。
 
   bool matched = false;       // 本帧有没有匹配上
   int same_id_count = 0;      // 同号板的个数
@@ -422,6 +425,30 @@ bool OutpostTracker::updateOneArmor(const Armor & a)
   target_state[9] = kH2;
   ekf_.setState(target_state);
   return true;
+}
+
+void OutpostTracker::propagate(double dt)
+{
+  if (!initialized_ || target_state.size() != kStateDim) {
+    return;  // 还没初始化，这时候调 predict 会因为模型函数没设而崩溃
+  }
+  if (dt > 1e-4 && dt < 0.5) {
+    dt_ = dt;  // 用调用方给的真实时间步
+  }
+  target_state = ekf_.predict();
+
+  // 和 update 里保持一致的三个强制项：转速大小、转速方向、两个高度差
+  if (spin_sign_ != 0.0) {
+    spin_direction_ = (spin_sign_ > 0.0) ? 1 : -1;
+  }
+  if (spin_direction_ != 0) {
+    target_state[7] = spin_direction_ * std::abs(initial_v_yaw_);
+  } else {
+    target_state[7] = 0.0;
+  }
+  target_state[8] = kH1;
+  target_state[9] = kH2;
+  ekf_.setState(target_state);
 }
 
 void OutpostTracker::updateSpinFromYaw()

@@ -65,6 +65,9 @@ public:
   /// 判错方向比不判更糟。等朝向估计可信了再打开。
   void setFixSpin(bool on) { fix_spin_ = on; }
 
+  // 只做时间传播，不融合观测。由节点的固定频率定时器调用。
+  void propagate(double dt);
+
   /// 转向符号。仿真里前哨站逆时针转，但本模型 yaw 的正方向与它相反，所以是 -1。
   /// 自动判方向依赖板朝向，而我们的朝向估计基本是噪声，判反了命中率直接归零，
   /// 所以做成参数，实测一下定死。
@@ -79,6 +82,7 @@ public:
   Tracker::State tracker_state = Tracker::LOST;
   std::string tracked_id;
   Eigen::VectorXd target_state;   ///< 10 维状态
+  bool initialized_ = false;      ///< initEKF 跑过没有，没跑过不能预测
   Armor tracked_armor;
 
 private:
@@ -104,6 +108,7 @@ private:
   // 但 v_yaw 作为状态却学不出来，因为滤波器不需要靠它就能预测下一步。
   // 所以这里单独算：取最近若干帧的 yaw 差分，去掉板号跳变那些异常值，取平均。
   void updateSpinFromYaw();
+
   std::vector<double> yaw_history_;   // 最近若干帧的 yaw
   double frame_dt_ = 0.02;            // 实测帧间隔，从消息时间戳算出来
   double last_stamp_ = -1.0;          // 上一帧时间戳

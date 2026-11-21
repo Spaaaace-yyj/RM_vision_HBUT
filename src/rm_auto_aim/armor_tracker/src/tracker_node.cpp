@@ -223,6 +223,12 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions & options)
   armor_marker_.color.a = 1.0;
   armor_marker_.color.r = 1.0;
   marker_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("/tracker/marker", 10);
+
+  // 前哨站的传播和发布走固定频率，不挂在检测回调上。
+  // 检测输出间隔实测中位三十八毫秒、尾部五百多毫秒，跟着它走的话框会停一下再猛冲。
+  // 这里按一百赫兹，用仿真时间算步长，仿真慢于实时也不会偏。
+  outpost_timer_ = this->create_wall_timer(
+    std::chrono::milliseconds(10), [this]() { outpostTimerCallback(); });
 }
 
 // 跟随仿真器靶标开关：只有"恰好勾选一个"时才切换模式。
@@ -286,20 +292,13 @@ void ArmorTrackerNode::armorsCallback(const auto_aim_interfaces::msg::Armors::Sh
 
   // ===== 前哨站路径：使用专用 OutpostTracker（三块不同高度板）=====
   if (outpost_mode_ && outpost_tracker_) {
+    // 这里只做融合，发布交给固定频率的定时器。检测断帧的时候框照样按预测走。
     if (outpost_tracker_->tracker_state == Tracker::LOST) {
       outpost_tracker_->init(armors_msg);
-      // 初始化完也要把状态发出去。原来这里只发 tracking=false，位置全是零，
-      // 云台拿到一个零目标反而会往错误方向动，不如发一个刚初始化的估计。
-      outpost_tracker_->fillTargetMsg(target_msg);
-      target_msg.tracking = false;
     } else {
       outpost_tracker_->update(armors_msg);
-      outpost_tracker_->fillTargetMsg(target_msg);
-      target_msg.type = outpost_tracker_->tracked_armor.type;
     }
     last_time_ = time;
-    target_pub_->publish(target_msg);
-    publishMarkers(target_msg);
     return;
   }
 
@@ -355,6 +354,38 @@ void ArmorTrackerNode::armorsCallback(const auto_aim_interfaces::msg::Armors::Sh
 
   target_pub_->publish(target_msg);
 
+  publishMarkers(target_msg);
+}
+
+void ArmorTrackerNode::outpostTimerCallback()
+{
+  if (!outpost_mode_ || !outpost_tracker_) {
+    return;
+  }
+
+  const rclcpp::Time now = this->now();
+  double dt = 0.01;
+  if (last_propagate_time_.nanoseconds() > 0) {
+    dt = (now - last_propagate_time_).seconds();
+    if (dt <= 0.0 || dt > 0.5) {
+      dt = 0.01;  // 时间跳变或者刚启动，用一个保守值
+    }
+  }
+  last_propagate_time_ = now;
+
+  outpost_tracker_->propagate(dt);
+
+  auto_aim_interfaces::msg::Target target_msg;
+  target_msg.header.stamp = now;
+  target_msg.header.frame_id = target_frame_;
+  outpost_tracker_->fillTargetMsg(target_msg);
+  if (outpost_tracker_->tracker_state == Tracker::LOST) {
+    target_msg.tracking = false;  // 没锁定就给云台一个停火信号
+  } else {
+    target_msg.type = outpost_tracker_->tracked_armor.type;
+  }
+
+  target_pub_->publish(target_msg);
   publishMarkers(target_msg);
 }
 
