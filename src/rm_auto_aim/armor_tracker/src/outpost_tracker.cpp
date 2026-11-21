@@ -58,6 +58,11 @@ constexpr double kTrackLostTime = 0.8;    // 跟踪态丢这么久降为临时�
 // 板号连读几次一致才认方向。两次就够，再多会拖慢判定。
 constexpr int kDirectionVoteThresh = 2;
 
+// 主动相位修正的系数和异常门限。系数是每帧吃掉多少比例的相位误差，
+// 门限用来挡掉板号判错时那一百二十度的大跳。
+constexpr double kPhaseFeedback = 0.0;  // 先关掉：实测会让转速虚高，见下
+constexpr double kPhaseJumpThresh = 0.4;
+
 constexpr std::size_t kYawHistoryLen = 12;
 constexpr double kYawJumpThresh = 0.3;
 constexpr double kMinSpinRate = 0.2;
@@ -133,13 +138,14 @@ void OutpostTracker::initEKF(const Armor & a)
   // 云台按它算出的板位置也差五十度，转过头就看不见目标了。
   //
   // 但能完整看到的那块板一定在圆心靠近相机的一侧，所以拿板位置的方位角当初值。
-  const double yaw = std::atan2(ya, xa);  // 方位角当 yaw 初值
-  last_yaw_ = yaw;                        // 记下最近一次的角度
+  double yaw = std::atan2(ya, xa);  // 方位角当 yaw 初值
+  last_yaw_ = yaw;                  // 记下最近一次的角度
 
   // 板落在圆周上，圆心就是板往外再推一个半径
-  const double r = kRadius;                  // 标称半径
+  const double r = kRadius;            // 标称半径
   const double xc = xa + r * std::cos(yaw);  // 圆心 x
   const double yc = ya + r * std::sin(yaw);  // 圆心 y
+
 
   // 先当看到的是板零，另外两块用标称高度差。半径不进状态，上面算圆心时用的是常数
   target_state = Eigen::VectorXd::Zero(kStateDim);  // 先清空
@@ -352,8 +358,10 @@ bool OutpostTracker::updateOneArmor(const Armor & a)
         direction_vote_ = dir;
         direction_vote_count_ = 1;
       }
-      if (direction_vote_count_ >= kDirectionVoteThresh) {
-        spin_direction_ = direction_vote_;  // 连续几次一致才定案
+      // 官方规则：前哨站转向整局固定不变，所以判到一次就锁死，不再改。
+      // 锁死之后即使偶尔出现两次反向的误判也不会把方向带翻。
+      if (spin_direction_ == 0 && direction_vote_count_ >= kDirectionVoteThresh) {
+        spin_direction_ = direction_vote_;
       }
     }
   }
@@ -392,39 +400,26 @@ bool OutpostTracker::updateOneArmor(const Armor & a)
       return c;
     };
 
-  static int dbg = 0;
-  if (++dbg % 50 == 0) {
-    fprintf(
-      stderr,
-      "[opdbg] id=%d yaw=%+.3f vyaw=%+.2f pred=(%.2f,%.2f,%.2f) meas=(%.2f,%.2f,%.2f)\n",
-      id, target_state[6], target_state[7],
-      pred.x(), pred.y(), pred.z(), meas.x(), meas.y(), meas.z());
-  }
-
   const Eigen::VectorXd x_post = ekf_.update(z, H, R, h, z_subtract);  // 融合一次
   target_state = x_post;        // 接受这次更新
   last_yaw_ = target_state[6];  // 记下当前角度
 
-  // 转速不交给滤波估。前哨站的转速大小是场上给定的常数，估出来的值一飘，三块板
-  // 就会绕着圆心慢慢滑，画面上看起来就是框在漂。这里先用板朝向投票判出方向，
-  // 判出来之后每一帧都把 v_yaw 按回正负常量，滤波只负责估位置和相位。
-  // 转速大小是场上给定的常数，方向由板号轮换判出来，判不出来就不转。
-  // 转速在单板观测下不可观：三块板一百二十度对称，板号又能自由重选，滤波器只要
-  // 换个板号就不用转 yaw，交给它估只会收敛到零，实测就是这么回事。
+  // 转速大小由参数给定，方向由板号轮换判出来。
+  //
+  // 为什么不交给滤波器估：三块板一百二十度对称，板号又能自由重选，滤波器只要换个
+  // 板号就不用转 yaw。更根本的原因是相机永远只看得到正对镜头的那块板，它在 odom
+  // 里几乎不动，整个旋转过程在观测上不存在。实测把强制值从一点零改成零点三，估出
+  // 来的值就跟着从一点零变成零点三，完全放开则收敛到零点零九，等于没有信息。
+  //
+  // 大小按官方规则配，方向能判就判，判不出来先按正方向跑，别停在原地不动。
   if (spin_sign_ != 0.0) {
     spin_direction_ = (spin_sign_ > 0.0) ? 1 : -1;  // 手动覆盖，调试用
-  } else {
-    // 从滤波后的 yaw 序列反推转速。yaw 每帧都被观测约束，它的斜率就是真实转速，
-    // 大小和符号都能拿到，场上改速之后几百毫秒内就跟上，不用改参数重编。
-    updateSpinFromYaw();
   }
-  if (estimated_spin_valid_) {
-    target_state[7] = estimated_spin_;  // 用实测估出来的，能跟着场上改速
-  } else if (spin_direction_ != 0) {
-    target_state[7] = spin_direction_ * std::abs(initial_v_yaw_);
-  } else {
-    target_state[7] = 0.0;
+  int spin_dir = spin_direction_;
+  if (spin_dir == 0) {
+    spin_dir = 1;
   }
+  target_state[7] = spin_dir * std::abs(initial_v_yaw_);
 
   // 两个高度差按回常数。这两个量是前哨站的机械尺寸，不是待估参数。
   // 实测放任它去估会塌成零，三块板的理论高度变成同一个值，判板号就永远返回零号，
@@ -432,6 +427,25 @@ bool OutpostTracker::updateOneArmor(const Armor & a)
   // 板号还是零，就是这个原因。
   target_state[8] = kH1;
   target_state[9] = kH2;
+
+
+  // 主动相位修正。
+  //
+  // 只靠滤波更新的话，yaw 的修正量受卡尔曼增益限制，每帧只能拉一点，跟不上转速
+  // 误差的累积，表现就是瞄着瞄着越来越偏。这里再用实测的板方位角和预测的板方位角
+  // 做一次直接比对，按比例把相位拽过去。圆心和半径都已知，板的方位角就精确对应
+  // 一个 yaw，这条修正是无偏的。
+  //
+  // 系数取小一点，单帧拉两成，几帧就把偏差吃掉了，又不会让框跟着测量噪声抖。
+  const Eigen::Vector3d pred_after = hArmorXYZ(target_state, id);
+  const double az_meas = std::atan2(meas.y() - target_state[2], meas.x() - target_state[0]);
+  const double az_pred = std::atan2(pred_after.y() - target_state[2], pred_after.x() - target_state[0]);
+  double phase_err = limitRad(az_meas - az_pred);
+  if (std::abs(phase_err) > kPhaseJumpThresh) {
+    phase_err = 0.0;  // 差得离谱多半是板号判错了，这次不修
+  }
+  target_state[6] += kPhaseFeedback * phase_err;
+
   ekf_.setState(target_state);
   return true;
 }
@@ -450,21 +464,22 @@ void OutpostTracker::propagate(double dt)
   if (spin_sign_ != 0.0) {
     spin_direction_ = (spin_sign_ > 0.0) ? 1 : -1;
   }
-  if (estimated_spin_valid_) {
-    target_state[7] = estimated_spin_;
-  } else if (spin_direction_ != 0) {
-    target_state[7] = spin_direction_ * std::abs(initial_v_yaw_);
-  } else {
-    target_state[7] = 0.0;
+  // 转速大小取参数，方向优先用板号轮换判出来的结果，判不出来先按正方向跑。
+  // 不转是不行的：目标一直在转，转速给零等于预测一个静止的假目标。
+  // 判出来之后会被下面的赋值覆盖，所以先给个默认值不会锁死。
+  int spin_dir = spin_direction_;
+  if (spin_dir == 0) {
+    spin_dir = 1;
   }
+  target_state[7] = spin_dir * std::abs(initial_v_yaw_);
   target_state[8] = kH1;
   target_state[9] = kH2;
   ekf_.setState(target_state);
 }
 
-void OutpostTracker::updateSpinFromYaw()
+void OutpostTracker::updateSpinFromYaw(double plate_azimuth)
 {
-  yaw_history_.push_back(target_state[6]);  // 收一帧当前角度
+  yaw_history_.push_back(plate_azimuth);  // 收一帧实测方位角
   if (yaw_history_.size() > kYawHistoryLen) {
     yaw_history_.erase(yaw_history_.begin());  // 滑窗
   }

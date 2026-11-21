@@ -83,6 +83,7 @@ public:
   std::string tracked_id;
   Eigen::VectorXd target_state;   ///< 10 维状态
   bool initialized_ = false;      ///< initEKF 跑过没有，没跑过不能预测
+
   Armor tracked_armor;
 
 private:
@@ -107,7 +108,7 @@ private:
   // 用滤波后的 yaw 序列反推转速。yaw 本身每帧都被观测约束，是可观的，
   // 但 v_yaw 作为状态却学不出来，因为滤波器不需要靠它就能预测下一步。
   // 所以这里单独算：取最近若干帧的 yaw 差分，去掉板号跳变那些异常值，取平均。
-  void updateSpinFromYaw();
+  void updateSpinFromYaw(double plate_azimuth);
 
   std::vector<double> yaw_history_;   // 最近若干帧的 yaw
   double frame_dt_ = 0.02;            // 实测帧间隔，从消息时间戳算出来
@@ -122,7 +123,7 @@ private:
   double position_gate_ = 0.1;        // 跟踪态门限 [m]，收紧防拖
   double acquire_gate_ = 1.0;         // 检测态门限 [m]，放松好锁上
   bool fix_spin_ = false;             // 是否强制转速，默认关闭，让滤波器自己估
-  double spin_sign_ = 0.0;            // 转速符号，0 表示自动判定
+  double spin_sign_ = 0.0;            // 0 表示自动估转速，非零表示手动压住
 
   ExtendedKalmanFilter ekf_;
 

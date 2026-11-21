@@ -118,7 +118,7 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions & options)
   if (outpost_tracker_) {
     outpost_tracker_->setProcessNoise(
       s2qxyz_, s2qyaw_, 0.02,
-      declare_parameter("outpost_v_yaw", 1.0));
+      declare_parameter("outpost_v_yaw", 0.8 * M_PI));
     // 前哨站专用更新门限。四板用的是 tracker.max_match_distance，是另一个参数，
     // 这里单独起一个名字，保证调前哨站不会连带改到四板。
     outpost_tracker_->setPositionGate(
@@ -129,7 +129,7 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions & options)
     // 强制转速需要板朝向可信，我们那边朝向基本是噪声，默认先关着
     outpost_tracker_->setFixSpin(declare_parameter("outpost_fix_spin", false));
     // 转向符号。零表示自动判定，正负表示手动指定，实际场上方向两向都可能。
-    outpost_tracker_->setSpinSign(declare_parameter("outpost_spin_sign", 1.0));
+    outpost_tracker_->setSpinSign(declare_parameter("outpost_spin_sign", 0.0));
   }
   auto u_q = [this]() {
     Eigen::MatrixXd q = Eigen::MatrixXd::Zero(11, 11);
@@ -395,7 +395,12 @@ void ArmorTrackerNode::outpostTimerCallback()
   }
 
   target_pub_->publish(target_msg);
-  publishMarkers(target_msg);
+
+  // 标记降到三十赫兹。目标消息要一百赫兹给云台算提前量，但 marker 只是给人看的，
+  // 一百赫兹发 RViz 会明显拖。注意不能影响上面的目标发布。
+  if (++marker_tick_ % 3 == 0) {
+    publishMarkers(target_msg);
+  }
 }
 
 void ArmorTrackerNode::publishMarkers(const auto_aim_interfaces::msg::Target & target_msg)

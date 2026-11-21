@@ -430,6 +430,17 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
 
         //静态补偿
         za += z_gain_;
+
+        // 弹道下坠补偿，只补高度，而且只对前哨站生效。
+        // 四板有自己的一套弹道解算，这里再加一次会重复补偿，所以用 outpost_mode_ 隔开。
+        // 弹丸出膛后水平匀速，竖直方向自由下落，飞行时间是水平距离除以弹速，
+        // 下坠量是二分之一重力乘时间平方。四米距离、二十六米每秒大约下坠十一厘米，
+        // 折成角度接近一点七度，比装甲板半宽还大，不补就打低。
+        if (outpost_mode_) {
+            const double horiz = std::sqrt(xc * xc + yc * yc);       // 水平距离
+            const double tof = horiz / std::max(shoot_speed_, 1.0);  // 飞行时间
+            za += 0.5 * 9.81 * tof * tof;                            // 抬枪补偿下坠
+        }
         yc += y_gain_;
         xc += x_gain_;
 
@@ -844,10 +855,10 @@ void GimbalControllerNode::TargetCallback(auto_aim_interfaces::msg::Target::Shar
         sim_yaw_msg.data = -send_yaw;
         sim_pitch_msg.data = send_pitch;
 
-        if (!hold_fire_) {
-            sim_gimbal_pitch_pub_->publish(sim_pitch_msg);
-            sim_gimbal_yaw_pub_->publish(sim_yaw_msg);
-        }
+        // 瞄准角一直下发，未锁定时也不停。之前连角度一起拦了，结果跟踪一断云台
+        // 就冻在原地不动，看起来像是不跟瞄。这里只拦开火，瞄准照常。
+        sim_gimbal_pitch_pub_->publish(sim_pitch_msg);
+        sim_gimbal_yaw_pub_->publish(sim_yaw_msg);
         sim_fire_pub_->publish(sim_fire_msg);
 
         //===================DEBUG=======================

@@ -83,8 +83,14 @@
     # 前哨站模式：使用 OutpostTracker（三块不同高度板的 11D EKF）。
     # 漏掉这个开关会让前哨站错误地使用四板的 4 板模型跟踪 3 块板。
     outpost_mode: true
-    # 前哨站转速先验 [rad/s]，与 sim.yaml 的 outpost_angular_speed 保持一致
-    outpost_v_yaw: 1.0
+    # 前哨站转速 [rad/s]。官方规则：开赛五秒内加速到 0.8π 后匀速，方向每局随机
+    # 但整局不变。这个大小视觉上测不出来，只能按规则写死 见 outpost_tracker 的说明。
+    # 仿真里 sim.yaml 的 outpost_angular_speed 也要调成 2.5133 才对得上。
+    outpost_v_yaw: 2.51327412287
+    # 前哨站更新门限。检测态放松好锁上，跟踪态收紧防拖走。
+    # 转速二点五弧度每秒时一块板零点八四秒扫过一百二十度，门限太紧会跟不上。
+    outpost_acquire_distance: 1.0
+    outpost_match_distance: 0.1
 
     # 最大装甲板距离，超过这个距离直接滤掉
     max_armor_distance: 10.0

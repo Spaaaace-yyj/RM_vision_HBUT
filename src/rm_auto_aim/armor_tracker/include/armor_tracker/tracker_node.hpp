@@ -57,6 +57,7 @@ private:
   rclcpp::TimerBase::SharedPtr outpost_timer_;
   rclcpp::Time last_propagate_time_;
   rclcpp::Time last_outpost_init_;   // 上次重新初始化的时刻，用来限频
+  int marker_tick_ = 0;              // 标记降频用的计数
   double dt_;
 
   // Armor tracker
