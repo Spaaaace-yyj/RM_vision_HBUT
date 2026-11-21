@@ -127,9 +127,9 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions & options)
     outpost_tracker_->setAcquireGate(
       declare_parameter("outpost_acquire_distance", 1.0));
     // 强制转速需要板朝向可信，我们那边朝向基本是噪声，默认先关着
-    outpost_tracker_->setFixSpin(declare_parameter("outpost_fix_spin", true));
-    // 转向符号。仿真里前哨站逆时针转，而模型 yaw 的正方向与它相反，所以默认 -1。
-    outpost_tracker_->setSpinSign(declare_parameter("outpost_spin_sign", -1.0));
+    outpost_tracker_->setFixSpin(declare_parameter("outpost_fix_spin", false));
+    // 转向符号。零表示自动判定，正负表示手动指定，实际场上方向两向都可能。
+    outpost_tracker_->setSpinSign(declare_parameter("outpost_spin_sign", 1.0));
   }
   auto u_q = [this]() {
     Eigen::MatrixXd q = Eigen::MatrixXd::Zero(11, 11);

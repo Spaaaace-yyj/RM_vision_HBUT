@@ -37,7 +37,9 @@ constexpr int kStateDim = 10;
 
 // 转速方向投票用。攒够 30 帧板朝向，每隔 3 帧比一次转角。
 // 单帧转角太小时不算数，跳变太大的当成解算锯齿丢掉。
-constexpr int kDirectionDataThresh = 30;
+// 攒 15 帧就够投票了。二十五赫兹下约半秒，转速一弧度每秒的话
+// 隔三帧已有零点一二弧度的变化，远高于判定阈值，不需要等三十帧。
+constexpr int kDirectionDataThresh = 15;
 constexpr std::size_t kAngleCompareInterval = 3;
 constexpr double kJumpThresh = 0.4;
 constexpr double kStableThresh = 5e-3;
@@ -46,6 +48,16 @@ constexpr double kStableThresh = 5e-3;
 // 然后重新初始化，整个跟踪一直在原地重启。设成 50 帧，二十多赫兹下差不多两秒，
 // 足够扛过检测端常见的连续漏检。
 constexpr int kDetectMissThres = 50;
+
+// 反推转速用的滑窗长度和合理性范围。十二帧在二十五赫兹下约半秒。
+// 单帧 yaw 变化超过 0.3 弧度基本就是板号跳了 120 度，不能算进平均。
+// 板号连读几次一致才认方向。两次就够，再多会拖慢判定。
+constexpr int kDirectionVoteThresh = 2;
+
+constexpr std::size_t kYawHistoryLen = 12;
+constexpr double kYawJumpThresh = 0.3;
+constexpr double kMinSpinRate = 0.2;
+constexpr double kMaxSpinRate = 5.0;
 
 // 直角坐标转方位角、俯仰角、斜距
 Eigen::Vector3d outpostXyzToYpd(const Eigen::Vector3d & xyz)
@@ -127,8 +139,11 @@ void OutpostTracker::initEKF(const Armor & a)
 
   // 先当看到的是板零，另外两块用标称高度差。半径不进状态，上面算圆心时用的是常数
   target_state = Eigen::VectorXd::Zero(kStateDim);  // 先清空
-  // 转速从初始化就用带符号的值。否则刚 init 完的那段时间按正方向转，方向是反的。
-  const double spin = fix_spin_ ? spin_sign_ * std::abs(initial_v_yaw_) : initial_v_yaw_;
+  // 转速初值给零，代表暂时不知道转多快，交给滤波器从观测里学。
+  // 注意零是待估初值，不是强制值，和以前那种每帧覆盖成常量完全是两回事。
+  // 前哨站一直在转，所以预测必须跟着转，不能停在原地，否则板转到背面看不见的时候
+  // 云台会对着一个不存在的静止相位一直打。
+  const double spin = 0.0;
   target_state << xc, 0.0, yc, 0.0, za, 0.0, yaw, spin, kH1, kH2;  // 灌初值
 
   // 初始协方差。位置和高度给中等，速度必须给得很小。
@@ -139,8 +154,8 @@ void OutpostTracker::initEKF(const Armor & a)
   Eigen::MatrixXd P0 = Eigen::MatrixXd::Identity(kStateDim, kStateDim);  // 先给单位阵
   P0.diagonal() << 0.5, 0.1, 0.5, 0.1,    // 圆心位置和速度，速度方差取 0.1
     0.25, 0.1,                            // 高度和速度，同样压住
-    1.0, 25.0,                            // 角度和角速度，转速那维本来就锁死
-    0.0025, 0.0025;                       // 两个高度差
+    1.0, 25.0,                            // 角度和角速度
+    1e-9, 1e-9;                           // 两个高度差必须钉死，见下面的说明
 
   // 从这里开始搭 10 维匀速模型。过程噪声的构造和四板一样，把加速度噪声按 dt
   // 展开到位置和速度上。早先这里用默认构造的 EKF，噪声矩阵压根没设，圆心估计
@@ -180,8 +195,10 @@ void OutpostTracker::initEKF(const Armor & a)
       // 不动；四板的圆心会跟着车跑。照四板那样给大的圆心噪声，滤波器就会用平移
       // 圆心去解释板上位置的变化，yaw 转不起来，v_yaw 永远学不到。实测那时 yaw
       // 斜率只有每秒零点零二弧度，真实是一弧度每秒。所以这里把圆心压死。
-      //const double v1 = 0.01;                    // 圆心和高度噪声
-      const double v1 = s2qxyz_;                 //把圆心和高度噪声改成和四板一样的量级，滤波器就能学到转速了吧～
+      // 圆心必须钉住。日志实测：噪声给大之后，滤波器用平移圆心去解释板绕圈的轨迹，
+      // 预测和实测几乎完全重合，但 yaw 一直趴在零附近不动，xc 在四米一到四米四九之间跳。
+      // 前哨站是钉在地上的，圆心物理上不动，压小之后只剩转 yaw 一条路可走。
+      const double v1 = 0.01;                    // 圆心和高度噪声
       const double v2 = s2qyaw_;                 // 角度噪声
       const double a = std::pow(t, 4) / 4.0;     // t 的四次项系数
       const double b = std::pow(t, 3) / 2.0;     // t 的三次项系数
@@ -197,8 +214,10 @@ void OutpostTracker::initEKF(const Armor & a)
       fill_cv_noise(0, 1, v1);  // 圆心 x 和 vx
       fill_cv_noise(2, 3, v1);  // 圆心 y 和 vy
       fill_cv_noise(4, 5, v1);  // 高度和 vz
-      fill_cv_noise(6, 7, v2);  // 角度和角速度
-      q(7, 7) = 1e-6;           // 转速几乎锁死，不压角度会越算越飘
+      fill_cv_noise(6, 7, v2);  // 角度和角速度，和四板用同一套噪声
+      // 这里原来有一行 q(7, 7) = 1e-6，把转速维几乎锁死，理由是当初估出来的转速
+      // 只有真值的三成。那个结论是在检测端七成假观测、圆心冻在错误位置的时候得出的。
+      // 现在观测干净了，圆心也准了，转速应当交回滤波器自己估。
       // 两个高度差是机械尺寸，当常量处理，噪声留零，只靠观测修正
       return q;
     };
@@ -214,6 +233,21 @@ void OutpostTracker::initEKF(const Armor & a)
 void OutpostTracker::update(const Armors::SharedPtr & armors_msg)
 {
   const Tracker::State prev_state = tracker_state;  // 记下迁移前的状态，方便打日志
+
+  // 真实帧间隔。节点传进来的 dt 是写死的 0.02，实际跑起来是二十五赫兹左右，
+  // 反推转速必须用真实间隔，不然后面差一倍。
+  const double stamp = armors_msg->header.stamp.sec + armors_msg->header.stamp.nanosec * 1e-9;
+  if (last_stamp_ > 0 && stamp > last_stamp_) {
+    const double d = stamp - last_stamp_;
+    if (d > 1e-3 && d < 0.5) frame_dt_ = d;
+  }
+  last_stamp_ = stamp;
+
+  // 用实测帧间隔当 dt。节点传进来的那个是写死的 0.02 秒，而实际跑十二三赫兹，
+  // 真实间隔六十多毫秒。不换的话每帧只按三分之一的时间推算旋转，转速算出来
+  // 只有真值的三成，画面上就是框比真板转得慢一大截。
+  dt_ = frame_dt_;
+
   target_state = ekf_.predict();  // 先按运动模型预测一步
 
   bool matched = false;       // 本帧有没有匹配上
@@ -298,6 +332,25 @@ bool OutpostTracker::updateOneArmor(const Armor & a)
   }
 
   const int id = matchArmorId(a, target_state);  // 靠高度判出板号
+
+  // 用板号轮换顺序判转向。三块板高度不同，板号是唯一的，它按什么顺序换就说明了
+  // 目标往哪边转。实测逆时针时是 0 变 2 变 1 变 0，也就是每次减一；反过来是加一。
+  // 板朝向在正对相机时根本不可观测，所以方向不能从朝向拿。
+  if (last_model_id >= 0 && id != last_model_id) {
+    const int step = (id - last_model_id + kArmorsNum) % kArmorsNum;
+    const int dir = (step == kArmorsNum - 1) ? 1 : (step == 1 ? -1 : 0);
+    if (dir != 0) {
+      if (dir == direction_vote_) {
+        ++direction_vote_count_;
+      } else {
+        direction_vote_ = dir;
+        direction_vote_count_ = 1;
+      }
+      if (direction_vote_count_ >= kDirectionVoteThresh) {
+        spin_direction_ = direction_vote_;  // 连续几次一致才定案
+      }
+    }
+  }
   last_model_id = id;                            // 记下这次用的板号
 
   // 先做门限判断，不合格的观测直接扔掉，不要进滤波器。
@@ -333,6 +386,15 @@ bool OutpostTracker::updateOneArmor(const Armor & a)
       return c;
     };
 
+  static int dbg = 0;
+  if (++dbg % 1 == 0) {
+    fprintf(
+      stderr,
+      "[opdbg] id=%d yaw=%+.3f vyaw=%+.2f pred=(%.2f,%.2f,%.2f) meas=(%.2f,%.2f,%.2f)\n",
+      id, target_state[6], target_state[7],
+      pred.x(), pred.y(), pred.z(), meas.x(), meas.y(), meas.z());
+  }
+
   const Eigen::VectorXd x_post = ekf_.update(z, H, R, h, z_subtract);  // 融合一次
   target_state = x_post;        // 接受这次更新
   last_yaw_ = target_state[6];  // 记下当前角度
@@ -340,14 +402,59 @@ bool OutpostTracker::updateOneArmor(const Armor & a)
   // 转速不交给滤波估。前哨站的转速大小是场上给定的常数，估出来的值一飘，三块板
   // 就会绕着圆心慢慢滑，画面上看起来就是框在漂。这里先用板朝向投票判出方向，
   // 判出来之后每一帧都把 v_yaw 按回正负常量，滤波只负责估位置和相位。
-  if (fix_spin_) {  // 强制转速，只估位置和相位
-    // 转速大小和方向都是已知常数，直接写成固定值。之前交给滤波去估，估出来
-    // 只有真值的三成，三块板就绕着圆心慢慢滑，画面上就是框在漂。
-    // 方向符号做成参数，因为自动判方向依赖板朝向，而朝向估计是噪声。
-    target_state[7] = spin_sign_ * std::abs(initial_v_yaw_);  // 转速按回常量
-    ekf_.setState(target_state);                              // 让下一帧从这里预测
+  // 转速大小是场上给定的常数，方向由板号轮换判出来，判不出来就不转。
+  // 转速在单板观测下不可观：三块板一百二十度对称，板号又能自由重选，滤波器只要
+  // 换个板号就不用转 yaw，交给它估只会收敛到零，实测就是这么回事。
+  if (spin_sign_ != 0.0) {
+    spin_direction_ = (spin_sign_ > 0.0) ? 1 : -1;  // 手动覆盖，调试用
   }
+  if (spin_direction_ != 0) {
+    target_state[7] = spin_direction_ * std::abs(initial_v_yaw_);
+  } else {
+    target_state[7] = 0.0;  // 方向还没判出来
+  }
+
+  // 两个高度差按回常数。这两个量是前哨站的机械尺寸，不是待估参数。
+  // 实测放任它去估会塌成零，三块板的理论高度变成同一个值，判板号就永远返回零号，
+  // 进而方向投票失效、yaw 找不到参照、转速转不起来。日志里高度从 0.42 跳到 0.20
+  // 板号还是零，就是这个原因。
+  target_state[8] = kH1;
+  target_state[9] = kH2;
+  ekf_.setState(target_state);
   return true;
+}
+
+void OutpostTracker::updateSpinFromYaw()
+{
+  yaw_history_.push_back(target_state[6]);  // 收一帧当前角度
+  if (yaw_history_.size() > kYawHistoryLen) {
+    yaw_history_.erase(yaw_history_.begin());  // 滑窗
+  }
+  if (yaw_history_.size() < kYawHistoryLen) {
+    return;  // 窗口还没填满
+  }
+
+  double sum = 0.0;
+  int valid = 0;
+  for (std::size_t i = 1; i < yaw_history_.size(); ++i) {
+    const double diff = limitRad(yaw_history_[i] - yaw_history_[i - 1]);  // 解缠
+    if (std::abs(diff) > kYawJumpThresh) {
+      continue;  // 板号跳变，丢掉这个样本
+    }
+    sum += diff;
+    ++valid;
+  }
+  if (valid < static_cast<int>(kYawHistoryLen) / 2) {
+    return;  // 有效样本太少，这次不更新
+  }
+
+  const double rate = sum / valid / frame_dt_;  // 平均每帧变化除以帧间隔
+  if (!std::isfinite(rate) || std::abs(rate) < kMinSpinRate || std::abs(rate) > kMaxSpinRate) {
+    return;  // 不在合理范围，多半是观测在跳
+  }
+
+  target_state[7] = rate;       // 转速和符号都是算出来的，不猜
+  ekf_.setState(target_state);  // 写回滤波器，让下一帧从这里预测
 }
 
 void OutpostTracker::calDirection(double orient_yaw)

@@ -99,13 +99,23 @@ private:
   // 转速方向判定。前哨站的转速大小是已知的，方向靠攒一批板朝向来投票。
   // 判出来之后直接把 v_yaw 写成正负常量，不再交给滤波去估。
   void calDirection(double orient_yaw);
+
+  // 用滤波后的 yaw 序列反推转速。yaw 本身每帧都被观测约束，是可观的，
+  // 但 v_yaw 作为状态却学不出来，因为滤波器不需要靠它就能预测下一步。
+  // 所以这里单独算：取最近若干帧的 yaw 差分，去掉板号跳变那些异常值，取平均。
+  void updateSpinFromYaw();
+  std::vector<double> yaw_history_;   // 最近若干帧的 yaw
+  double frame_dt_ = 0.02;            // 实测帧间隔，从消息时间戳算出来
+  double last_stamp_ = -1.0;          // 上一帧时间戳
+  int direction_vote_ = 0;             // 板号轮换推出来的方向
+  int direction_vote_count_ = 0;       // 连续一致次数
   int spin_direction_ = 0;            // 1 逆时针，-1 顺时针，0 还没判出来
   std::vector<double> direction_data_;
 
   double position_gate_ = 0.1;        // 跟踪态门限 [m]，收紧防拖
   double acquire_gate_ = 1.0;         // 检测态门限 [m]，放松好锁上
-  bool fix_spin_ = true;              // 是否强制转速，实测有效，默认开
-  double spin_sign_ = -1.0;           // 转速符号，默认 -1
+  bool fix_spin_ = false;             // 是否强制转速，默认关闭，让滤波器自己估
+  double spin_sign_ = 0.0;            // 转速符号，0 表示自动判定
 
   ExtendedKalmanFilter ekf_;
 
@@ -118,7 +128,7 @@ private:
   int detect_miss_ = 0;   // 检测态连续丢帧数
   int lost_count_ = 0;
   double last_yaw_ = 0.0;
-  int last_model_id = 0;
+  int last_model_id = -1;
 
   // 过程噪声参数（CV 模型，与四板 Tracker 相同形式）
   double s2qxyz_ = 30.0;
