@@ -56,6 +56,7 @@ private:
   // 前哨站专用：固定频率的传播定时器和上一次传播的时刻
   rclcpp::TimerBase::SharedPtr outpost_timer_;
   rclcpp::Time last_propagate_time_;
+  rclcpp::Time last_outpost_init_;   // 上次重新初始化的时刻，用来限频
   double dt_;
 
   // Armor tracker

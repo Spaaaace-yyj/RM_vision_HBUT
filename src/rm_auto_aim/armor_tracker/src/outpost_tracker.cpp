@@ -47,7 +47,11 @@ constexpr double kStableThresh = 5e-3;
 // 检测态允许连续丢多少帧才判丢。一帧就判丢的话，检测端抖一下就被打回 LOST，
 // 然后重新初始化，整个跟踪一直在原地重启。设成 50 帧，二十多赫兹下差不多两秒，
 // 足够扛过检测端常见的连续漏检。
-constexpr int kDetectMissThres = 50;
+// 丢帧阈值改成按时间。检测帧间隔实测二十五到五百毫秒不等，按帧数算没有意义。
+// 阈值要比最坏帧间隔宽裕。实测最长断帧五百七十六毫秒，取八百毫秒，
+// 断一两帧不至于降级。检测态给两秒，因为刚起步时观测本来就稀。
+constexpr double kDetectLostTime = 2.0;   // 检测态丢这么久就回 LOST
+constexpr double kTrackLostTime = 0.8;    // 跟踪态丢这么久降为临时丢失
 
 // 反推转速用的滑窗长度和合理性范围。十二帧在二十五赫兹下约半秒。
 // 单帧 yaw 变化超过 0.3 弧度基本就是板号跳了 120 度，不能算进平均。
@@ -253,6 +257,8 @@ void OutpostTracker::update(const Armors::SharedPtr & armors_msg)
   // 检测输出间隔中位三十八毫秒、尾部五百多毫秒，跟着检测节拍预测的话，
   // 框会停一下再猛冲一段，看起来就是转速时快时慢。
 
+  lost_time_ += frame_dt_;  // 先按丢帧累加，匹配上之后再清零
+
   bool matched = false;       // 本帧有没有匹配上
   int same_id_count = 0;      // 同号板的个数
 
@@ -271,17 +277,16 @@ void OutpostTracker::update(const Armors::SharedPtr & armors_msg)
   switch (tracker_state) {
     case Tracker::DETECTING:  // 检测态
       if (matched) {
-        detect_miss_ = 0;                         // 有匹配就把丢帧计数清掉
+        lost_time_ = 0.0;                         // 有匹配就把丢失时长清掉
         if (++detect_count_ > tracking_thres_) {  // 连续够帧数了
           detect_count_ = 0;                      // 计数清零
           tracker_state = Tracker::TRACKING;      // 进跟踪
           lost_count_ = 0;                        // 丢失计数也清
         }
       } else {
-        // 丢一两帧不算数，连丢够多才回 LOST。原来是一帧就回，
-        // 检测抖一下整个跟踪就重启，tracking 大部分时间是 false。
-        if (++detect_miss_ > kDetectMissThres) {
-          detect_miss_ = 0;
+        // 按时间判丢，不按帧数。帧间隔实测从二十五毫秒到五百多毫秒都有，
+        // 二十帧可能是半秒也可能是十秒，按帧数算的阈值在时间上没有意义。
+        if (lost_time_ > kDetectLostTime) {
           detect_count_ = 0;
           tracker_state = Tracker::LOST;          // 真的跟丢了
         }
@@ -289,20 +294,18 @@ void OutpostTracker::update(const Armors::SharedPtr & armors_msg)
       break;
     case Tracker::TRACKING:  // 跟踪态
       if (!matched) {
-        if (++lost_count_ > lost_thres_) {   // 丢的帧数超了
-          lost_count_ = 0;
-          tracker_state = Tracker::TEMP_LOST;  // 转临时丢失
+        if (lost_time_ > kTrackLostTime) {    // 丢掉超过这个时长才降级
+          tracker_state = Tracker::TEMP_LOST;
         }
       } else {
-        lost_count_ = 0;                     // 有板就清零
+        lost_time_ = 0.0;                     // 有板就清零
       }
       break;
     case Tracker::TEMP_LOST:  // 临时丢失
       if (matched) {
         lost_count_ = 0;
         tracker_state = Tracker::TRACKING;   // 找回来了
-      } else if (++lost_count_ > lost_thres_ * 3) {  // 再丢就真没了
-        lost_count_ = 0;
+      } else if (lost_time_ > kTrackLostTime * 3) {  // 再丢这么久就真没了
         tracker_state = Tracker::LOST;
       }
       break;
@@ -323,8 +326,8 @@ void OutpostTracker::update(const Armors::SharedPtr & armors_msg)
         return "?";
       };
     RCLCPP_INFO(
-      rclcpp::get_logger("outpost_tracker"), "状态 %s -> %s  匹配=%d 连丢=%d",
-      name(prev_state), name(tracker_state), static_cast<int>(matched), detect_miss_);
+      rclcpp::get_logger("outpost_tracker"), "状态 %s -> %s  匹配=%d 已丢 %.2f 秒",
+      name(prev_state), name(tracker_state), static_cast<int>(matched), lost_time_);
   }
 }
 
@@ -390,7 +393,7 @@ bool OutpostTracker::updateOneArmor(const Armor & a)
     };
 
   static int dbg = 0;
-  if (++dbg % 1 == 0) {
+  if (++dbg % 50 == 0) {
     fprintf(
       stderr,
       "[opdbg] id=%d yaw=%+.3f vyaw=%+.2f pred=(%.2f,%.2f,%.2f) meas=(%.2f,%.2f,%.2f)\n",
@@ -410,11 +413,17 @@ bool OutpostTracker::updateOneArmor(const Armor & a)
   // 换个板号就不用转 yaw，交给它估只会收敛到零，实测就是这么回事。
   if (spin_sign_ != 0.0) {
     spin_direction_ = (spin_sign_ > 0.0) ? 1 : -1;  // 手动覆盖，调试用
+  } else {
+    // 从滤波后的 yaw 序列反推转速。yaw 每帧都被观测约束，它的斜率就是真实转速，
+    // 大小和符号都能拿到，场上改速之后几百毫秒内就跟上，不用改参数重编。
+    updateSpinFromYaw();
   }
-  if (spin_direction_ != 0) {
+  if (estimated_spin_valid_) {
+    target_state[7] = estimated_spin_;  // 用实测估出来的，能跟着场上改速
+  } else if (spin_direction_ != 0) {
     target_state[7] = spin_direction_ * std::abs(initial_v_yaw_);
   } else {
-    target_state[7] = 0.0;  // 方向还没判出来
+    target_state[7] = 0.0;
   }
 
   // 两个高度差按回常数。这两个量是前哨站的机械尺寸，不是待估参数。
@@ -441,7 +450,9 @@ void OutpostTracker::propagate(double dt)
   if (spin_sign_ != 0.0) {
     spin_direction_ = (spin_sign_ > 0.0) ? 1 : -1;
   }
-  if (spin_direction_ != 0) {
+  if (estimated_spin_valid_) {
+    target_state[7] = estimated_spin_;
+  } else if (spin_direction_ != 0) {
     target_state[7] = spin_direction_ * std::abs(initial_v_yaw_);
   } else {
     target_state[7] = 0.0;
@@ -480,8 +491,14 @@ void OutpostTracker::updateSpinFromYaw()
     return;  // 不在合理范围，多半是观测在跳
   }
 
-  target_state[7] = rate;       // 转速和符号都是算出来的，不猜
-  ekf_.setState(target_state);  // 写回滤波器，让下一帧从这里预测
+  // 一阶平滑。单帧估计有噪声，直接用会让框抖；平滑之后场上改转速也能在半秒内跟上。
+  if (estimated_spin_valid_) {
+    estimated_spin_ = 0.7 * estimated_spin_ + 0.3 * rate;
+  } else {
+    estimated_spin_ = rate;
+    estimated_spin_valid_ = true;
+  }
+  spin_direction_ = (estimated_spin_ >= 0.0) ? 1 : -1;  // 符号一起估出来
 }
 
 void OutpostTracker::calDirection(double orient_yaw)

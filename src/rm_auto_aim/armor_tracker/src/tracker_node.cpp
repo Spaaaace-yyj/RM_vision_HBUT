@@ -294,7 +294,16 @@ void ArmorTrackerNode::armorsCallback(const auto_aim_interfaces::msg::Armors::Sh
   if (outpost_mode_ && outpost_tracker_) {
     // 这里只做融合，发布交给固定频率的定时器。检测断帧的时候框照样按预测走。
     if (outpost_tracker_->tracker_state == Tracker::LOST) {
-      outpost_tracker_->init(armors_msg);
+      // 重新初始化限频。原来每帧都调，检测抖一下就换一个观测重开，
+      // 圆心和 yaw 跟着被反复重置，画面上就是跳变和方向反转。
+      // 两百毫秒一次，既跟得上目标，又不会拿单帧噪声当基准。
+      const rclcpp::Time now_time = this->now();
+      if (last_outpost_init_.nanoseconds() == 0 ||
+        (now_time - last_outpost_init_).seconds() > 0.2)
+      {
+        outpost_tracker_->init(armors_msg);
+        last_outpost_init_ = now_time;
+      }
     } else {
       outpost_tracker_->update(armors_msg);
     }

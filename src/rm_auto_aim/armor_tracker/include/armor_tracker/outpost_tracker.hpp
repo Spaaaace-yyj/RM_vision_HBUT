@@ -113,6 +113,8 @@ private:
   double frame_dt_ = 0.02;            // 实测帧间隔，从消息时间戳算出来
   double last_stamp_ = -1.0;          // 上一帧时间戳
   int direction_vote_ = 0;             // 板号轮换推出来的方向
+  double estimated_spin_ = 0.0;        // 从 yaw 序列估出来的转速，带符号
+  bool estimated_spin_valid_ = false;  // 估出来过没有
   int direction_vote_count_ = 0;       // 连续一致次数
   int spin_direction_ = 0;            // 1 逆时针，-1 顺时针，0 还没判出来
   std::vector<double> direction_data_;
@@ -130,7 +132,7 @@ private:
   int lost_thres_;
 
   int detect_count_ = 0;
-  int detect_miss_ = 0;   // 检测态连续丢帧数
+  double lost_time_ = 0.0;  // 连续丢失的累计时长
   int lost_count_ = 0;
   double last_yaw_ = 0.0;
   int last_model_id = -1;
