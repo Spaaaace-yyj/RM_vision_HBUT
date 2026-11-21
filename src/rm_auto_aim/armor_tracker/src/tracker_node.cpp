@@ -28,7 +28,7 @@ ArmorTrackerNode::ArmorTrackerNode(const rclcpp::NodeOptions & options)
   outpost_mode_ = this->declare_parameter("outpost_mode", false);
   outpost_tracker_ = std::make_unique<OutpostTracker>(
     max_match_distance, max_match_yaw_diff,
-    tracker_->tracking_thres, static_cast<int>(lost_time_thres_ * 10));
+    tracker_->tracking_thres, static_cast<int>(lost_time_thres_ * 25));//让状态掉慢一点 从10改成25 只是先试试～
   if (outpost_mode_) {
     RCLCPP_INFO(this->get_logger(), "前哨站跟踪模式已启用（outpost_mode=true）");
   }
