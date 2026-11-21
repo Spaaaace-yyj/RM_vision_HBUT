@@ -84,6 +84,12 @@ public:
   Eigen::VectorXd target_state;   ///< 10 维状态
   bool initialized_ = false;      ///< initEKF 跑过没有，没跑过不能预测
 
+  // 锁定的圆心。前哨站钉在地上，圆心物理上不动，丢锁重新捕获时不该把它扔掉。
+  bool center_locked_ = false;
+  double locked_xc_ = 0.0;
+  double locked_yc_ = 0.0;
+  double locked_za_ = 0.0;
+
   Armor tracked_armor;
 
 private:

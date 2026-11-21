@@ -143,8 +143,28 @@ void OutpostTracker::initEKF(const Armor & a)
 
   // 板落在圆周上，圆心就是板往外再推一个半径
   const double r = kRadius;            // 标称半径
-  const double xc = xa + r * std::cos(yaw);  // 圆心 x
-  const double yc = ya + r * std::sin(yaw);  // 圆心 y
+  double xc = xa + r * std::cos(yaw);  // 圆心 x
+  double yc = ya + r * std::sin(yaw);  // 圆心 y
+
+  // 圆心物理上是钉死的。如果之前锁过一次，就沿用旧圆心，只按高度重解相位。
+  // 不这样做的话，每次丢锁重新捕获都从一块板重推圆心，推出来的值必然和上次不同，
+  // 画面上就是圆心在跳，转速也跟着忽快忽慢。
+  if (center_locked_) {
+    xc = locked_xc_;
+    yc = locked_yc_;
+    const double dz_arr[kArmorsNum] = {0.0, kH1, kH2};  // 三块板各自的高度差
+    int best_id = 0;                                    // 按高度判板号
+    double best = DBL_MAX;
+    for (int i = 0; i < kArmorsNum; ++i) {
+      const double d = std::abs(locked_za_ + dz_arr[i] - za);
+      if (d < best) {
+        best = d;
+        best_id = i;
+      }
+    }
+    yaw = std::atan2(yc - ya, xc - xa) - best_id * 2.0 * M_PI / kArmorsNum;
+    last_yaw_ = yaw;
+  }
 
 
   // 先当看到的是板零，另外两块用标称高度差。半径不进状态，上面算圆心时用的是常数
@@ -154,7 +174,8 @@ void OutpostTracker::initEKF(const Armor & a)
   // 前哨站一直在转，所以预测必须跟着转，不能停在原地，否则板转到背面看不见的时候
   // 云台会对着一个不存在的静止相位一直打。
   const double spin = 0.0;
-  target_state << xc, 0.0, yc, 0.0, za, 0.0, yaw, spin, kH1, kH2;  // 灌初值
+  const double za_state = center_locked_ ? locked_za_ : za;  // 圆心锁定时高度也沿用
+  target_state << xc, 0.0, yc, 0.0, za_state, 0.0, yaw, spin, kH1, kH2;  // 灌初值
 
   // 初始协方差。位置和高度给中等，速度必须给得很小。
   //
@@ -427,6 +448,12 @@ bool OutpostTracker::updateOneArmor(const Armor & a)
   // 板号还是零，就是这个原因。
   target_state[8] = kH1;
   target_state[9] = kH2;
+
+  // 记住这次收敛到的圆心，丢锁重新捕获时沿用，避免圆心跳变
+  locked_xc_ = target_state[0];
+  locked_yc_ = target_state[2];
+  locked_za_ = target_state[4];
+  center_locked_ = true;
 
 
   // 主动相位修正。
