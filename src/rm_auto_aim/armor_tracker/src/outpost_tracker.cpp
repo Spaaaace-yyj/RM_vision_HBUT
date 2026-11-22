@@ -464,15 +464,15 @@ bool OutpostTracker::updateOneArmor(const Armor & a)
   if (spin_sign_ != 0.0) {
     spin_direction_ = (spin_sign_ > 0.0) ? 1 : -1;  // 手动覆盖，调试用
   }
-  int spin_dir = spin_direction_;
-  if (spin_dir == 0) {
-    spin_dir = 1;  // 方向还没判出来，先按正方向
-  }
-  // 转速优先用板号切换间隔估出来的值，还没估出来的时候用参数兜底。
-  // 这样场上改速度也能跟，不需要重编参数。
+  // 方向还没判出来时转速给零，不要猜。
+  // 目标在二点五弧度每秒地转，方向猜错等于每帧都往反方向预测，一帧差零点二五弧度，
+  // 四米外就是六十九毫米，几帧内必然超门限被拒，然后掉 LOST 重新初始化，永远锁不上。
+  // 实测同一份代码一次 tracking 百分之九十三，一次百分之零，差别就在开局猜没猜对。
+  // 给零的话预测停在原地，每帧靠观测修正，滞后只有几十毫米，能正常锁定，
+  // 等板号换两次判出方向之后再按真实转速转。
   const double spin_mag =
     (estimated_speed_ > 0.2) ? estimated_speed_ : std::abs(initial_v_yaw_);
-  target_state[7] = spin_dir * spin_mag;
+  target_state[7] = (spin_direction_ == 0) ? 0.0 : spin_direction_ * spin_mag;
 
   // 两个高度差按回常数。这两个量是前哨站的机械尺寸，不是待估参数。
   // 实测放任它去估会塌成零，三块板的理论高度变成同一个值，判板号就永远返回零号，
@@ -526,15 +526,15 @@ void OutpostTracker::propagate(double dt)
   // 转速大小取参数，方向优先用板号轮换判出来的结果，判不出来先按正方向跑。
   // 不转是不行的：目标一直在转，转速给零等于预测一个静止的假目标。
   // 判出来之后会被下面的赋值覆盖，所以先给个默认值不会锁死。
-  int spin_dir = spin_direction_;
-  if (spin_dir == 0) {
-    spin_dir = 1;  // 方向还没判出来，先按正方向
-  }
-  // 转速优先用板号切换间隔估出来的值，还没估出来的时候用参数兜底。
-  // 这样场上改速度也能跟，不需要重编参数。
+  // 方向还没判出来时转速给零，不要猜。
+  // 目标在二点五弧度每秒地转，方向猜错等于每帧都往反方向预测，一帧差零点二五弧度，
+  // 四米外就是六十九毫米，几帧内必然超门限被拒，然后掉 LOST 重新初始化，永远锁不上。
+  // 实测同一份代码一次 tracking 百分之九十三，一次百分之零，差别就在开局猜没猜对。
+  // 给零的话预测停在原地，每帧靠观测修正，滞后只有几十毫米，能正常锁定，
+  // 等板号换两次判出方向之后再按真实转速转。
   const double spin_mag =
     (estimated_speed_ > 0.2) ? estimated_speed_ : std::abs(initial_v_yaw_);
-  target_state[7] = spin_dir * spin_mag;
+  target_state[7] = (spin_direction_ == 0) ? 0.0 : spin_direction_ * spin_mag;
   target_state[8] = kH1;
   target_state[9] = kH2;
   ekf_.setState(target_state);
