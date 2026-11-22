@@ -50,7 +50,7 @@ constexpr double kStableThresh = 5e-3;
 // 丢帧阈值改成按时间。检测帧间隔实测二十五到五百毫秒不等，按帧数算没有意义。
 // 阈值要比最坏帧间隔宽裕。实测最长断帧五百七十六毫秒，取八百毫秒，
 // 断一两帧不至于降级。检测态给两秒，因为刚起步时观测本来就稀。
-constexpr double kDetectLostTime = 2.0;   // 检测态丢这么久就回 LOST
+constexpr double kDetectLostTime = 0.5;   // 检测态丢这么久就回 LOST，保持快速重试
 constexpr double kTrackLostTime = 0.8;    // 跟踪态丢这么久降为临时丢失
 
 // 反推转速用的滑窗长度和合理性范围。十二帧在二十五赫兹下约半秒。
@@ -125,6 +125,7 @@ void OutpostTracker::init(const Armors::SharedPtr & armors_msg)
       tracked_armor.pose.position.z).norm());
   initEKF(tracked_armor);              // 用这块板起滤波
   tracker_state = Tracker::DETECTING;  // 先进检测态
+  lost_time_ = 0.0;                    // 丢失计时清零，否则刚初始化就被旧时长判丢
 }
 
 void OutpostTracker::initEKF(const Armor & a)
@@ -370,7 +371,34 @@ bool OutpostTracker::updateOneArmor(const Armor & a)
   // 目标往哪边转。实测逆时针时是 0 变 2 变 1 变 0，也就是每次减一；反过来是加一。
   // 板朝向在正对相机时根本不可观测，所以方向不能从朝向拿。
   if (last_model_id >= 0 && id != last_model_id) {
+    // 板号切换一次，说明目标转过了两π除以三。用两次切换的时间间隔反推转速。
+    // 这是唯一可观的速度量：相机只看得到正对的那块板，它在 odom 里几乎不动，
+    // 连续相位变化率读不出转速，但换板的时刻是准的。
+    // 间隔对应的转速必须落在合理区间。官方转速是零点八π约二点五，开赛加速阶段会低一些。
+    // 之前放宽到零点一五秒，等于接受十四弧度每秒，一次误判的换板就能把转速估计污染到
+    // 五倍以上，之后每帧预测都飞出去，门限全拒，看起来就是跟踪永远起不来。
+    constexpr double kMinGap = 0.30;  // 再短就是误判，对应十弧度每秒以上
+    constexpr double kMaxGap = 2.50;  // 再长就是中间丢过帧
+    if (last_switch_stamp_ > 0.0 && last_stamp_ > last_switch_stamp_ &&
+      id != switch_from_id_)   // 一帧跳走又跳回来，是误判不是真换板
+    {
+      const double gap = last_stamp_ - last_switch_stamp_;
+      if (gap > kMinGap && gap < kMaxGap) {
+        const double inst = (2.0 * M_PI / kArmorsNum) / gap;
+        // 偏离现有估计太远的样本直接丢掉，别让单次误判带偏
+        if (estimated_speed_ <= 0.0 || std::abs(inst - estimated_speed_) < 0.5 * estimated_speed_) {
+          estimated_speed_ = (estimated_speed_ > 0.0)
+                               ? 0.5 * estimated_speed_ + 0.5 * inst
+                               : inst;
+        }
+      }
+      switch_from_id_ = last_model_id;  // 记下这次是从哪块换过来的
+    }
+    last_switch_stamp_ = last_stamp_;
+
     const int step = (id - last_model_id + kArmorsNum) % kArmorsNum;
+    // 板号每次减一对应正号，每次加一对应负号。这个映射是实测定出来的：
+    // 反过来之后 tracking 直接归零，说明在当前的模型和坐标约定下就是这样。
     const int dir = (step == kArmorsNum - 1) ? 1 : (step == 1 ? -1 : 0);
     if (dir != 0) {
       if (dir == direction_vote_) {
@@ -438,9 +466,13 @@ bool OutpostTracker::updateOneArmor(const Armor & a)
   }
   int spin_dir = spin_direction_;
   if (spin_dir == 0) {
-    spin_dir = 1;
+    spin_dir = 1;  // 方向还没判出来，先按正方向
   }
-  target_state[7] = spin_dir * std::abs(initial_v_yaw_);
+  // 转速优先用板号切换间隔估出来的值，还没估出来的时候用参数兜底。
+  // 这样场上改速度也能跟，不需要重编参数。
+  const double spin_mag =
+    (estimated_speed_ > 0.2) ? estimated_speed_ : std::abs(initial_v_yaw_);
+  target_state[7] = spin_dir * spin_mag;
 
   // 两个高度差按回常数。这两个量是前哨站的机械尺寸，不是待估参数。
   // 实测放任它去估会塌成零，三块板的理论高度变成同一个值，判板号就永远返回零号，
@@ -496,9 +528,13 @@ void OutpostTracker::propagate(double dt)
   // 判出来之后会被下面的赋值覆盖，所以先给个默认值不会锁死。
   int spin_dir = spin_direction_;
   if (spin_dir == 0) {
-    spin_dir = 1;
+    spin_dir = 1;  // 方向还没判出来，先按正方向
   }
-  target_state[7] = spin_dir * std::abs(initial_v_yaw_);
+  // 转速优先用板号切换间隔估出来的值，还没估出来的时候用参数兜底。
+  // 这样场上改速度也能跟，不需要重编参数。
+  const double spin_mag =
+    (estimated_speed_ > 0.2) ? estimated_speed_ : std::abs(initial_v_yaw_);
+  target_state[7] = spin_dir * spin_mag;
   target_state[8] = kH1;
   target_state[9] = kH2;
   ekf_.setState(target_state);

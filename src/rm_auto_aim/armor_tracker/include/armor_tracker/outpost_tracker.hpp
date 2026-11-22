@@ -140,6 +140,13 @@ private:
 
   int detect_count_ = 0;
   double lost_time_ = 0.0;  // 连续丢失的累计时长
+
+  // 由板号切换间隔估出来的转速。前哨站匀速转，板号每转一百二十度换一次，
+  // 两次切换的时间间隔就决定了转速。这是唯一真正可观的速度信息，
+  // 连续相位变化率在单板观测下是测不到的。
+  double estimated_speed_ = 0.0;
+  double last_switch_stamp_ = -1.0;  // 上次板号切换的时刻
+  int switch_from_id_ = -1;          // 上次切换前的板号，用来识别跳走又跳回
   int lost_count_ = 0;
   double last_yaw_ = 0.0;
   int last_model_id = -1;
