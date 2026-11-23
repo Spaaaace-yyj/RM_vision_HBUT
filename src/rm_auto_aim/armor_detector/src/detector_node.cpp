@@ -256,9 +256,11 @@ namespace rm_auto_aim
                     const std::vector<cv::Point3f> obj_pts = {
                         cv::Point3f(-kBarX, -kBarZ, 0), cv::Point3f(kBarX, -kBarZ, 0),
                         cv::Point3f(kBarX, kBarZ, 0), cv::Point3f(-kBarX, kBarZ, 0)};
+                    // 对象点里 y 轴朝上，图像 y 轴朝下，所以负 y 对应灯条的上端。
+                    // 之前把上端对应到了 bottom，四个点全错位，重投影误差降不下来。
                     const std::vector<cv::Point2f> img_pts = {
-                        armor.left_light.bottom, armor.right_light.bottom,
-                        armor.right_light.top, armor.left_light.top};
+                        armor.left_light.top, armor.right_light.top,
+                        armor.right_light.bottom, armor.left_light.bottom};
 
                     cv::Mat R0;
                     cv::Rodrigues(rvec, R0);
@@ -281,7 +283,7 @@ namespace rm_auto_aim
 
                     double best_t = 0.0, best_e = 1e18;
                     cv::Mat best_rvec = rvec.clone();
-                    for (double t = -0.9; t <= 0.9; t += 0.03) {  // 粗搜
+                    for (double t = -M_PI; t <= M_PI; t += 0.05) {  // 粗搜，覆盖整圈
                         cv::Mat rv;
                         const double e = reproj_err(t, rv);
                         if (e < best_e) { best_e = e; best_t = t; best_rvec = rv; }
@@ -291,6 +293,15 @@ namespace rm_auto_aim
                         const double e = reproj_err(t, rv);
                         if (e < best_e) { best_e = e; best_t = t; best_rvec = rv; }
                     }
+                    // 验证用：打印优化偏移量、优化前后的重投影误差、和上一帧的差
+                    static double last_t = 1e9;
+                    const double e_before = reproj_err(0.0, *(new cv::Mat()));
+                    if (last_t < 1e8) {
+                        fprintf(
+                            stderr, "[ori] t=%+.3f dt=%+.4f err0=%.2f err1=%.2f\n",
+                            best_t, best_t - last_t, e_before, best_e);
+                    }
+                    last_t = best_t;
                     rvec = best_rvec;
                 }
 

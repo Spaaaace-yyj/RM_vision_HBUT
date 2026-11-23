@@ -162,6 +162,12 @@ private:
   double handover_z_[8] = {0.0};  // 每次换板时的实测高度，用来定转向
   double last_az_ = 0.0;          // 上一帧板相对圆心的方位角
   int az_vote_ = 0;               // 方位角投票推出来的转向
+
+  // 照抄参考实现的转向投票：攒三十帧板朝向，隔三帧比一次，跳变超过零点四弧度
+  // 的当作折返丢掉，剩下的投票多数决。用朝向而不是方位角，是因为朝向不经过圆心，
+  // 不受圆心误差影响；隔三帧比较能把真实转角放大三倍而噪声不放大。
+  void voteSpinDirection(double orient_yaw);
+  std::vector<double> dir_data_;
   int az_vote_count_ = 0;         // 连续同向票数
   int handover_count_ = 0;        // 累计换板次数
 

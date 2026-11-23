@@ -118,6 +118,11 @@ void OutpostTracker::init(const Armors::SharedPtr & armors_msg)
   }
 
   tracked_id = tracked_armor.number;   // 记下板号
+
+  // 初始化路径也要喂一份朝向样本。方向投票原来只挂在 updateOneArmor 里，
+  // 而跟踪器卡在 LOST 时根本不会走到那里，形成死锁：要有方向才能跟，要跟才能判方向。
+  // 这里在初始化时也喂，LOST 期间每两百毫秒能攒一个样本，六七秒就能投票。
+  voteSpinDirection(getRawYaw(tracked_armor.pose.orientation));
   RCLCPP_INFO(
     rclcpp::get_logger("outpost_tracker"), "初始化，用板 %.2f 米处的观测",
     Eigen::Vector3d(
@@ -368,35 +373,19 @@ bool OutpostTracker::updateOneArmor(const Armor & a)
   // 实测板相对圆心的方位角，判转向要用
   const double az_now = std::atan2(
     a.pose.position.y - target_state[2], a.pose.position.x - target_state[0]);
+  // 喂一帧板朝向来判转向。用朝向不用方位角：朝向不经过圆心，不受圆心误差影响。
+  voteSpinDirection(getRawYaw(a.pose.orientation));
+
   const int id = updateTrackedId(a.pose.position.z, az_now);  // 增量维护的板号
 
   // 用板号轮换顺序判转向。三块板高度不同，板号是唯一的，它按什么顺序换就说明了
   // 目标往哪边转。实测逆时针时是 0 变 2 变 1 变 0，也就是每次减一；反过来是加一。
   // 板朝向在正对相机时根本不可观测，所以方向不能从朝向拿。
   if (last_model_id >= 0 && id != last_model_id) {
-    // 板号切换一次，说明目标转过了两π除以三。用两次切换的时间间隔反推转速。
-    // 这是唯一可观的速度量：相机只看得到正对的那块板，它在 odom 里几乎不动，
-    // 连续相位变化率读不出转速，但换板的时刻是准的。
-    // 间隔对应的转速必须落在合理区间。官方转速是零点八π约二点五，开赛加速阶段会低一些。
-    // 之前放宽到零点一五秒，等于接受十四弧度每秒，一次误判的换板就能把转速估计污染到
-    // 五倍以上，之后每帧预测都飞出去，门限全拒，看起来就是跟踪永远起不来。
-    constexpr double kMinGap = 0.30;  // 再短就是误判，对应十弧度每秒以上
-    constexpr double kMaxGap = 2.50;  // 再长就是中间丢过帧
-    if (last_switch_stamp_ > 0.0 && last_stamp_ > last_switch_stamp_ &&
-      id != switch_from_id_)   // 一帧跳走又跳回来，是误判不是真换板
-    {
-      const double gap = last_stamp_ - last_switch_stamp_;
-      if (gap > kMinGap && gap < kMaxGap) {
-        const double inst = (2.0 * M_PI / kArmorsNum) / gap;
-        // 偏离现有估计太远的样本直接丢掉，别让单次误判带偏
-        if (estimated_speed_ <= 0.0 || std::abs(inst - estimated_speed_) < 0.5 * estimated_speed_) {
-          estimated_speed_ = (estimated_speed_ > 0.0)
-                               ? 0.5 * estimated_speed_ + 0.5 * inst
-                               : inst;
-        }
-      }
-      switch_from_id_ = last_model_id;  // 记下这次是从哪块换过来的
-    }
+    // 转速大小不再由换板间隔估计。规则里转速是固定值，估出来的值会抖：
+    // 采样间隔零点八三秒一次、量化误差一帧就是百分之十、漏一次直接腰斩，
+    // 而云台拿它算提前量，转速抖多少瞄准就偏多少。参考实现的做法是大小写死、
+    // 只判方向，实测这是对的。这里只保留换板时刻的记账，供调试用。
     last_switch_stamp_ = last_stamp_;
 
     const int step = (id - last_model_id + kArmorsNum) % kArmorsNum;
@@ -471,8 +460,13 @@ bool OutpostTracker::updateOneArmor(const Armor & a)
   // 实测同一份代码一次 tracking 百分之九十三，一次百分之零，差别就在开局猜没猜对。
   // 给零的话预测停在原地，每帧靠观测修正，滞后只有几十毫米，能正常锁定，
   // 等板号换两次判出方向之后再按真实转速转。
-  const double spin_mag =
-    (estimated_speed_ > 0.2) ? estimated_speed_ : std::abs(initial_v_yaw_);
+  const double spin_mag = std::abs(initial_v_yaw_);  // 大小写死，只用参数
+  static int spin_log = 0;
+  if (++spin_log % 100 == 0) {
+    RCLCPP_INFO(
+      rclcpp::get_logger("outpost_tracker"), "转速参数 %.4f 方向 %+d 实际 %.4f",
+      initial_v_yaw_, spin_direction_, spin_direction_ * spin_mag);
+  }
   target_state[7] = (spin_direction_ == 0) ? 0.0 : spin_direction_ * spin_mag;
 
   // 两个高度差按回常数。这两个量是前哨站的机械尺寸，不是待估参数。
@@ -533,8 +527,7 @@ void OutpostTracker::propagate(double dt)
   // 实测同一份代码一次 tracking 百分之九十三，一次百分之零，差别就在开局猜没猜对。
   // 给零的话预测停在原地，每帧靠观测修正，滞后只有几十毫米，能正常锁定，
   // 等板号换两次判出方向之后再按真实转速转。
-  const double spin_mag =
-    (estimated_speed_ > 0.2) ? estimated_speed_ : std::abs(initial_v_yaw_);
+  const double spin_mag = std::abs(initial_v_yaw_);  // 大小写死，只用参数
   target_state[7] = (spin_direction_ == 0) ? 0.0 : spin_direction_ * spin_mag;
   target_state[8] = kH1;
   target_state[9] = kH2;
@@ -629,6 +622,51 @@ void OutpostTracker::calDirection(double orient_yaw)
       spin_direction_ > 0 ? "逆时针" : "顺时针");
   }
   direction_data_.clear();  // 这一轮数据用完清掉
+}
+
+void OutpostTracker::voteSpinDirection(double orient_yaw)
+{
+  if (spin_direction_ != 0) {
+    return;  // 方向已经定了
+  }
+  dir_data_.push_back(orient_yaw);
+  if (static_cast<int>(dir_data_.size()) < kDirectionVoteThresh * 10) {
+    return;  // 数据不够，阈值是三十帧
+  }
+
+  constexpr std::size_t kInterval = 3;    // 隔三帧比一次
+  constexpr double kStableAngle = 5e-3;   // 小于这个算没动
+  constexpr double kJumpAngle = 0.4;      // 大于这个算折返或误判，丢掉
+  int anti = 0, cw = 0, stable = 0;
+  for (std::size_t i = kInterval; i < dir_data_.size(); ++i) {
+    const double d = limitRad(dir_data_[i] - dir_data_[i - kInterval]);
+    if (std::abs(d) > kJumpAngle) {
+      continue;
+    }
+    if (d > kStableAngle) {
+      ++anti;
+    } else if (d < -kStableAngle) {
+      ++cw;
+    } else {
+      ++stable;
+    }
+  }
+
+  // 朝向增大对我们模型来说对应 yaw 减小，所以符号要翻。
+  // 参考实现的注释是"角度增大等于逆时针"，那是在他们的相机和坐标约定下；
+  // 我们模型里板位置是 圆心 减 半径乘方向，yaw 增大时板方位角增大，
+  // 而实测朝向是减小的，两者差一个符号。这一处是标定，不是猜。
+  if (anti > cw && anti > stable) {
+    spin_direction_ = -1;
+  } else if (cw > anti && cw > stable) {
+    spin_direction_ = 1;
+  }
+  dir_data_.clear();
+  if (spin_direction_ != 0) {
+    RCLCPP_INFO(
+      rclcpp::get_logger("outpost_tracker"), "转向锁定为 %s 票数 正%d 负%d 不动%d",
+      spin_direction_ > 0 ? "正" : "负", anti, cw, stable);
+  }
 }
 
 int OutpostTracker::updateTrackedId(double z_meas, double az_meas)
