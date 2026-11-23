@@ -365,7 +365,10 @@ bool OutpostTracker::updateOneArmor(const Armor & a)
     return false;
   }
 
-  const int id = updateTrackedId(a.pose.position.z);  // 增量维护的板号
+  // 实测板相对圆心的方位角，判转向要用
+  const double az_now = std::atan2(
+    a.pose.position.y - target_state[2], a.pose.position.x - target_state[0]);
+  const int id = updateTrackedId(a.pose.position.z, az_now);  // 增量维护的板号
 
   // 用板号轮换顺序判转向。三块板高度不同，板号是唯一的，它按什么顺序换就说明了
   // 目标往哪边转。实测逆时针时是 0 变 2 变 1 变 0，也就是每次减一；反过来是加一。
@@ -628,7 +631,7 @@ void OutpostTracker::calDirection(double orient_yaw)
   direction_data_.clear();  // 这一轮数据用完清掉
 }
 
-int OutpostTracker::updateTrackedId(double z_meas)
+int OutpostTracker::updateTrackedId(double z_meas, double az_meas)
 {
   constexpr double kHandoverJump = 0.055;  // 半个板间距，超过说明换板了
   constexpr int kAnchorSamples = 40;       // 每个板号攒够多少样本做一次顺序校验
@@ -657,21 +660,27 @@ int OutpostTracker::updateTrackedId(double z_meas)
     }
     ++handover_count_;
 
-    // 攒够六次换板，用高度的升降顺序定转向。
-    // 板按 低 中 高 循环出现，如果先看到的两轮都是升序，说明板号在增大，
-    // 对应模型里 yaw 增大，给正号；反之给负号。定一次就锁死，整局不再改。
-    if (spin_direction_ == 0 && handover_count_ >= 6) {
-      const double up1 = handover_z_[2] - handover_z_[0];  // 第一轮的高低差
-      const double up2 = handover_z_[5] - handover_z_[3];  // 第二轮的高低差
-      if (up1 * up2 > 0.0) {                              // 两轮方向一致才认
-        // 高度序列到 yaw 符号的映射按实测标定：逆时针时板的高度是降序出现，
-        // 对应模型里 yaw 增大，所以降序给正号。板的排列次序是固定机械设计，
-        // 标定一次对所有比赛都成立。
-        spin_direction_ = (up1 > 0.0) ? -1 : 1;
-        tracked_id_est_ = -1;  // 之前用临时方向数出来的板号作废，重新锚定
-        RCLCPP_INFO(
-          rclcpp::get_logger("outpost_tracker"), "转向锁定为 %s",
-          spin_direction_ > 0 ? "正" : "负");
+    // 转向由方位角差判。一块板可见的那段时间里它沿圆周扫过一百二十度，
+    // 所以换板瞬间新板和旧板的方位角差接近正负一百二十度，符号就是转向。
+    // 高度序列那个判法废弃了：只比第一次和第三次换板，样本一误检符号就翻，
+    // 而且一锁整局，实测同一台仿真器两次能判出相反的结论。
+    if (spin_direction_ == 0 && handover_count_ >= 2) {
+      const double delta = limitRad(az_meas - last_az_);
+      if (std::abs(delta) > 1.5) {  // 接近一百二十度才算有效
+        const int v = (delta > 0.0) ? 1 : -1;
+        if (v == az_vote_) {
+          ++az_vote_count_;
+        } else {
+          az_vote_ = v;
+          az_vote_count_ = 1;
+        }
+        if (az_vote_count_ >= 3) {  // 三次同向才定案
+          spin_direction_ = az_vote_;
+          tracked_id_est_ = -1;
+          RCLCPP_INFO(
+            rclcpp::get_logger("outpost_tracker"), "转向锁定为 %s",
+            spin_direction_ > 0 ? "正" : "负");
+        }
       }
     }
 
@@ -679,6 +688,7 @@ int OutpostTracker::updateTrackedId(double z_meas)
     tracked_id_est_ = (tracked_id_est_ + dir + kArmorsNum) % kArmorsNum;
   }
   last_meas_z_ = z_meas;
+  last_az_ = az_meas;
 
   // 慢速校验：每个板号累计高度均值，三者的高低顺序必须和板号一致。
   // 顺序是相对关系，机器人跑到哪、odom 怎么漂都不影响，所以用它当锚最可靠。

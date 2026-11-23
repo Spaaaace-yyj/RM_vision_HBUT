@@ -241,6 +241,59 @@ namespace rm_auto_aim
                 cv::Mat rvec, tvec;
                 //todo:要把时间改回图像时间，使用系统时间仅供调试，记得改回来！
                 bool success = pnp_solver_->solvePnP(armor, rvec, tvec, img_msg->header.stamp);
+                // 前哨站：对装甲板绕竖直轴的朝向做一维优化。
+                //
+                // 直接取 PnP 的四元数不行。一块一百三十五毫米的板在四米外只有二十几个
+                // 像素，平面位姿的两个解几乎一样好，OpenCV 会在两者之间乱跳，实测朝向
+                // 值集中在 0.9 和 2.4 两个簇，折算出来只有零点一二弧度每秒，而真值二点五。
+                //
+                // 这里用两条灯条的四个端点做重投影误差，只优化一个角度。板绕竖直轴转
+                // 会改变两条灯条在图像里的横向间距，这个变化是系统性的，不受位姿歧义影响。
+                // 参考实现用的是 ceres 优化同一件事，这里用一维搜索代替，效果等价。
+                if (outpost_mode_ && success) {
+                    const float kBarX = 0.064f;  // 灯条中心到板中心的横向距离
+                    const float kBarZ = 0.030f;  // 灯条半长
+                    const std::vector<cv::Point3f> obj_pts = {
+                        cv::Point3f(-kBarX, -kBarZ, 0), cv::Point3f(kBarX, -kBarZ, 0),
+                        cv::Point3f(kBarX, kBarZ, 0), cv::Point3f(-kBarX, kBarZ, 0)};
+                    const std::vector<cv::Point2f> img_pts = {
+                        armor.left_light.bottom, armor.right_light.bottom,
+                        armor.right_light.top, armor.left_light.top};
+
+                    cv::Mat R0;
+                    cv::Rodrigues(rvec, R0);
+                    auto reproj_err = [&](double t, cv::Mat & rvec_out) {
+                        const double c = std::cos(t), s = std::sin(t);
+                        cv::Mat Ry = (cv::Mat_<double>(3, 3) << c, 0, s, 0, 1, 0, -s, 0, c);
+                        cv::Mat R = R0 * Ry;
+                        cv::Rodrigues(R, rvec_out);
+                        std::vector<cv::Point2f> proj;
+                        cv::projectPoints(
+                            obj_pts, rvec_out, tvec, pnp_solver_->cameraMatrix(),
+                            pnp_solver_->distCoeffs(), proj);
+                        double e = 0.0;
+                        for (std::size_t i = 0; i < proj.size(); ++i) {
+                            const cv::Point2f d = proj[i] - img_pts[i];
+                            e += d.x * d.x + d.y * d.y;
+                        }
+                        return e;
+                    };
+
+                    double best_t = 0.0, best_e = 1e18;
+                    cv::Mat best_rvec = rvec.clone();
+                    for (double t = -0.9; t <= 0.9; t += 0.03) {  // 粗搜
+                        cv::Mat rv;
+                        const double e = reproj_err(t, rv);
+                        if (e < best_e) { best_e = e; best_t = t; best_rvec = rv; }
+                    }
+                    for (double t = best_t - 0.03; t <= best_t + 0.03; t += 0.005) {  // 细搜
+                        cv::Mat rv;
+                        const double e = reproj_err(t, rv);
+                        if (e < best_e) { best_e = e; best_t = t; best_rvec = rv; }
+                    }
+                    rvec = best_rvec;
+                }
+
                 // bool success = pnp_solver_->solvePnP(armor, rvec, tvec, this->get_clock()->now());
                 if (success)
                 {

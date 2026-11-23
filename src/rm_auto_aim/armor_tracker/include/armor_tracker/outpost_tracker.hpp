@@ -157,9 +157,12 @@ private:
   double last_meas_z_ = 0.0;         // 上一帧的实测高度
   double id_z_sum_[3] = {0.0, 0.0, 0.0};  // 每个板号的高度累计
   int id_z_cnt_[3] = {0, 0, 0};           // 每个板号的样本数
-  int updateTrackedId(double z_meas);
+  int updateTrackedId(double z_meas, double az_meas);
 
   double handover_z_[8] = {0.0};  // 每次换板时的实测高度，用来定转向
+  double last_az_ = 0.0;          // 上一帧板相对圆心的方位角
+  int az_vote_ = 0;               // 方位角投票推出来的转向
+  int az_vote_count_ = 0;         // 连续同向票数
   int handover_count_ = 0;        // 累计换板次数
 
   int lost_count_ = 0;

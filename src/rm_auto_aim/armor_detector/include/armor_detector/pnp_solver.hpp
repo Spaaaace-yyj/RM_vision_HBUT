@@ -118,6 +118,13 @@ namespace rm_auto_aim
         cv::Mat camera_matrix_;
         cv::Mat dist_coeffs_;
 
+    public:
+        // 供检测节点做一维朝向优化时使用
+        const cv::Mat & cameraMatrix() const { return camera_matrix_; }
+        const cv::Mat & distCoeffs() const { return dist_coeffs_; }
+
+    private:
+
         DynamicRParams R_params_;
 
         // Unit: mm
