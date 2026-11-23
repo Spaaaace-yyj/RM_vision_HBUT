@@ -68,6 +68,9 @@ public:
   // 只做时间传播，不融合观测。由节点的固定频率定时器调用。
   void propagate(double dt);
 
+  // 转向锁定了没有。没锁定之前云台不能动，一动相机位置就变，观测不准。
+  bool directionLocked() const { return spin_direction_ != 0; }
+
   /// 转向符号。仿真里前哨站逆时针转，但本模型 yaw 的正方向与它相反，所以是 -1。
   /// 自动判方向依赖板朝向，而我们的朝向估计基本是噪声，判反了命中率直接归零，
   /// 所以做成参数，实测一下定死。
@@ -147,6 +150,18 @@ private:
   double estimated_speed_ = 0.0;
   double last_switch_stamp_ = -1.0;  // 上次板号切换的时刻
   int switch_from_id_ = -1;          // 上次切换前的板号，用来识别跳走又跳回
+
+  // 增量维护的板号。换板时加一或减一，不再每帧拿绝对高度去比。
+  // 绝对高度会随底盘高度和 odom 漂移整体平移，只有相对跳变和高低顺序靠得住。
+  int tracked_id_est_ = -1;          // 当前板号，负一表示还没锚定
+  double last_meas_z_ = 0.0;         // 上一帧的实测高度
+  double id_z_sum_[3] = {0.0, 0.0, 0.0};  // 每个板号的高度累计
+  int id_z_cnt_[3] = {0, 0, 0};           // 每个板号的样本数
+  int updateTrackedId(double z_meas);
+
+  double handover_z_[8] = {0.0};  // 每次换板时的实测高度，用来定转向
+  int handover_count_ = 0;        // 累计换板次数
+
   int lost_count_ = 0;
   double last_yaw_ = 0.0;
   int last_model_id = -1;

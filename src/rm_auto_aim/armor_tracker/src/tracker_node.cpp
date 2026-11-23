@@ -387,10 +387,17 @@ void ArmorTrackerNode::outpostTimerCallback()
   auto_aim_interfaces::msg::Target target_msg;
   target_msg.header.stamp = now;
   target_msg.header.frame_id = target_frame_;
-  outpost_tracker_->fillTargetMsg(target_msg);
-  if (outpost_tracker_->tracker_state == Tracker::LOST) {
-    target_msg.tracking = false;  // 没锁定就给云台一个停火信号
+  // 未锁定时不要填目标内容，和四板保持一致。
+  // fillTargetMsg 会把 armors_num 填成 3，云的瞄准块只在 armors_num 大于零时才执行，
+  // 填了就等于让云台对着一个退化状态的位置去瞄——实测位置会发成零点二一米，
+  // 云台就停在那儿不动也不开火，看起来就是卡住。
+  // 四板在 LOST 时只置 tracking 为假、armors_num 保持零，云台自然不动作。
+  // 转向还没锁定之前也不发目标。云台一动相机位置就变，观测跟着乱，
+  // 方向就更判不出来了。让它先稳住，攒够换板次数定下转向再开始跟。
+  if (outpost_tracker_->tracker_state == Tracker::LOST || !outpost_tracker_->directionLocked()) {
+    target_msg.tracking = false;  // armors_num 保持零，云台整块跳过
   } else {
+    outpost_tracker_->fillTargetMsg(target_msg);
     target_msg.type = outpost_tracker_->tracked_armor.type;
   }
 

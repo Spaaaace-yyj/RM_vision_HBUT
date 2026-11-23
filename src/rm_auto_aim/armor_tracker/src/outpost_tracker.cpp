@@ -365,7 +365,7 @@ bool OutpostTracker::updateOneArmor(const Armor & a)
     return false;
   }
 
-  const int id = matchArmorId(a, target_state);  // 靠高度判出板号
+  const int id = updateTrackedId(a.pose.position.z);  // 增量维护的板号
 
   // 用板号轮换顺序判转向。三块板高度不同，板号是唯一的，它按什么顺序换就说明了
   // 目标往哪边转。实测逆时针时是 0 变 2 变 1 变 0，也就是每次减一；反过来是加一。
@@ -407,11 +407,9 @@ bool OutpostTracker::updateOneArmor(const Armor & a)
         direction_vote_ = dir;
         direction_vote_count_ = 1;
       }
-      // 官方规则：前哨站转向整局固定不变，所以判到一次就锁死，不再改。
-      // 锁死之后即使偶尔出现两次反向的误判也不会把方向带翻。
-      if (spin_direction_ == 0 && direction_vote_count_ >= kDirectionVoteThresh) {
-        spin_direction_ = direction_vote_;
-      }
+      // 旧的轮换投票不再决定方向。方向只能由 updateTrackedId 里的六次换板锁定，
+      // 两套逻辑并存时旧的先跑、把方向定成负的，新的锁定永远进不去，一直倒着转。
+      (void)0;
     }
   }
   last_model_id = id;                            // 记下这次用的板号
@@ -628,6 +626,78 @@ void OutpostTracker::calDirection(double orient_yaw)
       spin_direction_ > 0 ? "逆时针" : "顺时针");
   }
   direction_data_.clear();  // 这一轮数据用完清掉
+}
+
+int OutpostTracker::updateTrackedId(double z_meas)
+{
+  constexpr double kHandoverJump = 0.055;  // 半个板间距，超过说明换板了
+  constexpr int kAnchorSamples = 40;       // 每个板号攒够多少样本做一次顺序校验
+
+  // 还没锚定：只这一次用绝对高度找最接近的板号，之后全靠增量
+  if (tracked_id_est_ < 0) {
+    const double za = target_state[4];
+    const double dz[3] = {0.0, kH1, kH2};
+    int best = 0;
+    double bd = DBL_MAX;
+    for (int i = 0; i < kArmorsNum; ++i) {
+      const double d = std::abs(za + dz[i] - z_meas);
+      if (d < bd) { bd = d; best = i; }
+    }
+    tracked_id_est_ = best;
+    last_meas_z_ = z_meas;
+    return best;
+  }
+
+  // 换板检测只看相邻帧的高度跳变，不看绝对值。底盘高度变了、odom 漂了，
+  // 跳变幅度不变，所以这个判据在哪台车上都成立。
+  if (std::abs(z_meas - last_meas_z_) > kHandoverJump) {
+    // 记下这次换板时看到的高度，用来定转向
+    if (handover_count_ < 8) {
+      handover_z_[handover_count_] = z_meas;
+    }
+    ++handover_count_;
+
+    // 攒够六次换板，用高度的升降顺序定转向。
+    // 板按 低 中 高 循环出现，如果先看到的两轮都是升序，说明板号在增大，
+    // 对应模型里 yaw 增大，给正号；反之给负号。定一次就锁死，整局不再改。
+    if (spin_direction_ == 0 && handover_count_ >= 6) {
+      const double up1 = handover_z_[2] - handover_z_[0];  // 第一轮的高低差
+      const double up2 = handover_z_[5] - handover_z_[3];  // 第二轮的高低差
+      if (up1 * up2 > 0.0) {                              // 两轮方向一致才认
+        // 高度序列到 yaw 符号的映射按实测标定：逆时针时板的高度是降序出现，
+        // 对应模型里 yaw 增大，所以降序给正号。板的排列次序是固定机械设计，
+        // 标定一次对所有比赛都成立。
+        spin_direction_ = (up1 > 0.0) ? -1 : 1;
+        tracked_id_est_ = -1;  // 之前用临时方向数出来的板号作废，重新锚定
+        RCLCPP_INFO(
+          rclcpp::get_logger("outpost_tracker"), "转向锁定为 %s",
+          spin_direction_ > 0 ? "正" : "负");
+      }
+    }
+
+    const int dir = (spin_direction_ != 0) ? spin_direction_ : 1;
+    tracked_id_est_ = (tracked_id_est_ + dir + kArmorsNum) % kArmorsNum;
+  }
+  last_meas_z_ = z_meas;
+
+  // 慢速校验：每个板号累计高度均值，三者的高低顺序必须和板号一致。
+  // 顺序是相对关系，机器人跑到哪、odom 怎么漂都不影响，所以用它当锚最可靠。
+  id_z_sum_[tracked_id_est_] += z_meas;
+  ++id_z_cnt_[tracked_id_est_];
+  if (id_z_cnt_[0] >= kAnchorSamples && id_z_cnt_[1] >= kAnchorSamples &&
+    id_z_cnt_[2] >= kAnchorSamples)
+  {
+    const double m0 = id_z_sum_[0] / id_z_cnt_[0];
+    const double m1 = id_z_sum_[1] / id_z_cnt_[1];
+    const double m2 = id_z_sum_[2] / id_z_cnt_[2];
+    if (!(m0 < m1 && m1 < m2)) {
+      // 顺序不对，说明锚偏了。按实测高低重排板号。
+      fprintf(stderr, "[idfix] 高度顺序不对 %.3f %.3f %.3f 重新锚定\n", m0, m1, m2);
+      tracked_id_est_ = -1;  // 下一帧用绝对高度重锚一次
+      for (int i = 0; i < kArmorsNum; ++i) { id_z_sum_[i] = 0.0; id_z_cnt_[i] = 0; }
+    }
+  }
+  return tracked_id_est_;
 }
 
 int OutpostTracker::matchArmorId(const Armor & a, const Eigen::VectorXd & x) const
