@@ -264,6 +264,24 @@ void OutpostTracker::initEKF(const Armor & a)
     };
 
   ekf_ = ExtendedKalmanFilter(f, h, j_f, j_h, u_q, u_r, P0);  // 建滤波器
+  // 初始化和板号判定必须自洽。
+  //
+  // 上面算 yaw 时用的是板的方位角，隐含假设"看到的这块是 0 号板"。但板号现在由
+  // 朝向判定，可能返回 1 或 2。一旦不一致，模型里那块板就跑到一百二十度外，
+  // 预测和实测差零点四八米，滤波器被硬拽，下一帧板号又变，来回震荡，
+  // 最后撞上判丢阈值。实测初始化后零点五秒内必然掉 LOST，刷了三百多次。
+  //
+  // 这里在灌初值前先用同一套判据算出板号，把 yaw 转过去，让模型里第 k 块板
+  // 正好落在实测点上。圆心不动，只转相位。
+  {
+    const int kid = matchArmorIdByOrient(a, target_state);
+    if (kid != 0) {
+      target_state[6] =
+        limitRad(target_state[6] - kid * 2.0 * M_PI / kArmorsNum);
+      last_yaw_ = target_state[6];
+    }
+  }
+
   ekf_.setState(target_state, P0);                            // 灌初值
   initialized_ = true;                                       // 模型函数和状态都齐了
 }
