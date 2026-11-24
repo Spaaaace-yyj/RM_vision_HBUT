@@ -251,11 +251,52 @@ namespace rm_auto_aim
                 // 会改变两条灯条在图像里的横向间距，这个变化是系统性的，不受位姿歧义影响。
                 // 参考实现用的是 ceres 优化同一件事，这里用一维搜索代替，效果等价。
                 if (outpost_mode_ && success) {
-                    const float kBarX = 0.064f;  // 灯条中心到板中心的横向距离
-                    const float kBarZ = 0.030f;  // 灯条半长
+                    cv::Mat Rcal;
+                    cv::Rodrigues(rvec, Rcal);
+                    const cv::Mat Rinv = Rcal.t();
+                    const cv::Vec3d ncal = Rcal.col(2);
+                    const double * tp = tvec.ptr<double>();
+                    const cv::Vec3d tcal(tp[0], tp[1], tp[2]);
+                    auto back = [&](cv::Point2f p, cv::Point3d & out) {
+                        std::vector<cv::Point2f> src{p}, dst;
+                        cv::undistortPoints(
+                            src, dst, pnp_solver_->cameraMatrix(),
+                            pnp_solver_->distCoeffs());
+                        const cv::Vec3d r(dst[0].x, dst[0].y, 1.0);
+                        const double den = ncal.dot(r);
+                        if (std::abs(den) < 1e-6) return false;
+                        const cv::Vec3d P = (ncal.dot(tcal) / den) * r;
+                        const cv::Vec3d d = P - tcal;
+                        // 逐元素展开。Mat::dot 要求两个操作数尺寸一致，
+                        // 行向量和 Vec3d 混用会抛 dot 断言，之前就是这么崩的。
+                        const double * r0 = Rinv.ptr<double>(0);
+                        const double * r1 = Rinv.ptr<double>(1);
+                        const double * r2 = Rinv.ptr<double>(2);
+                        out = cv::Point3d(
+                            r0[0] * d[0] + r0[1] * d[1] + r0[2] * d[2],
+                            r1[0] * d[0] + r1[1] * d[1] + r1[2] * d[2],
+                            r2[0] * d[0] + r2[1] * d[1] + r2[2] * d[2]);
+                        return true;
+                    };
+                    cv::Point3d lt, rt, lb, rb;
+                    if (back(armor.left_light.top, lt) && back(armor.right_light.top, rt) &&
+                      back(armor.left_light.bottom, lb) && back(armor.right_light.bottom, rb))
+                    {
+                        fprintf(
+                            stderr, "[cal] LT=(%.3f,%.3f) RT=(%.3f,%.3f) LB=(%.3f,%.3f) RB=(%.3f,%.3f)\n",
+                            lt.x, lt.y, rt.x, rt.y, lb.x, lb.y, rb.x, rb.y);
+                    }
+                }
+
+                if (outpost_mode_ && success) {
+                    // 三维点按反投影标定的实测值定义。实测结果：灯条的轴向是 x，
+                    // 两条灯的间隔在 y，和最初假设正好对调。原来写成 间距在 x、长度在 y，
+                    // 导致重投影误差二十八像素、优化只降百分之九、朝向测不准。
+                    const float kBarHalf = 0.082f;  // 灯条轴向半长，实测零点一六四的一半
+                    const float kBarSep = 0.064f;   // 灯条到中心的横向距离，实测约零点一三的一半
                     const std::vector<cv::Point3f> obj_pts = {
-                        cv::Point3f(-kBarX, -kBarZ, 0), cv::Point3f(kBarX, -kBarZ, 0),
-                        cv::Point3f(kBarX, kBarZ, 0), cv::Point3f(-kBarX, kBarZ, 0)};
+                        cv::Point3f(-kBarHalf, kBarSep, 0), cv::Point3f(-kBarHalf, -kBarSep, 0),
+                        cv::Point3f(kBarHalf, -kBarSep, 0), cv::Point3f(kBarHalf, kBarSep, 0)};
                     // 对象点里 y 轴朝上，图像 y 轴朝下，所以负 y 对应灯条的上端。
                     // 之前把上端对应到了 bottom，四个点全错位，重投影误差降不下来。
                     const std::vector<cv::Point2f> img_pts = {
@@ -295,7 +336,8 @@ namespace rm_auto_aim
                     }
                     // 验证用：打印优化偏移量、优化前后的重投影误差、和上一帧的差
                     static double last_t = 1e9;
-                    const double e_before = reproj_err(0.0, *(new cv::Mat()));
+                    cv::Mat tmp_rv;
+                    const double e_before = reproj_err(0.0, tmp_rv);
                     if (last_t < 1e8) {
                         fprintf(
                             stderr, "[ori] t=%+.3f dt=%+.4f err0=%.2f err1=%.2f\n",
