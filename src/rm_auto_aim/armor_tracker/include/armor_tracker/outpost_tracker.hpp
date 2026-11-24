@@ -159,6 +159,10 @@ private:
   int id_z_cnt_[3] = {0, 0, 0};           // 每个板号的样本数
   int updateTrackedId(double z_meas, double az_meas);
 
+  // 照四板的做法，用实测板朝向判板号。三块板间隔一百二十度，容差正负六十度，
+  // 比四板的九十度间隔还宽松，朝向那点误差完全够用。
+  int matchArmorIdByOrient(const Armor & a, const Eigen::VectorXd & x) const;
+
   double handover_z_[8] = {0.0};  // 每次换板时的实测高度，用来定转向
   double last_az_ = 0.0;          // 上一帧板相对圆心的方位角
   int az_vote_ = 0;               // 方位角投票推出来的转向

@@ -370,13 +370,11 @@ bool OutpostTracker::updateOneArmor(const Armor & a)
     return false;
   }
 
-  // 实测板相对圆心的方位角，判转向要用
-  const double az_now = std::atan2(
-    a.pose.position.y - target_state[2], a.pose.position.x - target_state[0]);
   // 喂一帧板朝向来判转向。用朝向不用方位角：朝向不经过圆心，不受圆心误差影响。
   voteSpinDirection(getRawYaw(a.pose.orientation));
 
-  const int id = updateTrackedId(a.pose.position.z, az_now);  // 增量维护的板号
+  // 板号改为照四板的做法，用实测朝向每帧绝对判定，不再靠高度增量维护。
+  const int id = matchArmorIdByOrient(a, target_state);
 
   // 用板号轮换顺序判转向。三块板高度不同，板号是唯一的，它按什么顺序换就说明了
   // 目标往哪边转。实测逆时针时是 0 变 2 变 1 变 0，也就是每次减一；反过来是加一。
@@ -667,6 +665,33 @@ void OutpostTracker::voteSpinDirection(double orient_yaw)
       rclcpp::get_logger("outpost_tracker"), "转向锁定为 %s 票数 正%d 负%d 不动%d",
       spin_direction_ > 0 ? "正" : "负", anti, cw, stable);
   }
+}
+
+int OutpostTracker::matchArmorIdByOrient(const Armor & a, const Eigen::VectorXd & x) const
+{
+  const double obs = getRawYaw(a.pose.orientation);
+  // 实测朝向和模型里第 i 块板朝向之间可能差半圈，取决于 PnP 与模型各自的方向约定，
+  // 两种偏移都试一遍，取全局残差最小的那个组合。
+  int best_id = 0;
+  double best_err = DBL_MAX;
+  for (int flip = 0; flip < 2; ++flip) {
+    const double base = obs + (flip ? M_PI : 0.0);
+    for (int i = 0; i < kArmorsNum; ++i) {
+      const double pred = x[6] + i * 2.0 * M_PI / kArmorsNum;
+      const double err = std::abs(limitRad(base - pred));
+      if (err < best_err) {
+        best_err = err;
+        best_id = i;
+      }
+    }
+  }
+  static int cnt = 0;
+  if (++cnt % 100 == 0) {
+    RCLCPP_INFO(
+      rclcpp::get_logger("outpost_tracker"), "朝向判板号 残差 %.1f 度",
+      best_err * 57.3);
+  }
+  return best_id;
 }
 
 int OutpostTracker::updateTrackedId(double z_meas, double az_meas)
